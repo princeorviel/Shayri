@@ -24,25 +24,27 @@ class LocalPersonalShayariRepository(
         themeTag: String,
         couplet: String
     ): Result<String> {
-        val cleanTitle = title.trim().take(80)
-        val cleanThemeTag = themeTag.trim().take(40)
-        val cleanCouplet = couplet.trim().take(600)
-
-        require(cleanTitle.isNotEmpty() || cleanThemeTag.isNotEmpty()) {
-            "Title or theme tag is required."
-        }
-        require(cleanCouplet.length >= 10) {
-            "Couplet must be at least 10 characters."
-        }
-
-        val id = UUID.randomUUID().toString()
-        val now = System.currentTimeMillis()
         return runCatching {
+            val cleanTitle = title.trim().take(80)
+            val rawThemeTag = themeTag.trim().take(40)
+            val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
+                DEFAULT_THEME_TAG
+            } else {
+                rawThemeTag
+            }
+            val cleanCouplet = couplet.trim().take(600)
+
+            require(cleanCouplet.length >= MIN_LOCAL_COUPLET_LENGTH) {
+                "कृपया कम से कम $MIN_LOCAL_COUPLET_LENGTH अक्षर लिखें।"
+            }
+
+            val id = UUID.randomUUID().toString()
+            val now = System.currentTimeMillis()
             dao.upsert(
                 LocalPersonalShayariEntity(
                     id = id,
                     title = cleanTitle,
-                    themeTag = cleanThemeTag,
+                    themeTag = effectiveThemeTag,
                     couplet = cleanCouplet,
                     createdAtMillis = now,
                     updatedAtMillis = now
@@ -58,24 +60,26 @@ class LocalPersonalShayariRepository(
         themeTag: String,
         couplet: String
     ): Result<Unit> {
-        require(shayariId.isNotBlank()) { "Shayari ID must not be blank for update." }
-        val cleanTitle = title.trim().take(80)
-        val cleanThemeTag = themeTag.trim().take(40)
-        val cleanCouplet = couplet.trim().take(600)
-
-        require(cleanTitle.isNotEmpty() || cleanThemeTag.isNotEmpty()) {
-            "Title or theme tag is required."
-        }
-        require(cleanCouplet.length >= 10) {
-            "Couplet must be at least 10 characters."
-        }
-
-        val now = System.currentTimeMillis()
         return runCatching {
+            require(shayariId.isNotBlank()) { "शायरी अपडेट करने के लिए सही ID नहीं मिली।" }
+            val cleanTitle = title.trim().take(80)
+            val rawThemeTag = themeTag.trim().take(40)
+            val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
+                DEFAULT_THEME_TAG
+            } else {
+                rawThemeTag
+            }
+            val cleanCouplet = couplet.trim().take(600)
+
+            require(cleanCouplet.length >= MIN_LOCAL_COUPLET_LENGTH) {
+                "कृपया कम से कम $MIN_LOCAL_COUPLET_LENGTH अक्षर लिखें।"
+            }
+
+            val now = System.currentTimeMillis()
             val updatedRows = dao.updateById(
                 id = shayariId,
                 title = cleanTitle,
-                themeTag = cleanThemeTag,
+                themeTag = effectiveThemeTag,
                 couplet = cleanCouplet,
                 updatedAtMillis = now
             )
@@ -92,19 +96,26 @@ class LocalPersonalShayariRepository(
     }
 
     suspend fun migrateAllToCloud(cloudStore: PersonalShayariStore): Int {
-        val localItems = dao.getAllOnce()
+        val localItems = runCatching { dao.getAllOnce() }.getOrDefault(emptyList())
         var migrated = 0
         for (item in localItems) {
-            val result = cloudStore.savePersonalShayari(
-                title = item.title,
-                themeTag = item.themeTag,
-                couplet = item.couplet
-            )
+            val result = runCatching {
+                cloudStore.savePersonalShayari(
+                    title = item.title,
+                    themeTag = item.themeTag.ifBlank { DEFAULT_THEME_TAG },
+                    couplet = item.couplet
+                )
+            }.getOrElse { Result.failure(it) }
             if (result.isSuccess) {
-                dao.deleteById(item.id)
+                runCatching { dao.deleteById(item.id) }
                 migrated++
             }
         }
         return migrated
+    }
+
+    companion object {
+        const val DEFAULT_THEME_TAG = "मेरी शायरी"
+        const val MIN_LOCAL_COUPLET_LENGTH = 4
     }
 }

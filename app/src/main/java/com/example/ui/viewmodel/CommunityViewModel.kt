@@ -437,19 +437,28 @@ class CommunityViewModel(
         if (isSubmittingFlow.value) return
         viewModelScope.launch {
             isSubmittingFlow.value = true
-            val result = if (editingId == null) {
-                repository.publishShayari(penName, couplet, categoryId, promptTitle)
-            } else {
-                repository.updateShayari(editingId, penName, couplet, categoryId, promptTitle)
+            val result = try {
+                if (editingId == null) {
+                    repository.publishShayari(penName, couplet, categoryId, promptTitle)
+                } else {
+                    repository.updateShayari(editingId, penName, couplet, categoryId, promptTitle)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error publishing shayari", e)
+                Result.failure(e)
             }
             if (result.isSuccess) {
                 val existingPosts = (uiState.value.feedState as? CommunityFeedState.Success)?.posts.orEmpty()
                 val myCount = existingPosts.count { it.userId == currentUserId } + if (editingId == null) 1 else 0
-                repository.upsertUserProfile(
-                    penName = penName,
-                    bio = uiState.value.userProfile?.bio.orEmpty(),
-                    postCount = myCount
-                )
+                runCatching {
+                    repository.upsertUserProfile(
+                        penName = penName,
+                        bio = uiState.value.userProfile?.bio.orEmpty(),
+                        postCount = myCount
+                    )
+                }
                 isSubmittingFlow.value = false
                 onSuccess()
             } else {

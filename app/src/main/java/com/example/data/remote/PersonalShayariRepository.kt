@@ -92,38 +92,44 @@ class PersonalShayariRepository(
         themeTag: String,
         couplet: String
     ): Result<String> {
-        val uid = requireUserId()
-        val cleanTitle = title.trim().take(80)
-        val cleanThemeTag = themeTag.trim().take(40)
-        val cleanCouplet = couplet.trim().take(600)
-
-        require(cleanTitle.isNotEmpty() || cleanThemeTag.isNotEmpty()) {
-            "Title or theme tag is required."
-        }
-        require(cleanCouplet.length >= 10) {
-            "Couplet must be at least 10 characters."
-        }
-
-        val docRef = db.collection("users")
-            .document(uid)
-            .collection(SUBCOLLECTION_PERSONAL)
-            .document()
-
-        val payload = mapOf(
-            "userId" to uid,
-            "title" to cleanTitle,
-            "themeTag" to cleanThemeTag,
-            "couplet" to cleanCouplet,
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
+        var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL"
         return try {
+            val uid = requireUserId()
+            val cleanTitle = title.trim().take(80)
+            val rawThemeTag = themeTag.trim().take(40)
+            val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
+                DEFAULT_THEME_TAG
+            } else {
+                rawThemeTag
+            }
+            val cleanCouplet = couplet.trim().take(600)
+
+            if (cleanCouplet.length < MIN_CLOUD_COUPLET_LENGTH) {
+                return Result.failure(
+                    IllegalArgumentException("कृपया कम से कम $MIN_CLOUD_COUPLET_LENGTH अक्षरों की शायरी लिखें।")
+                )
+            }
+
+            val docRef = db.collection("users")
+                .document(uid)
+                .collection(SUBCOLLECTION_PERSONAL)
+                .document()
+            docPath = docRef.path
+
+            val payload = mapOf(
+                "userId" to uid,
+                "title" to cleanTitle,
+                "themeTag" to effectiveThemeTag,
+                "couplet" to cleanCouplet,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
             docRef.set(payload).await()
             Result.success(docRef.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
+            handleFirestoreError(e, OperationType.CREATE, docPath)
             Result.failure(e)
         }
     }
@@ -134,59 +140,71 @@ class PersonalShayariRepository(
         themeTag: String,
         couplet: String
     ): Result<Unit> {
-        val uid = requireUserId()
-        require(shayariId.isNotBlank()) { "Shayari ID must not be blank for update." }
-        val cleanTitle = title.trim().take(80)
-        val cleanThemeTag = themeTag.trim().take(40)
-        val cleanCouplet = couplet.trim().take(600)
-
-        require(cleanTitle.isNotEmpty() || cleanThemeTag.isNotEmpty()) {
-            "Title or theme tag is required."
-        }
-        require(cleanCouplet.length >= 10) {
-            "Couplet must be at least 10 characters."
-        }
-
-        val docRef = db.collection("users")
-            .document(uid)
-            .collection(SUBCOLLECTION_PERSONAL)
-            .document(shayariId)
-
-        val updates = mapOf(
-            "title" to cleanTitle,
-            "themeTag" to cleanThemeTag,
-            "couplet" to cleanCouplet,
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
+        var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL/$shayariId"
         return try {
+            val uid = requireUserId()
+            if (shayariId.isBlank()) {
+                return Result.failure(IllegalArgumentException("शायरी अपडेट करने के लिए सही ID नहीं मिली।"))
+            }
+            val cleanTitle = title.trim().take(80)
+            val rawThemeTag = themeTag.trim().take(40)
+            val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
+                DEFAULT_THEME_TAG
+            } else {
+                rawThemeTag
+            }
+            val cleanCouplet = couplet.trim().take(600)
+
+            if (cleanCouplet.length < MIN_CLOUD_COUPLET_LENGTH) {
+                return Result.failure(
+                    IllegalArgumentException("कृपया कम से कम $MIN_CLOUD_COUPLET_LENGTH अक्षरों की शायरी लिखें।")
+                )
+            }
+
+            val docRef = db.collection("users")
+                .document(uid)
+                .collection(SUBCOLLECTION_PERSONAL)
+                .document(shayariId)
+            docPath = docRef.path
+
+            val updates = mapOf(
+                "title" to cleanTitle,
+                "themeTag" to effectiveThemeTag,
+                "couplet" to cleanCouplet,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
             docRef.update(updates).await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
+            handleFirestoreError(e, OperationType.UPDATE, docPath)
             Result.failure(e)
         }
     }
 
     override suspend fun deletePersonalShayari(shayariId: String): Result<Unit> {
-        val uid = requireUserId()
-        val docRef = db.collection("users")
-            .document(uid)
-            .collection(SUBCOLLECTION_PERSONAL)
-            .document(shayariId)
+        var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL/$shayariId"
         return try {
+            val uid = requireUserId()
+            val docRef = db.collection("users")
+                .document(uid)
+                .collection(SUBCOLLECTION_PERSONAL)
+                .document(shayariId)
+            docPath = docRef.path
             docRef.delete().await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
+            handleFirestoreError(e, OperationType.DELETE, docPath)
             Result.failure(e)
         }
     }
 
     companion object {
         const val SUBCOLLECTION_PERSONAL = "personal_shayari"
+        const val DEFAULT_THEME_TAG = "मेरी शायरी"
+        const val MIN_CLOUD_COUPLET_LENGTH = 10
     }
 }

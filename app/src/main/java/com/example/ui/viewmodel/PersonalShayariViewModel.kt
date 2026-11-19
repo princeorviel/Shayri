@@ -310,7 +310,8 @@ class PersonalShayariViewModel(
     ) {
         if (isSavingFlow.value) return
         val cleanTitle = titleInputFlow.value.trim()
-        val cleanTag = themeTagInputFlow.value.trim()
+        val rawTag = themeTagInputFlow.value.trim()
+        val effectiveTag = if (cleanTitle.isBlank() && rawTag.isBlank()) "मेरी शायरी" else rawTag
         val cleanCouplet = coupletInputFlow.value.trim()
 
         if (cleanCouplet.length < 4) {
@@ -321,21 +322,30 @@ class PersonalShayariViewModel(
         val editing = editingItemFlow.value
         viewModelScope.launch {
             isSavingFlow.value = true
-            val result = if (editing == null) {
-                repository.savePersonalShayari(
-                    title = cleanTitle,
-                    themeTag = cleanTag,
-                    couplet = cleanCouplet
-                ).map { Unit }
-            } else {
-                repository.updatePersonalShayari(
-                    shayariId = editing.id,
-                    title = cleanTitle,
-                    themeTag = cleanTag,
-                    couplet = cleanCouplet
-                )
+            val result = try {
+                if (editing == null) {
+                    repository.savePersonalShayari(
+                        title = cleanTitle,
+                        themeTag = effectiveTag,
+                        couplet = cleanCouplet
+                    ).map { Unit }
+                } else {
+                    repository.updatePersonalShayari(
+                        shayariId = editing.id,
+                        title = cleanTitle,
+                        themeTag = effectiveTag,
+                        couplet = cleanCouplet
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error while saving personal shayari", e)
+                Result.failure(e)
+            } finally {
+                isSavingFlow.value = false
             }
-            isSavingFlow.value = false
+
             if (result.isSuccess) {
                 editingItemFlow.value = null
                 titleInputFlow.value = ""
@@ -359,7 +369,14 @@ class PersonalShayariViewModel(
             if (editingItemFlow.value?.id == shayariId) {
                 cancelEditing()
             }
-            val result = repository.deletePersonalShayari(shayariId)
+            val result = try {
+                repository.deletePersonalShayari(shayariId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Unexpected error while deleting personal shayari", e)
+                Result.failure(e)
+            }
             if (result.isSuccess) {
                 onSuccess()
             } else {

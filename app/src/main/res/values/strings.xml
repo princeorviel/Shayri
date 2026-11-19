@@ -241,6 +241,8 @@
 
     <string name="admin_dashboard_title">Admin Dashboard</string>
     <string name="admin_dashboard_subtitle">Firestore कैटेगरी शायरी आँकड़े</string>
+    <string name="admin_dashboard_catalog_subtitle">कैटलॉग कैटेगरी शायरी आँकड़े</string>
+    <string name="admin_dashboard_offline_notice">इस APK बिल्ड में क्लाउड Firestore कनेक्ट नहीं है — अभी ऐप के सभी कैटलॉग आँकड़े दिख रहे हैं।</string>
     <string name="admin_dashboard_refresh_cd">आँकड़े रिफ्रेश करें</string>
     <string name="admin_dashboard_loading">Firestore से शायरी आँकड़े लोड हो रहे हैं…</string>
     <string name="admin_dashboard_search_hint">कैटेगरी खोजें (जैसे: मोहब्बत, दर्द, Dosti)…</string>

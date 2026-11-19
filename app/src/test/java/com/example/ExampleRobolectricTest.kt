@@ -193,4 +193,53 @@ class ExampleRobolectricTest {
             db.close()
         }
     }
+
+    @Test
+    fun `local personal shayari saves cleanly with blank optional title and tag and short couplet`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val localRepo = com.example.data.local.LocalPersonalShayariRepository(db.localPersonalShayariDao())
+
+            // Reproduces exact Write Studio flow where optional title & tag are left blank
+            val savedId = localRepo.savePersonalShayari(
+                title = "",
+                themeTag = "",
+                couplet = "तेरी यादों का सफ़र कभी थमता नहीं"
+            ).getOrThrow()
+
+            // Also verify short 5-character shayari saves cleanly instead of crashing
+            val shortId = localRepo.savePersonalShayari(
+                title = "",
+                themeTag = "",
+                couplet = "इश्क़ है"
+            ).getOrThrow()
+
+            val items = localRepo.observePersonalShayari(com.example.data.model.LOCAL_GUEST_USER_ID).first()
+            assertEquals(2, items.size)
+            assertTrue(items.all { it.themeTag == com.example.data.local.LocalPersonalShayariRepository.DEFAULT_THEME_TAG })
+
+            // Verify update with blank title/tag also succeeds without throwing
+            val updateResult = localRepo.updatePersonalShayari(
+                shayariId = savedId,
+                title = "",
+                themeTag = "",
+                couplet = "दिल की बात लफ़्ज़ों में उतर आई"
+            )
+            assertTrue("Update without optional title/tag should succeed", updateResult.isSuccess)
+
+            // Too short (< 4 chars) returns Result.failure rather than throwing an uncaught exception
+            val tooShortResult = localRepo.savePersonalShayari(
+                title = "",
+                themeTag = "",
+                couplet = "हाय"
+            )
+            assertTrue("Too-short couplet should return failure Result cleanly", tooShortResult.isFailure)
+            assertTrue(shortId.isNotBlank())
+        } finally {
+            db.close()
+        }
+    }
 }

@@ -307,8 +307,8 @@ private fun ShayariAppRoot(
         )
     }
     val activeUid = currentUser?.uid ?: LOCAL_GUEST_USER_ID
-    val activePersonalRepository = remember(activeUid, context) {
-        if (currentUser == null) {
+    val activePersonalRepository = remember(activeUid, firebaseReady, context) {
+        if (currentUser == null || !firebaseReady) {
             localPersonalRepository
         } else {
             PersonalShayariRepository(context.applicationContext)
@@ -1306,13 +1306,24 @@ private fun ShayariAppRoot(
                         composable(ROUTE_ADMIN_DASHBOARD) {
                             val activeUser = currentUser
                             if (activeUser == null || !firebaseReady) {
+                                var localSearchQuery by remember { mutableStateOf("") }
+                                var localSortOrder by remember {
+                                    mutableStateOf(com.example.ui.viewmodel.AdminCategorySortOrder.HIGHEST_COUNT)
+                                }
+                                var localShowOnlyPopulated by remember { mutableStateOf(false) }
+
                                 AdminDashboardScreen(
                                     isFirebaseSignedIn = false,
-                                    uiState = AdminDashboardUiState(),
+                                    isCloudConfigured = firebaseReady,
+                                    uiState = AdminDashboardUiState(
+                                        searchQuery = localSearchQuery,
+                                        sortOrder = localSortOrder,
+                                        showOnlyPopulated = localShowOnlyPopulated
+                                    ),
                                     catalogCategoryCounts = uiState.categoryCounts,
-                                    onSearchQueryChanged = {},
-                                    onSortOrderChanged = {},
-                                    onToggleOnlyPopulated = {},
+                                    onSearchQueryChanged = { localSearchQuery = it.take(60) },
+                                    onSortOrderChanged = { localSortOrder = it },
+                                    onToggleOnlyPopulated = { localShowOnlyPopulated = !localShowOnlyPopulated },
                                     onRefresh = {},
                                     onCategoryClick = { category ->
                                         navController.navigate("category_detail/${category.id}")
@@ -1341,6 +1352,7 @@ private fun ShayariAppRoot(
 
                                     AdminDashboardScreen(
                                         isFirebaseSignedIn = true,
+                                        isCloudConfigured = true,
                                         uiState = adminUiState,
                                         catalogCategoryCounts = uiState.categoryCounts,
                                         onSearchQueryChanged = adminViewModel::onSearchQueryChanged,

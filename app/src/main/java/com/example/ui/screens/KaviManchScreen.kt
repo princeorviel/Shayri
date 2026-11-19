@@ -193,27 +193,49 @@ fun KaviManchAuthGate(
 
                 Spacer(modifier = Modifier.height(26.dp))
 
-                Button(
-                    onClick = { googleSignIn.launch() },
-                    enabled = !googleSignIn.isLoading,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("google_sign_in_button")
-                ) {
-                    if (googleSignIn.isLoading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(
-                            text = stringResource(R.string.sign_in_with_google),
-                            style = MaterialTheme.typography.labelLarge.copy(
-                                fontWeight = FontWeight.SemiBold
+                if (googleSignIn.isAvailable || onSignInClickOverride != null) {
+                    Button(
+                        onClick = { googleSignIn.launch() },
+                        enabled = !googleSignIn.isLoading,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("google_sign_in_button")
+                    ) {
+                        if (googleSignIn.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
                             )
+                        } else {
+                            Text(
+                                text = stringResource(R.string.sign_in_with_google),
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("kavi_manch_cloud_unavailable_notice")
+                    ) {
+                        Text(
+                            text = "इस APK बिल्ड में क्लाउड Firebase कनेक्ट नहीं है — आप ऑफलाइन शायरी, रील्स, कैटेगरी और कार्ड मेकर पूरी तरह इस्तेमाल कर सकते हैं।",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)
                         )
                     }
                 }

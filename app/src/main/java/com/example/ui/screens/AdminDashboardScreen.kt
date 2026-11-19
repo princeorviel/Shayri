@@ -88,7 +88,8 @@ fun AdminDashboardScreen(
     onAuthError: (String) -> Unit = {},
     onSignInClickOverride: (() -> Unit)? = null,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isCloudConfigured: Boolean = true
 ) {
     BackHandler(onBack = onBack)
 
@@ -100,6 +101,9 @@ fun AdminDashboardScreen(
 
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.4f
     val totalCatalogCount = remember(catalogCategoryCounts) { catalogCategoryCounts.values.sum() }
+    val activeCatalogCategories = remember(catalogCategoryCounts) {
+        catalogCategoryCounts.count { it.value > 0 }
+    }
 
     Box(
         modifier = modifier
@@ -160,7 +164,11 @@ fun AdminDashboardScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = stringResource(R.string.admin_dashboard_subtitle),
+                        text = if (isCloudConfigured) {
+                            stringResource(R.string.admin_dashboard_subtitle)
+                        } else {
+                            stringResource(R.string.admin_dashboard_catalog_subtitle)
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -168,7 +176,7 @@ fun AdminDashboardScreen(
                     )
                 }
 
-                if (isFirebaseSignedIn) {
+                if (isCloudConfigured && isFirebaseSignedIn) {
                     IconButton(
                         onClick = onRefresh,
                         enabled = !uiState.isRefreshing,
@@ -193,13 +201,36 @@ fun AdminDashboardScreen(
                 }
             }
 
-            if (!isFirebaseSignedIn) {
-                AdminAuthRequiredCard(
-                    isLoading = googleSignIn.isLoading,
-                    onSignInClick = { googleSignIn.launch() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 20.dp)
+            if (!isCloudConfigured) {
+                AdminCatalogDashboardContent(
+                    uiState = uiState,
+                    catalogCategoryCounts = catalogCategoryCounts,
+                    totalCatalogCount = totalCatalogCount,
+                    activeCatalogCategories = activeCatalogCategories,
+                    isDarkTheme = isDarkTheme,
+                    onSearchQueryChanged = onSearchQueryChanged,
+                    onSortOrderChanged = onSortOrderChanged,
+                    onToggleOnlyPopulated = onToggleOnlyPopulated,
+                    onCategoryClick = onCategoryClick
+                )
+            } else if (!isFirebaseSignedIn) {
+                AdminCatalogDashboardContent(
+                    uiState = uiState,
+                    catalogCategoryCounts = catalogCategoryCounts,
+                    totalCatalogCount = totalCatalogCount,
+                    activeCatalogCategories = activeCatalogCategories,
+                    isDarkTheme = isDarkTheme,
+                    onSearchQueryChanged = onSearchQueryChanged,
+                    onSortOrderChanged = onSortOrderChanged,
+                    onToggleOnlyPopulated = onToggleOnlyPopulated,
+                    onCategoryClick = onCategoryClick,
+                    authGateContent = {
+                        AdminAuthRequiredCard(
+                            isLoading = googleSignIn.isLoading,
+                            onSignInClick = { googleSignIn.launch() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 )
             } else {
                 when (val state = uiState.loadState) {
@@ -630,12 +661,311 @@ private fun AdminMetricTile(
 }
 
 @Composable
+private fun AdminCatalogDashboardContent(
+    uiState: AdminDashboardUiState,
+    catalogCategoryCounts: Map<String, Int>,
+    totalCatalogCount: Int,
+    activeCatalogCategories: Int,
+    isDarkTheme: Boolean,
+    onSearchQueryChanged: (String) -> Unit,
+    onSortOrderChanged: (AdminCategorySortOrder) -> Unit,
+    onToggleOnlyPopulated: () -> Unit,
+    onCategoryClick: (ShayariCategory) -> Unit,
+    authGateContent: (@Composable () -> Unit)? = null
+) {
+    val rows = remember(
+        catalogCategoryCounts,
+        uiState.searchQuery,
+        uiState.sortOrder,
+        uiState.showOnlyPopulated
+    ) {
+        buildAdminCategoryStatRows(
+            firestoreCounts = emptyMap(),
+            catalogCounts = catalogCategoryCounts,
+            searchQuery = uiState.searchQuery,
+            sortOrder = uiState.sortOrder,
+            showOnlyPopulated = uiState.showOnlyPopulated,
+            useCatalogAsPrimary = true
+        )
+    }
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .testTag("admin_category_stats_list"),
+        contentPadding = PaddingValues(
+            start = 16.dp,
+            end = 16.dp,
+            top = 6.dp,
+            bottom = 28.dp
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (authGateContent != null) {
+            item(key = "auth_gate_card") {
+                authGateContent()
+            }
+        }
+
+        if (authGateContent == null || catalogCategoryCounts.isNotEmpty()) {
+            item(key = "catalog_summary_hero") {
+                AdminCatalogSummaryHeroCard(
+                    totalCatalogCount = totalCatalogCount,
+                    activeCategories = activeCatalogCategories,
+                    totalCategories = ShayariCategory.entries.size
+                )
+            }
+
+            if (authGateContent == null) {
+                item(key = "offline_cloud_notice") {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+                        border = BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f)
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_offline_cloud_notice")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.CloudOff,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.admin_dashboard_offline_notice),
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            item(key = "catalog_search_and_filters") {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChanged,
+                        placeholder = { Text(stringResource(R.string.admin_dashboard_search_hint)) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Search,
+                                contentDescription = null
+                            )
+                        },
+                        trailingIcon = if (uiState.searchQuery.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { onSearchQueryChanged("") }) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = stringResource(R.string.action_cancel)
+                                    )
+                                }
+                            }
+                        } else null,
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("admin_dashboard_search_input")
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AdminCategorySortOrder.entries.forEach { order ->
+                            FilterChip(
+                                selected = uiState.sortOrder == order,
+                                onClick = { onSortOrderChanged(order) },
+                                label = { Text(order.label) },
+                                modifier = Modifier.testTag("admin_sort_${order.name.lowercase()}")
+                            )
+                        }
+
+                        FilterChip(
+                            selected = uiState.showOnlyPopulated,
+                            onClick = onToggleOnlyPopulated,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.FilterList,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            label = { Text("केवल > 0") },
+                            modifier = Modifier.testTag("admin_filter_populated")
+                        )
+                    }
+                }
+            }
+
+            item(key = "catalog_list_section_header") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "कैटेगरी के अनुसार कुल शायरी",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "${rows.size} कैटेगरी",
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            if (rows.isEmpty()) {
+                item(key = "catalog_no_matching_categories") {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "इस फ़िल्टर से कोई कैटेगरी नहीं मिली।",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp)
+                        )
+                    }
+                }
+            } else {
+                items(
+                    items = rows,
+                    key = { it.category.id }
+                ) { statItem ->
+                    AdminCategoryStatRow(
+                        item = statItem,
+                        isDarkTheme = isDarkTheme,
+                        useCatalogAsPrimary = true,
+                        onClick = { onCategoryClick(statItem.category) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminCatalogSummaryHeroCard(
+    totalCatalogCount: Int,
+    activeCategories: Int,
+    totalCategories: Int
+) {
+    val gradient = Brush.linearGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
+            MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.62f)
+        )
+    )
+
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("admin_summary_hero_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(gradient)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Insights,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = "ऐप कैटलॉग आँकड़े",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f)
+                ) {
+                    Text(
+                        text = "$activeCategories / $totalCategories सक्रिय",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                AdminMetricTile(
+                    value = "$totalCatalogCount",
+                    label = "कुल शायरी",
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("admin_total_catalog_count")
+                )
+                AdminMetricTile(
+                    value = "$totalCategories",
+                    label = "कुल कैटेगरी",
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("admin_total_categories_count")
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun AdminCategoryStatRow(
     item: AdminCategoryStatItem,
     isDarkTheme: Boolean,
+    useCatalogAsPrimary: Boolean = false,
     onClick: () -> Unit
 ) {
     val accent = if (isDarkTheme) item.category.darkAccent else item.category.lightAccent
+    val primaryCount = if (useCatalogAsPrimary) item.catalogCount else item.firestoreCount
     val percentLabel = "${(item.shareFraction * 100f).roundToInt()}%"
 
     Surface(
@@ -682,7 +1012,7 @@ private fun AdminCategoryStatRow(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = if (item.catalogCount > 0) {
+                        text = if (!useCatalogAsPrimary && item.catalogCount > 0) {
                             "${item.category.labelEn} • कैटलॉग: ${item.catalogCount}"
                         } else {
                             item.category.labelEn
@@ -696,21 +1026,21 @@ private fun AdminCategoryStatRow(
 
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = if (item.firestoreCount > 0) {
+                    color = if (primaryCount > 0) {
                         accent.copy(alpha = 0.16f)
                     } else {
                         MaterialTheme.colorScheme.surfaceContainerHigh
                     },
                     border = BorderStroke(
                         1.dp,
-                        if (item.firestoreCount > 0) accent.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+                        if (primaryCount > 0) accent.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
                     ),
                     modifier = Modifier.testTag("admin_category_count_${item.category.id}")
                 ) {
                     Text(
-                        text = "${item.firestoreCount} शायरी",
+                        text = "$primaryCount शायरी",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = if (item.firestoreCount > 0) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (primaryCount > 0) accent else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                     )
                 }

@@ -216,30 +216,32 @@ class CommunityShayariRepository(
         categoryId: String,
         promptTitle: String
     ): Result<String> {
-        val uid = requireUserId()
-        val docRef = db.collection(COLLECTION_COMMUNITY).document()
-        val cleanPenName = penName.trim().take(40)
-        val cleanCouplet = couplet.trim().take(500)
-        val cleanPrompt = promptTitle.trim().take(120)
-
-        val payload = mapOf(
-            "userId" to uid,
-            "penName" to cleanPenName,
-            "couplet" to cleanCouplet,
-            "categoryId" to categoryId,
-            "promptTitle" to cleanPrompt,
-            "status" to "published",
-            "wahCount" to 0L,
-            "createdAt" to FieldValue.serverTimestamp(),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
+        var docPath = COLLECTION_COMMUNITY
         return try {
+            val uid = requireUserId()
+            val docRef = db.collection(COLLECTION_COMMUNITY).document()
+            docPath = docRef.path
+            val cleanPenName = penName.trim().ifBlank { "शायर दोस्त" }.take(40)
+            val cleanCouplet = couplet.trim().take(500)
+            val cleanPrompt = promptTitle.trim().take(120)
+
+            val payload = mapOf(
+                "userId" to uid,
+                "penName" to cleanPenName,
+                "couplet" to cleanCouplet,
+                "categoryId" to categoryId,
+                "promptTitle" to cleanPrompt,
+                "status" to "published",
+                "wahCount" to 0L,
+                "createdAt" to FieldValue.serverTimestamp(),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
             docRef.set(payload).await()
             Result.success(docRef.id)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.CREATE, docRef.path)
+            handleFirestoreError(e, OperationType.CREATE, docPath)
             Result.failure(e)
         }
     }
@@ -251,36 +253,40 @@ class CommunityShayariRepository(
         categoryId: String,
         promptTitle: String
     ): Result<Unit> {
-        requireUserId()
-        val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
-        val updates = mapOf(
-            "penName" to penName.trim().take(40),
-            "couplet" to couplet.trim().take(500),
-            "categoryId" to categoryId,
-            "promptTitle" to promptTitle.trim().take(120),
-            "updatedAt" to FieldValue.serverTimestamp()
-        )
+        var docPath = "$COLLECTION_COMMUNITY/$shayariId"
         return try {
+            requireUserId()
+            val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
+            docPath = docRef.path
+            val updates = mapOf(
+                "penName" to penName.trim().ifBlank { "शायर दोस्त" }.take(40),
+                "couplet" to couplet.trim().take(500),
+                "categoryId" to categoryId,
+                "promptTitle" to promptTitle.trim().take(120),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
             docRef.update(updates).await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.UPDATE, docRef.path)
+            handleFirestoreError(e, OperationType.UPDATE, docPath)
             Result.failure(e)
         }
     }
 
     suspend fun deleteShayari(shayariId: String): Result<Unit> {
-        requireUserId()
-        val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
+        var docPath = "$COLLECTION_COMMUNITY/$shayariId"
         return try {
+            requireUserId()
+            val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
+            docPath = docRef.path
             docRef.delete().await()
             Result.success(Unit)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docRef.path)
+            handleFirestoreError(e, OperationType.DELETE, docPath)
             Result.failure(e)
         }
     }

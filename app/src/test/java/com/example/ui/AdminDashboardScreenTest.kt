@@ -138,4 +138,47 @@ class AdminDashboardScreenTest {
         composeRule.onNodeWithTag("admin_dashboard_retry_button").performClick()
         assertEquals(true, retried)
     }
+
+    @Test
+    fun `AdminDashboardScreen shows catalog stats immediately and hides sign-in when cloud is unavailable`() {
+        var clickedCategory: ShayariCategory? = null
+        var lastSearch = ""
+
+        composeRule.setContent {
+            ShayariTheme {
+                AdminDashboardScreen(
+                    isFirebaseSignedIn = false,
+                    isCloudConfigured = false,
+                    uiState = AdminDashboardUiState(),
+                    catalogCategoryCounts = mapOf(
+                        ShayariCategory.MOHABBAT.id to 42,
+                        ShayariCategory.DARD.id to 18
+                    ),
+                    onSearchQueryChanged = { lastSearch = it },
+                    onSortOrderChanged = {},
+                    onToggleOnlyPopulated = {},
+                    onRefresh = {},
+                    onCategoryClick = { clickedCategory = it },
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("admin_dashboard_google_signin").assertDoesNotExist()
+        composeRule.onNodeWithTag("admin_summary_hero_card").assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_offline_cloud_notice").assertIsDisplayed()
+        composeRule.onNodeWithText("60").assertIsDisplayed()
+
+        composeRule.onNodeWithTag("admin_category_stats_list")
+            .performScrollToNode(hasText("42 शायरी"))
+        composeRule.onNodeWithTag("admin_category_count_mohabbat", useUnmergedTree = true).assertIsDisplayed()
+        composeRule.onNodeWithTag("admin_category_row_mohabbat").performClick()
+        assertEquals(ShayariCategory.MOHABBAT, clickedCategory)
+
+        composeRule.onNodeWithTag("admin_category_stats_list")
+            .performScrollToNode(androidx.compose.ui.test.hasTestTag("admin_dashboard_search_input"))
+        composeRule.onNodeWithTag("admin_dashboard_search_input").performTextInput("Dard")
+        assertEquals("Dard", lastSearch)
+    }
 }

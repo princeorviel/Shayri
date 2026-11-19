@@ -145,27 +145,36 @@ fun buildAdminCategoryStatRows(
     catalogCounts: Map<String, Int>,
     searchQuery: String,
     sortOrder: AdminCategorySortOrder,
-    showOnlyPopulated: Boolean
+    showOnlyPopulated: Boolean,
+    useCatalogAsPrimary: Boolean = false
 ): List<AdminCategoryStatItem> {
-    val totalFirestore = firestoreCounts.values.sum().coerceAtLeast(1)
+    val primaryTotalRaw = if (useCatalogAsPrimary) {
+        catalogCounts.values.sum()
+    } else {
+        firestoreCounts.values.sum()
+    }
+    val primaryTotalSafe = primaryTotalRaw.coerceAtLeast(1)
     val query = searchQuery.trim().lowercase()
 
     val items = ShayariCategory.entries
         .map { category ->
             val fsCount = firestoreCounts[category.id] ?: 0
+            val catCount = catalogCounts[category.id] ?: 0
+            val primaryCount = if (useCatalogAsPrimary) catCount else fsCount
             AdminCategoryStatItem(
                 category = category,
                 firestoreCount = fsCount,
-                catalogCount = catalogCounts[category.id] ?: 0,
-                shareFraction = if (firestoreCounts.values.sum() == 0) {
+                catalogCount = catCount,
+                shareFraction = if (primaryTotalRaw == 0) {
                     0f
                 } else {
-                    (fsCount.toFloat() / totalFirestore.toFloat()).coerceIn(0f, 1f)
+                    (primaryCount.toFloat() / primaryTotalSafe.toFloat()).coerceIn(0f, 1f)
                 }
             )
         }
         .filter { item ->
-            (!showOnlyPopulated || item.firestoreCount > 0) &&
+            val primaryCount = if (useCatalogAsPrimary) item.catalogCount else item.firestoreCount
+            (!showOnlyPopulated || primaryCount > 0) &&
                 (query.isBlank() ||
                     item.category.titleHi.lowercase().contains(query) ||
                     item.category.labelEn.lowercase().contains(query) ||
@@ -174,12 +183,14 @@ fun buildAdminCategoryStatRows(
 
     return when (sortOrder) {
         AdminCategorySortOrder.HIGHEST_COUNT -> items.sortedWith(
-            compareByDescending<AdminCategoryStatItem> { it.firestoreCount }
-                .thenBy { it.category.ordinal }
+            compareByDescending<AdminCategoryStatItem> {
+                if (useCatalogAsPrimary) it.catalogCount else it.firestoreCount
+            }.thenBy { it.category.ordinal }
         )
         AdminCategorySortOrder.LOWEST_COUNT -> items.sortedWith(
-            compareBy<AdminCategoryStatItem> { it.firestoreCount }
-                .thenBy { it.category.ordinal }
+            compareBy<AdminCategoryStatItem> {
+                if (useCatalogAsPrimary) it.catalogCount else it.firestoreCount
+            }.thenBy { it.category.ordinal }
         )
         AdminCategorySortOrder.ALPHABETICAL -> items.sortedBy { it.category.labelEn.lowercase() }
     }
