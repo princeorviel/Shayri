@@ -1,0 +1,531 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidCategory(catId) {
+      return catId in [
+        'mohabbat',
+        'romantic',
+        'bewafai',
+        'sharabi',
+        'khuda_rab',
+        'maut_janaza',
+        'secret_love',
+        'adultery',
+        'gen_z',
+        'nibba_nibbi',
+        'attitude',
+        'tareef',
+        'aaina',
+        'aansu',
+        'musafir',
+        'new_year',
+        'christmas',
+        'jija_sali',
+        'mulla_nasruddin',
+        'santa_banta',
+        'motu_patlu',
+        'dosti',
+        'prakriti',
+        'hausla',
+        'zindagi',
+        'dard',
+        'khushi',
+        'yaadein',
+        'tanhai',
+        'waqt',
+        'parivar',
+        'deshprem'
+      ];
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.penName is string &&
+             data.penName.size() >= 2 &&
+             data.penName.size() <= 40 &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 160)) &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidCommunityShayari(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.penName is string &&
+             data.penName.size() >= 2 &&
+             data.penName.size() <= 40 &&
+             data.couplet is string &&
+             data.couplet.size() >= 10 &&
+             data.couplet.size() <= 500 &&
+             isValidCategory(data.categoryId) &&
+             data.promptTitle is string &&
+             data.promptTitle.size() <= 120 &&
+             data.status == 'published' &&
+             data.wahCount is int &&
+             data.wahCount >= 0 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidUserWah(data, shayariId) {
+      return data.shayariId is string &&
+             data.shayariId == shayariId &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
+    function isValidPersonalShayari(data) {
+      return data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.title is string &&
+             data.title.size() <= 80 &&
+             data.themeTag is string &&
+             data.themeTag.size() <= 40 &&
+             (data.title.size() >= 1 || data.themeTag.size() >= 1) &&
+             data.couplet is string &&
+             data.couplet.size() >= 10 &&
+             data.couplet.size() <= 600 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidShayariComment(data) {
+      return isValidId(data.shayariKey) &&
+             data.userId is string &&
+             data.userId.size() >= 1 &&
+             data.userId.size() <= 128 &&
+             data.authorName is string &&
+             data.authorName.size() >= 2 &&
+             data.authorName.size() <= 40 &&
+             data.text is string &&
+             data.text.size() >= 1 &&
+             data.text.size() <= 300 &&
+             data.status == 'published' &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidPostNotification(data) {
+      return isValidId(data.recipientUserId) &&
+             isValidId(data.actorUserId) &&
+             data.actorName is string &&
+             data.actorName.size() >= 1 &&
+             data.actorName.size() <= 40 &&
+             data.type in ['like', 'comment', 'share', 'follow'] &&
+             isValidId(data.postId) &&
+             data.postExcerpt is string &&
+             data.postExcerpt.size() >= 1 &&
+             data.postExcerpt.size() <= 140 &&
+             data.commentText is string &&
+             data.commentText.size() <= 160 &&
+             ((data.type == 'comment' && data.commentText.size() >= 1) ||
+              (data.type != 'comment' && data.commentText.size() == 0)) &&
+             data.isRead is bool &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidPoetProfile(data) {
+      return isValidId(data.userId) &&
+             data.penName is string &&
+             data.penName.size() >= 2 &&
+             data.penName.size() <= 40 &&
+             data.bio is string &&
+             data.bio.size() <= 160 &&
+             data.isPublic == true &&
+             data.followerCount is int &&
+             data.followerCount >= 0 &&
+             data.followingCount is int &&
+             data.followingCount >= 0 &&
+             data.postCount is int &&
+             data.postCount >= 0 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidUserFollowing(data, targetUserId) {
+      return isValidId(data.targetUserId) &&
+             data.targetUserId == targetUserId &&
+             data.targetPenName is string &&
+             data.targetPenName.size() >= 1 &&
+             data.targetPenName.size() <= 40 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
+    function isValidPoetFollower(data, followerUserId) {
+      return isValidId(data.followerUserId) &&
+             data.followerUserId == followerUserId &&
+             data.followerName is string &&
+             data.followerName.size() >= 1 &&
+             data.followerName.size() <= 40 &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'penName', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'penName', 'bio', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['penName', 'bio', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+
+      match /wahs/{shayariId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(shayariId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(shayariId) &&
+                         incoming().keys().hasAll(['shayariId', 'createdAt']) &&
+                         incoming().keys().hasOnly(['shayariId', 'createdAt']) &&
+                         isValidUserWah(incoming(), shayariId) &&
+                         exists(/databases/$(database)/documents/community_shayari/$(shayariId)) &&
+                         getAfter(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount ==
+                           get(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount + 1;
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(shayariId) &&
+                         (
+                           !exists(/databases/$(database)/documents/community_shayari/$(shayariId)) ||
+                           getAfter(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount ==
+                             get(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount - 1
+                         );
+      }
+
+      match /following/{targetUserId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(targetUserId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         userId != targetUserId &&
+                         isValidId(targetUserId) &&
+                         incoming().keys().hasAll(['targetUserId', 'targetPenName', 'createdAt']) &&
+                         incoming().keys().hasOnly(['targetUserId', 'targetPenName', 'createdAt']) &&
+                         isValidUserFollowing(incoming(), targetUserId) &&
+                         (
+                           !exists(/databases/$(database)/documents/poet_profiles/$(targetUserId)) ||
+                           getAfter(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount ==
+                             get(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount + 1
+                         );
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         userId != targetUserId &&
+                         isValidId(targetUserId) &&
+                         (
+                           !exists(/databases/$(database)/documents/poet_profiles/$(targetUserId)) ||
+                           (
+                             get(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount == 0 &&
+                             getAfter(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount == 0
+                           ) ||
+                           getAfter(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount ==
+                             get(/databases/$(database)/documents/poet_profiles/$(targetUserId)).data.followerCount - 1
+                         );
+      }
+
+      match /personal_shayari/{shayariId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(shayariId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(shayariId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll([
+                           'userId', 'title', 'themeTag', 'couplet', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'userId', 'title', 'themeTag', 'couplet', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidPersonalShayari(incoming());
+
+        allow update: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(shayariId) &&
+                         isValidPersonalShayari(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'title', 'themeTag', 'couplet', 'updatedAt'
+                         ]);
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(shayariId);
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(notificationId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(notificationId) &&
+                         incoming().keys().hasAll([
+                           'recipientUserId', 'actorUserId', 'actorName', 'type',
+                           'postId', 'postExcerpt', 'commentText', 'isRead',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'recipientUserId', 'actorUserId', 'actorName', 'type',
+                           'postId', 'postExcerpt', 'commentText', 'isRead',
+                           'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().recipientUserId == userId &&
+                         incoming().actorUserId == request.auth.uid &&
+                         incoming().actorUserId != userId &&
+                         incoming().isRead == false &&
+                         isValidPostNotification(incoming()) &&
+                         (
+                           (incoming().type in ['like', 'comment', 'share'] &&
+                            exists(/databases/$(database)/documents/community_shayari/$(incoming().postId)) &&
+                            get(/databases/$(database)/documents/community_shayari/$(incoming().postId)).data.userId == userId) ||
+                           (incoming().type == 'follow' && incoming().postId == 'profile')
+                         );
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(notificationId) &&
+                         request.auth.uid == userId &&
+                         isValidPostNotification(incoming()) &&
+                         incoming().recipientUserId == existing().recipientUserId &&
+                         incoming().actorUserId == existing().actorUserId &&
+                         incoming().actorName == existing().actorName &&
+                         incoming().type == existing().type &&
+                         incoming().postId == existing().postId &&
+                         incoming().postExcerpt == existing().postExcerpt &&
+                         incoming().commentText == existing().commentText &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().isRead == true &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt']);
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(notificationId);
+      }
+    }
+
+    match /community_shayari/{shayariId} {
+      allow get: if isSignedIn() && isValidId(shayariId) && existing().status == 'published';
+      allow list: if isSignedIn() && existing().status == 'published';
+
+      allow create: if isSignedIn() &&
+                       isValidId(shayariId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().wahCount == 0 &&
+                       incoming().keys().hasAll([
+                         'userId', 'penName', 'couplet', 'categoryId',
+                         'promptTitle', 'status', 'wahCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'penName', 'couplet', 'categoryId',
+                         'promptTitle', 'status', 'wahCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidCommunityShayari(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(shayariId) &&
+                       isValidCommunityShayari(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status == existing().status && (
+                         // Action 1: Author edits their own couplet
+                         (
+                           existing().userId == request.auth.uid &&
+                           incoming().wahCount == existing().wahCount &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'penName', 'couplet', 'categoryId', 'promptTitle', 'updatedAt'
+                           ])
+                         ) ||
+                         // Action 2: Signed-in user adds atomic Wah (+1) with /users/{uid}/wahs/{shayariId}
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['wahCount']) &&
+                           incoming().wahCount == existing().wahCount + 1 &&
+                           !exists(/databases/$(database)/documents/users/$(request.auth.uid)/wahs/$(shayariId)) &&
+                           existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/wahs/$(shayariId))
+                         ) ||
+                         // Action 3: Signed-in user removes atomic Wah (-1) by deleting /users/{uid}/wahs/{shayariId}
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['wahCount']) &&
+                           incoming().wahCount == existing().wahCount - 1 &&
+                           exists(/databases/$(database)/documents/users/$(request.auth.uid)/wahs/$(shayariId)) &&
+                           !existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/wahs/$(shayariId))
+                         )
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(shayariId) &&
+                       existing().userId == request.auth.uid;
+    }
+
+    match /shayari_comments/{commentId} {
+      allow get: if isSignedIn() && isValidId(commentId) && existing().status == 'published';
+      allow list: if isSignedIn() && existing().status == 'published';
+
+      allow create: if isSignedIn() &&
+                       isValidId(commentId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'shayariKey', 'userId', 'authorName', 'text', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'shayariKey', 'userId', 'authorName', 'text', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidShayariComment(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(commentId) &&
+                       isValidShayariComment(incoming()) &&
+                       existing().userId == request.auth.uid &&
+                       incoming().userId == existing().userId &&
+                       incoming().shayariKey == existing().shayariKey &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status == existing().status &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['authorName', 'text', 'updatedAt']);
+
+      allow delete: if isSignedIn() &&
+                       isValidId(commentId) &&
+                       existing().userId == request.auth.uid;
+    }
+
+    match /poet_profiles/{poetUserId} {
+      allow get: if isSignedIn() && isValidId(poetUserId) && existing().isPublic == true;
+      allow list: if isSignedIn() && existing().isPublic == true;
+
+      allow create: if isSignedIn() &&
+                       isValidId(poetUserId) &&
+                       request.auth.uid == poetUserId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().isPublic == true &&
+                       incoming().followerCount == 0 &&
+                       incoming().followingCount == 0 &&
+                       incoming().keys().hasAll([
+                         'userId', 'penName', 'bio', 'isPublic',
+                         'followerCount', 'followingCount', 'postCount',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'penName', 'bio', 'isPublic',
+                         'followerCount', 'followingCount', 'postCount',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidPoetProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(poetUserId) &&
+                       isValidPoetProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().isPublic == true && (
+                         // Action 1: Owner edits penName, bio, postCount, or syncs own followingCount
+                         (
+                           existing().userId == request.auth.uid &&
+                           incoming().followerCount == existing().followerCount &&
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'penName', 'bio', 'postCount', 'followingCount', 'updatedAt'
+                           ])
+                         ) ||
+                         // Action 2: Another signed-in user follows (+1) atomically with /users/{uid}/following/{poetUserId}
+                         (
+                           request.auth.uid != poetUserId &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['followerCount']) &&
+                           incoming().followerCount == existing().followerCount + 1 &&
+                           !exists(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(poetUserId)) &&
+                           existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(poetUserId))
+                         ) ||
+                         // Action 3: Another signed-in user unfollows (-1) atomically by deleting /users/{uid}/following/{poetUserId}
+                         (
+                           request.auth.uid != poetUserId &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['followerCount']) &&
+                           incoming().followerCount == existing().followerCount - 1 &&
+                           exists(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(poetUserId)) &&
+                           !existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(poetUserId))
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(poetUserId) && existing().userId == request.auth.uid;
+
+      match /followers/{followerUserId} {
+        allow get: if isSignedIn() && isValidId(poetUserId) && isValidId(followerUserId);
+        allow list: if isSignedIn() && isValidId(poetUserId);
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == followerUserId &&
+                         followerUserId != poetUserId &&
+                         isValidId(poetUserId) &&
+                         isValidId(followerUserId) &&
+                         incoming().followerUserId == request.auth.uid &&
+                         incoming().keys().hasAll(['followerUserId', 'followerName', 'createdAt']) &&
+                         incoming().keys().hasOnly(['followerUserId', 'followerName', 'createdAt']) &&
+                         isValidPoetFollower(incoming(), followerUserId) &&
+                         existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/following/$(poetUserId));
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         isValidId(poetUserId) &&
+                         isValidId(followerUserId) &&
+                         (request.auth.uid == followerUserId || request.auth.uid == poetUserId);
+      }
+    }
+  }
+}

@@ -1,0 +1,421 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Writer profile and pen name (takhallus) for a signed-in poet.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user."
+        },
+        "penName": {
+          "type": "string",
+          "description": "Display pen name chosen by the poet."
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short optional poetic bio."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was created (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile was updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "penName", "createdAt", "updatedAt"]
+    },
+    "CommunityShayari": {
+      "title": "CommunityShayari",
+      "description": "Original Shayari couplet composed and published by a community user.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the author."
+        },
+        "penName": {
+          "type": "string",
+          "description": "Poet pen name displayed on the couplet card."
+        },
+        "couplet": {
+          "type": "string",
+          "description": "The composed Shayari text (10 to 500 characters)."
+        },
+        "categoryId": {
+          "type": "string",
+          "enum": [
+            "mohabbat",
+            "romantic",
+            "bewafai",
+            "sharabi",
+            "khuda_rab",
+            "maut_janaza",
+            "secret_love",
+            "adultery",
+            "gen_z",
+            "nibba_nibbi",
+            "attitude",
+            "tareef",
+            "aaina",
+            "aansu",
+            "musafir",
+            "new_year",
+            "christmas",
+            "jija_sali",
+            "mulla_nasruddin",
+            "santa_banta",
+            "motu_patlu",
+            "dosti",
+            "prakriti",
+            "hausla",
+            "zindagi",
+            "dard",
+            "khushi",
+            "yaadein",
+            "tanhai",
+            "waqt",
+            "parivar",
+            "deshprem"
+          ],
+          "description": "Category identifier matching ShayariCategory."
+        },
+        "promptTitle": {
+          "type": "string",
+          "description": "Optional daily writing challenge prompt title, or empty string."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published"],
+          "description": "Publication status of the Shayari."
+        },
+        "wahCount": {
+          "type": "integer",
+          "description": "Total number of Wah (applause) reactions from community users."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when published (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "penName",
+        "couplet",
+        "categoryId",
+        "promptTitle",
+        "status",
+        "wahCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PoetProfile": {
+      "title": "PoetProfile",
+      "description": "Public non-PII profile for a community poet including pen name, bio, follower/following counts, and published post count.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the poet."
+        },
+        "penName": {
+          "type": "string",
+          "description": "Public poet pen name (2 to 40 characters)."
+        },
+        "bio": {
+          "type": "string",
+          "description": "Short poetic bio (up to 160 characters)."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Marks the profile discoverable to signed-in community users."
+        },
+        "followerCount": {
+          "type": "integer",
+          "description": "Number of users following this poet."
+        },
+        "followingCount": {
+          "type": "integer",
+          "description": "Number of poets this user is following."
+        },
+        "postCount": {
+          "type": "integer",
+          "description": "Number of published community Shayari posts."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "userId",
+        "penName",
+        "bio",
+        "isPublic",
+        "followerCount",
+        "followingCount",
+        "postCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserFollowing": {
+      "title": "UserFollowing",
+      "description": "Per-user marker recording that the owner follows a target poet.",
+      "type": "object",
+      "properties": {
+        "targetUserId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the followed poet."
+        },
+        "targetPenName": {
+          "type": "string",
+          "description": "Pen name snapshot of the followed poet."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when followed (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["targetUserId", "targetPenName", "createdAt"]
+    },
+    "PoetFollower": {
+      "title": "PoetFollower",
+      "description": "Public follower entry stored under a poet profile.",
+      "type": "object",
+      "properties": {
+        "followerUserId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the follower."
+        },
+        "followerName": {
+          "type": "string",
+          "description": "Pen name of the follower."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when followed (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["followerUserId", "followerName", "createdAt"]
+    },
+    "UserWah": {
+      "title": "UserWah",
+      "description": "Record of a user's Wah (applause) reaction on a community Shayari.",
+      "type": "object",
+      "properties": {
+        "shayariId": {
+          "type": "string",
+          "description": "Document ID of the applauded community Shayari."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the Wah reaction was added (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["shayariId", "createdAt"]
+    },
+    "PersonalShayari": {
+      "title": "PersonalShayari",
+      "description": "Private user-authored Shayari with a title or theme tag stored in the owner's personal collection.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the author."
+        },
+        "title": {
+          "type": "string",
+          "description": "Optional title for the user's Shayari (up to 80 characters)."
+        },
+        "themeTag": {
+          "type": "string",
+          "description": "Theme or mood tag chosen or entered by the author (up to 40 characters)."
+        },
+        "couplet": {
+          "type": "string",
+          "description": "User-authored Shayari text (10 to 600 characters)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when saved (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "title", "themeTag", "couplet", "createdAt", "updatedAt"]
+    },
+    "ShayariComment": {
+      "title": "ShayariComment",
+      "description": "User comment on a Shayari card shared across authenticated users.",
+      "type": "object",
+      "properties": {
+        "shayariKey": {
+          "type": "string",
+          "description": "Identifier of the Shayari being commented on (e.g. seed_1)."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the comment author."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Display name of the commenter (2 to 40 characters)."
+        },
+        "text": {
+          "type": "string",
+          "description": "Comment body text (1 to 300 characters)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published"],
+          "description": "Publication status of the comment."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "shayariKey",
+        "userId",
+        "authorName",
+        "text",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PostNotification": {
+      "title": "PostNotification",
+      "description": "Activity notification sent to a post author when another user likes, comments on, or shares their community Shayari post.",
+      "type": "object",
+      "properties": {
+        "recipientUserId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the post author receiving the notification."
+        },
+        "actorUserId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the user performing like, comment, or share."
+        },
+        "actorName": {
+          "type": "string",
+          "description": "Display name or pen name of the user performing the action."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["like", "comment", "share", "follow"],
+          "description": "Type of post engagement or follow activity."
+        },
+        "postId": {
+          "type": "string",
+          "description": "Document ID of the target post in community_shayari, or 'profile' for follow notifications."
+        },
+        "postExcerpt": {
+          "type": "string",
+          "description": "Short couplet preview shown inside the notification row."
+        },
+        "commentText": {
+          "type": "string",
+          "description": "Comment text preview when type is comment, otherwise empty string."
+        },
+        "isRead": {
+          "type": "boolean",
+          "description": "Whether the recipient has read this notification."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created (written via FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated (written via FieldValue.serverTimestamp())."
+        }
+      },
+      "required": [
+        "recipientUserId",
+        "actorUserId",
+        "actorName",
+        "type",
+        "postId",
+        "postExcerpt",
+        "commentText",
+        "isRead",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private writer profile scoped to the authenticated user."
+    },
+    "/users/{userId}/wahs/{shayariId}": {
+      "schema": { "$ref": "#/entities/UserWah" },
+      "description": "Per-user applause markers atomically linked to community_shayari.wahCount."
+    },
+    "/users/{userId}/following/{targetUserId}": {
+      "schema": { "$ref": "#/entities/UserFollowing" },
+      "description": "Per-user following list atomically linked to poet_profiles.followerCount."
+    },
+    "/users/{userId}/personal_shayari/{shayariId}": {
+      "schema": { "$ref": "#/entities/PersonalShayari" },
+      "description": "Private personal Shayari collection owned by the authenticated user."
+    },
+    "/users/{userId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/PostNotification" },
+      "description": "Inbox notifications for likes, comments, shares, and follows."
+    },
+    "/poet_profiles/{poetUserId}": {
+      "schema": { "$ref": "#/entities/PoetProfile" },
+      "description": "Public non-PII poet profiles discoverable by signed-in users."
+    },
+    "/poet_profiles/{poetUserId}/followers/{followerUserId}": {
+      "schema": { "$ref": "#/entities/PoetFollower" },
+      "description": "Followers list under a public poet profile."
+    },
+    "/community_shayari/{shayariId}": {
+      "schema": { "$ref": "#/entities/CommunityShayari" },
+      "description": "Shared community Shayari posts authored by signed-in poets."
+    },
+    "/shayari_comments/{commentId}": {
+      "schema": { "$ref": "#/entities/ShayariComment" },
+      "description": "Comments posted by signed-in users on Shayari cards."
+    }
+  }
+}

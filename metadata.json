@@ -1,0 +1,6 @@
+{
+  "name": "शायरी",
+  "description": "हिंदी और उर्दू शायरी का खूबसूरत संग्रह — मोहब्बत, दर्द, ज़िंदगी, दोस्ती और हौसले के अल्फ़ाज़",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

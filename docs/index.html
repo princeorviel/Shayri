@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>शायरी (Shayari) — Hindi Shayari Reels, Mohabbat, Dard, Zindagi, Dosti &amp; Hausla</title>
+  <meta name="description" content="दिल छू लेने वाली हिंदी और उर्दू शायरी पढ़ें, Reels की तरह स्वाइप करें और अपना खुद का Shayari Photo Card बनाएँ। Mohabbat, Dard, Zindagi, Dosti और Hausla शायरी एक ही Android ऐप में।" />
+  <meta name="keywords" content="Hindi Shayari App, Mohabbat Shayari, Dard Shayari, Zindagi Shayari, Dosti Shayari, Hausla Shayari, Shayari Reels, Shayari Photo Maker, Urdu Poetry App, Kavi Manch, शायरी ऐप" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#190C18" />
+
+  <!-- Open Graph / WhatsApp / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="शायरी — Hindi Shayari Reels &amp; Photo Card Maker" />
+  <meta property="og:description" content="Mohabbat, Dard, Zindagi, Dosti और Hausla शायरी पढ़ें, Reels की तरह स्क्रॉल करें और अपनी शायरी का कार्ड बनाएँ।" />
+  <meta property="og:locale" content="hi_IN" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="शायरी — Hindi &amp; Urdu Shayari Android App" />
+  <meta name="twitter:description" content="Reels-style Hindi Shayari reading, Collab &amp; Write Studio, और Kavi Manch community." />
+
+  <!-- JSON-LD Structured Data for Google Search Rich Results -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "MobileApplication",
+    "name": "शायरी",
+    "alternateName": "Shayari - Hindi Shayari & Poetry",
+    "operatingSystem": "Android",
+    "applicationCategory": "EntertainmentApplication",
+    "inLanguage": ["hi", "en"],
+    "description": "हिंदी और उर्दू शायरी का विशाल संग्रह — मोहब्बत, दर्द, ज़िंदगी, दोस्ती और हौसले की शायरी Reels-स्टाइल स्वाइप, शायरी कार्ड मेकर और कवि मंच के साथ।",
+    "downloadUrl": "https://play.google.com/store/apps/details?id=com.aistudio.shayari.mxplqr",
+    "installUrl": "https://play.google.com/store/apps/details?id=com.aistudio.shayari.mxplqr",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "INR"
+    }
+  }
+  </script>
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "शायरी ऐप में कौन-कौन सी कैटेगरी मिलती हैं?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "इस ऐप में Mohabbat (मोहब्बत), Dard (दर्द), Zindagi (ज़िंदगी), Dosti (दोस्ती) और Hausla (हौसला) सहित 32 कैटेगरी की हिंदी और उर्दू शायरी मिलती है।"
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "क्या मैं इस ऐप में अपनी खुद की शायरी लिखकर फोटो कार्ड बना सकता हूँ?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "हाँ, बिल्ट-इन Write Studio और Collab फीचर से आप अपनी शायरी लिखकर वॉलपेपर, फ़ॉन्ट और रंग चुन सकते हैं और उसे सीधे गैलरी में सेव या शेयर कर सकते हैं।"
+        }
+      }
+    ]
+  }
+  </script>
+
+  <style>
+    :root {
+      --bg: #120914;
+      --surface: #1d1121;
+      --surface-soft: #28182e;
+      --gold: #f0c97d;
+      --rose: #ff758f;
+      --text: #fff8f0;
+      --muted: #cab9cc;
+      --border: rgba(240, 201, 125, 0.25);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Devanagari", sans-serif;
+      background: radial-gradient(circle at top, #2a132c 0%, var(--bg) 58%);
+      color: var(--text);
+      line-height: 1.65;
+    }
+    .container { max-width: 960px; margin: 0 auto; padding: 24px 20px 64px; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0 36px; gap: 16px; flex-wrap: wrap;
+    }
+    .brand { font-size: 1.65rem; font-weight: 800; color: var(--gold); letter-spacing: 0.4px; }
+    .nav-links { display: flex; gap: 18px; align-items: center; }
+    .nav-links a { color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+    .nav-links a:hover { color: var(--gold); }
+    .hero {
+      text-align: center; padding: 36px 24px 44px; border-radius: 28px;
+      background: linear-gradient(145deg, rgba(240,201,125,0.10), rgba(255,117,143,0.08));
+      border: 1px solid var(--border);
+    }
+    .badge {
+      display: inline-block; padding: 6px 14px; border-radius: 999px;
+      background: rgba(240,201,125,0.16); color: var(--gold);
+      border: 1px solid var(--border); font-size: 0.85rem; font-weight: 600;
+      margin-bottom: 16px;
+    }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); line-height: 1.25; margin-bottom: 14px; }
+    .hero p { max-width: 640px; margin: 0 auto 28px; color: var(--muted); font-size: 1.05rem; }
+    .cta-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--gold); color: #201208; font-weight: 700;
+      padding: 14px 26px; border-radius: 14px; text-decoration: none;
+      box-shadow: 0 10px 26px rgba(240, 201, 125, 0.22);
+    }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--surface-soft); color: var(--text); font-weight: 600;
+      padding: 14px 22px; border-radius: 14px; text-decoration: none;
+      border: 1px solid var(--border);
+    }
+    h2 { font-size: 1.55rem; margin: 48px 0 18px; color: var(--gold); }
+    .chips { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+    .chip {
+      padding: 10px 16px; border-radius: 14px; background: var(--surface);
+      border: 1px solid var(--border); color: var(--text); text-decoration: none;
+      font-weight: 600; font-size: 0.95rem;
+    }
+    .grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 22px;
+    }
+    .card .cat { font-size: 0.82rem; color: var(--gold); font-weight: 700; margin-bottom: 10px; }
+    .card blockquote { font-size: 1.06rem; margin-bottom: 12px; white-space: pre-line; }
+    .card .poet { color: var(--muted); font-size: 0.9rem; }
+    .feature-title { font-weight: 700; color: var(--text); margin-bottom: 6px; font-size: 1.05rem; }
+    .feature-desc { color: var(--muted); font-size: 0.94rem; }
+    footer {
+      margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border);
+      display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+      color: var(--muted); font-size: 0.9rem;
+    }
+    footer a { color: var(--gold); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">✦ शायरी</div>
+      <nav class="nav-links">
+        <a href="#categories">कैटेगरी</a>
+        <a href="#features">फ़ीचर्स</a>
+        <a href="privacy-policy.html">Privacy Policy</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div class="badge">✦ हिंदी व उर्दू शायरी • Reels स्टाइल रीडर ✦</div>
+      <h1>दिल की बात, शब्दों के साथ</h1>
+      <p>
+        Mohabbat, Dard, Zindagi, Dosti और Hausla की हज़ारों चुनिंदा शायरियाँ पढ़ें,
+        Reels की तरह ऊपर-नीचे स्वाइप करें, अपनी शायरी का फोटो कार्ड बनाएँ और कवि मंच पर जुड़ें।
+      </p>
+      <div class="cta-row">
+        <a class="btn-primary" href="https://play.google.com/store/apps/details?id=com.aistudio.shayari.mxplqr" rel="noopener">
+          ▶ Google Play पर डाउनलोड करें
+        </a>
+        <a class="btn-secondary" href="shayari://home">
+          ऐप में खोलें
+        </a>
+      </div>
+    </section>
+
+    <section id="categories">
+      <h2>लोकप्रिय शायरी कैटेगरी (Categories)</h2>
+      <div class="chips">
+        <a class="chip" href="shayari://category/mohabbat">❤️ Mohabbat • मोहब्बत</a>
+        <a class="chip" href="shayari://category/dard">🥀 Dard • दर्द</a>
+        <a class="chip" href="shayari://category/zindagi">🌅 Zindagi • ज़िंदगी</a>
+        <a class="chip" href="shayari://category/dosti">🤝 Dosti • दोस्ती</a>
+        <a class="chip" href="shayari://category/hausla">🔥 Hausla • हौसला</a>
+      </div>
+
+      <div class="grid">
+        <article class="card">
+          <div class="cat">❤️ Mohabbat • मोहब्बत शायरी</div>
+          <blockquote>इश्क़ की बारिश में भीगते रहे हम,
+तेरी यादों के शहर में बसते रहे हम।</blockquote>
+          <div class="poet">— शायरी संग्रह</div>
+        </article>
+        <article class="card">
+          <div class="cat">🥀 Dard • दर्द शायरी</div>
+          <blockquote>ख़ामोशियों में भी एक शोर सा रहता है,
+दिल के हर कोने में तेरा ही ज़िक्र रहता है।</blockquote>
+          <div class="poet">— शायरी संग्रह</div>
+        </article>
+        <article class="card">
+          <div class="cat">🌅 Zindagi • ज़िंदगी शायरी</div>
+          <blockquote>सफ़र में धूप तो होगी जो चल सको तो चलो,
+सभी हैं भीड़ में तुम भी निकल सको तो चलो।</blockquote>
+          <div class="poet">— शायरी संग्रह</div>
+        </article>
+        <article class="card">
+          <div class="cat">🤝 Dosti • दोस्ती शायरी</div>
+          <blockquote>दोस्ती का रिश्ता सबसे अनमोल होता है,
+सच्चा यार हर ग़म का मोल होता है।</blockquote>
+          <div class="poet">— शायरी संग्रह</div>
+        </article>
+        <article class="card">
+          <div class="cat">🔥 Hausla • हौसला शायरी</div>
+          <blockquote>हौसला रख मंज़िल ज़रूर मिलेगी,
+मेहनत की कली एक दिन ज़रूर खिलेगी।</blockquote>
+          <div class="poet">— शायरी संग्रह</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2>ऐप की खासियतें</h2>
+      <div class="grid">
+        <div class="card">
+          <div class="feature-title">Reels-स्टाइल वर्टिकल स्वाइप</div>
+          <p class="feature-desc">किसी भी शायरी पर टच करें और Reels की तरह आसानी से ऊपर-नीचे स्क्रॉल करें, डबल-टैप पर लाइक करें।</p>
+        </div>
+        <div class="card">
+          <div class="feature-title">Long-Press: Copy, Download, Share &amp; Collab</div>
+          <p class="feature-desc">शायरी पर लॉन्ग-प्रेस करते ही कॉपी, फोटो कार्ड डाउनलोड, शेयर, कोलैब और नई शायरी लिखने के विकल्प मिलते हैं।</p>
+        </div>
+        <div class="card">
+          <div class="feature-title">Write Studio और कवि मंच</div>
+          <p class="feature-desc">अपनी खुद की शायरी लिखें, खूबसूरत वॉलपेपर और फ़ॉन्ट चुनें, और दूसरे शायरों की प्रोफ़ाइल फ़ॉलो करें।</p>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div>© 2026 शायरी ऐप • Android</div>
+      <div><a href="privacy-policy.html">Privacy Policy</a></div>
+    </footer>
+  </div>
+</body>
+</html>
