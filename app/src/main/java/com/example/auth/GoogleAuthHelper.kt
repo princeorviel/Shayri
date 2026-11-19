@@ -19,6 +19,15 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
@@ -200,5 +209,72 @@ fun signOutFromGoogle(
                 onSignOutComplete()
             }
         }
+    }
+}
+
+@Stable
+class GoogleSignInLauncher(
+    val isAvailable: Boolean,
+    private val isLoadingState: () -> Boolean,
+    private val triggerLaunch: () -> Unit
+) {
+    val isLoading: Boolean
+        get() = isLoadingState()
+
+    fun launch() {
+        if (!isLoading) {
+            triggerLaunch()
+        }
+    }
+}
+
+@Composable
+fun rememberGoogleSignInLauncher(
+    onAuthSuccess: () -> Unit,
+    onAuthError: (String) -> Unit,
+    onAuthCancelled: () -> Unit = {},
+    onClickOverride: (() -> Unit)? = null
+): GoogleSignInLauncher {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val credentialManager = remember(context) { CredentialManager.create(context) }
+    val firebaseAvailable = remember(context) { isFirebaseAvailable(context) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    val latestSuccess by rememberUpdatedState(onAuthSuccess)
+    val latestError by rememberUpdatedState(onAuthError)
+    val latestCancelled by rememberUpdatedState(onAuthCancelled)
+    val latestOverride by rememberUpdatedState(onClickOverride)
+
+    return remember(context, credentialManager, scope, firebaseAvailable) {
+        GoogleSignInLauncher(
+            isAvailable = firebaseAvailable,
+            isLoadingState = { isLoading },
+            triggerLaunch = {
+                val override = latestOverride
+                if (override != null) {
+                    override()
+                    return@GoogleSignInLauncher
+                }
+                isLoading = true
+                onGoogleSignInClicked(
+                    context = context,
+                    credentialManager = credentialManager,
+                    scope = scope,
+                    onAuthSuccess = {
+                        isLoading = false
+                        latestSuccess()
+                    },
+                    onAuthError = { message ->
+                        isLoading = false
+                        latestError(message)
+                    },
+                    onAuthCancelled = {
+                        isLoading = false
+                        latestCancelled()
+                    }
+                )
+            }
+        )
     }
 }

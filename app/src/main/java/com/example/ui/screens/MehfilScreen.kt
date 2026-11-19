@@ -125,6 +125,8 @@ fun MehfilScreen(
     onRefreshApp: () -> Unit = {},
     onShareApp: () -> Unit = {},
     isOwner: Boolean = false,
+    showCounts: Boolean = isOwner,
+    onTripleTapOwnerToggle: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -187,11 +189,27 @@ fun MehfilScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val lastTapTimeMs = remember { longArrayOf(0L) }
+                    val tapCount = remember { intArrayOf(0) }
                     Column(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .clickable(onClick = onRefreshApp)
+                            .clickable {
+                                val now = System.currentTimeMillis()
+                                if (now - lastTapTimeMs[0] <= 900L) {
+                                    tapCount[0] += 1
+                                } else {
+                                    tapCount[0] = 1
+                                }
+                                lastTapTimeMs[0] = now
+                                if (tapCount[0] >= 3 && onTripleTapOwnerToggle != null) {
+                                    tapCount[0] = 0
+                                    onTripleTapOwnerToggle()
+                                } else {
+                                    onRefreshApp()
+                                }
+                            }
                             .padding(horizontal = 4.dp, vertical = 4.dp)
                             .testTag("header_title_refresh_button")
                     ) {
@@ -426,7 +444,7 @@ fun MehfilScreen(
                         selectedCategoryId = uiState.selectedCategoryId,
                         onSelectCategory = onCategorySelected,
                         categoryCounts = uiState.categoryCounts,
-                        showCounts = isOwner,
+                        showCounts = showCounts,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                     Box(
@@ -445,7 +463,7 @@ fun MehfilScreen(
                     ActiveCategoryBanner(
                         category = activeSelectedCategory,
                         isDarkTheme = isDarkTheme,
-                        itemCount = if (isOwner) uiState.filteredShayari.size else null,
+                        itemCount = if (showCounts) uiState.filteredShayari.size else null,
                         onClearFilter = {
                             onCategorySelected(null)
                             if (uiState.searchQuery.isNotBlank()) {
@@ -557,7 +575,7 @@ fun MehfilScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (isOwner) {
+                        text = if (showCounts) {
                             "$activeCategoryTitle • ${uiState.filteredShayari.size} शायरी"
                         } else {
                             activeCategoryTitle

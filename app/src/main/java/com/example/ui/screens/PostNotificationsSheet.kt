@@ -62,9 +62,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
 import com.example.R
-import com.example.auth.onGoogleSignInClicked
+import com.example.auth.rememberGoogleSignInLauncher
 import com.example.data.model.PostNotification
 import com.example.data.model.PostNotificationType
 import com.google.firebase.Timestamp
@@ -88,10 +87,11 @@ fun PostNotificationsSheet(
     onSignInClickOverride: (() -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
-    var isSigningIn by remember { mutableStateOf(false) }
+    val googleSignIn = rememberGoogleSignInLauncher(
+        onAuthSuccess = onAuthSuccess,
+        onAuthError = onAuthError,
+        onClickOverride = onSignInClickOverride
+    )
 
     val unreadCount = remember(notifications) { notifications.count { !it.isRead } }
 
@@ -229,38 +229,15 @@ fun PostNotificationsSheet(
                         )
 
                         Button(
-                            onClick = {
-                                val overrideAction = onSignInClickOverride
-                                if (overrideAction != null) {
-                                    overrideAction()
-                                } else {
-                                    isSigningIn = true
-                                    onGoogleSignInClicked(
-                                        context = context,
-                                        credentialManager = credentialManager,
-                                        scope = scope,
-                                        onAuthSuccess = {
-                                            isSigningIn = false
-                                            onAuthSuccess()
-                                        },
-                                        onAuthError = { msg ->
-                                            isSigningIn = false
-                                            onAuthError(msg)
-                                        },
-                                        onAuthCancelled = {
-                                            isSigningIn = false
-                                        }
-                                    )
-                                }
-                            },
-                            enabled = !isSigningIn,
+                            onClick = { googleSignIn.launch() },
+                            enabled = !googleSignIn.isLoading,
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
                                 .testTag("notifications_google_sign_in_button")
                         ) {
-                            if (isSigningIn) {
+                            if (googleSignIn.isLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     color = MaterialTheme.colorScheme.onPrimary,

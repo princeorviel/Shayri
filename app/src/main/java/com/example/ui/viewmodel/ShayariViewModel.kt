@@ -263,6 +263,13 @@ class ShayariViewModel(
         }
     }
 
+    fun toggleOwnerStatsEnabled(onToggled: (Boolean) -> Unit = {}) {
+        viewModelScope.launch {
+            val enabled = preferencesRepository.toggleOwnerStatsEnabled()
+            onToggled(enabled)
+        }
+    }
+
     fun registerLocalAccount(
         fullName: String,
         username: String,
@@ -293,6 +300,16 @@ class ShayariViewModel(
         viewModelScope.launch {
             val result = preferencesRepository.loginLocalAccount(identifier, password)
             onResult(result)
+        }
+    }
+
+    fun resetLocalPasswordAndLogin(
+        newPassword: String,
+        onResult: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            val ok = preferencesRepository.resetLocalPasswordAndLogin(newPassword)
+            onResult(ok)
         }
     }
 

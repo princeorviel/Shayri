@@ -32,7 +32,8 @@ data class UserPreferences(
     val dailyNotificationHour: Int = 9,
     val dailyNotificationMinute: Int = 0,
     val authorPenName: String = "",
-    val localAccount: LocalShayarAccount = LocalShayarAccount()
+    val localAccount: LocalShayarAccount = LocalShayarAccount(),
+    val ownerStatsEnabled: Boolean = false
 )
 
 class UserPreferencesRepository(private val context: Context) {
@@ -59,6 +60,7 @@ class UserPreferencesRepository(private val context: Context) {
         val SOCIAL_TWITTER = stringPreferencesKey("social_twitter")
         val SOCIAL_TELEGRAM = stringPreferencesKey("social_telegram")
         val SOCIAL_YOUTUBE = stringPreferencesKey("social_youtube")
+        val OWNER_STATS_ENABLED = booleanPreferencesKey("owner_stats_enabled")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.shayariDataStore.data.map { prefs ->
@@ -91,7 +93,8 @@ class UserPreferencesRepository(private val context: Context) {
             dailyNotificationHour = (prefs[Keys.DAILY_NOTIF_HOUR] ?: 9).coerceIn(0, 23),
             dailyNotificationMinute = (prefs[Keys.DAILY_NOTIF_MINUTE] ?: 0).coerceIn(0, 59),
             authorPenName = prefs[Keys.AUTHOR_PEN_NAME] ?: "",
-            localAccount = localAccount
+            localAccount = localAccount,
+            ownerStatsEnabled = prefs[Keys.OWNER_STATS_ENABLED] ?: false
         )
     }
 
@@ -133,6 +136,16 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun toggleOwnerStatsEnabled(): Boolean {
+        var newValue = false
+        context.shayariDataStore.edit { prefs ->
+            val current = prefs[Keys.OWNER_STATS_ENABLED] ?: false
+            newValue = !current
+            prefs[Keys.OWNER_STATS_ENABLED] = newValue
+        }
+        return newValue
+    }
+
     suspend fun registerLocalAccount(
         fullName: String,
         username: String,
@@ -142,7 +155,14 @@ class UserPreferencesRepository(private val context: Context) {
         socialLinks: SocialLinks
     ) {
         val cleanName = fullName.trim().take(40)
-        val cleanUsername = username.trim().removePrefix("@").replace("\\s+".toRegex(), "").take(30)
+        val rawUsername = username.trim().removePrefix("@").replace("\\s+".toRegex(), "")
+        val derivedUsername = if (rawUsername.isNotBlank()) {
+            rawUsername
+        } else {
+            cleanName.lowercase()
+                .replace("[^a-z0-9_]".toRegex(), "")
+                .ifBlank { "shayar" }
+        }.take(30)
         val cleanContact = contact.trim().take(80)
         val cleanBio = bio.trim().take(160)
         val normalizedLinks = socialLinks.normalized()
@@ -152,7 +172,7 @@ class UserPreferencesRepository(private val context: Context) {
             prefs[Keys.LOCAL_ACCOUNT_REGISTERED] = true
             prefs[Keys.LOCAL_ACCOUNT_LOGGED_IN] = true
             prefs[Keys.LOCAL_ACCOUNT_FULL_NAME] = cleanName
-            prefs[Keys.LOCAL_ACCOUNT_USERNAME] = cleanUsername
+            prefs[Keys.LOCAL_ACCOUNT_USERNAME] = derivedUsername
             prefs[Keys.LOCAL_ACCOUNT_CONTACT] = cleanContact
             prefs[Keys.LOCAL_ACCOUNT_BIO] = cleanBio
             prefs[Keys.LOCAL_ACCOUNT_PASSWORD_HASH] = passwordHash
@@ -186,6 +206,20 @@ class UserPreferencesRepository(private val context: Context) {
             }
         }
         return LoginLocalResult.Success
+    }
+
+    suspend fun resetLocalPasswordAndLogin(newPassword: String): Boolean {
+        val current = preferencesFlow.first().localAccount
+        if (!current.isRegistered || newPassword.trim().length < 4) return false
+        val newHash = hashLocalPassword(newPassword)
+        context.shayariDataStore.edit { prefs ->
+            prefs[Keys.LOCAL_ACCOUNT_PASSWORD_HASH] = newHash
+            prefs[Keys.LOCAL_ACCOUNT_LOGGED_IN] = true
+            if (current.fullName.isNotBlank()) {
+                prefs[Keys.AUTHOR_PEN_NAME] = current.fullName
+            }
+        }
+        return true
     }
 
     suspend fun logoutLocalAccount() {

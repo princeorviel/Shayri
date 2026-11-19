@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
@@ -65,6 +67,9 @@ fun CategoriesScreen(
     onCategoryClick: (ShayariCategory) -> Unit,
     onBack: () -> Unit = {},
     isOwner: Boolean = false,
+    showCounts: Boolean = isOwner,
+    onTripleTapOwnerToggle: (() -> Unit)? = null,
+    onOpenAdminDashboard: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
@@ -98,14 +103,34 @@ fun CategoriesScreen(
                     )
                 }
                 Spacer(modifier = Modifier.width(4.dp))
-                Column {
+                val catLastTapMs = remember { longArrayOf(0L) }
+                val catTapCount = remember { intArrayOf(0) }
+                Column(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable(enabled = onTripleTapOwnerToggle != null) {
+                            val now = System.currentTimeMillis()
+                            if (now - catLastTapMs[0] <= 900L) {
+                                catTapCount[0] += 1
+                            } else {
+                                catTapCount[0] = 1
+                            }
+                            catLastTapMs[0] = now
+                            if (catTapCount[0] >= 3) {
+                                catTapCount[0] = 0
+                                onTripleTapOwnerToggle?.invoke()
+                            }
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                        .testTag("categories_header_title")
+                ) {
                     Text(
                         text = stringResource(R.string.action_categories),
                         style = MaterialTheme.typography.headlineMedium,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = if (isOwner) {
+                        text = if (showCounts) {
                             "${ShayariCategory.entries.size} कैटेगरी में $totalShayariCount शायरी"
                         } else {
                             "${ShayariCategory.entries.size} दिलकश कैटेगरी"
@@ -113,6 +138,36 @@ fun CategoriesScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                if (isOwner && onOpenAdminDashboard != null) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.tertiaryContainer,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable(onClick = onOpenAdminDashboard)
+                            .testTag("categories_open_admin_dashboard_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AdminPanelSettings,
+                                contentDescription = stringResource(R.string.admin_dashboard_title),
+                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "Dashboard",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                        }
+                    }
                 }
             }
 
@@ -128,7 +183,7 @@ fun CategoriesScreen(
                     CategoryImageGridCard(
                         category = category,
                         count = count,
-                        showCount = isOwner,
+                        showCount = showCounts,
                         onClick = { onCategoryClick(category) }
                     )
                 }
@@ -207,18 +262,18 @@ private fun CategoryImageGridCard(
                     if (showCount) {
                         Surface(
                             shape = RoundedCornerShape(50),
-                            color = Color.Black.copy(alpha = 0.48f),
-                            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.2f)),
+                            color = Color(0xCC120A10),
+                            border = BorderStroke(0.9.dp, Color(0xFFE6BE78).copy(alpha = 0.72f)),
                             modifier = Modifier.testTag("category_count_badge_${category.id}")
                         ) {
                             Text(
                                 text = "$count",
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
                                 ),
-                                color = Color.White,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                color = Color(0xFFFFF8F0),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                             )
                         }
                     }
@@ -263,6 +318,7 @@ fun CategoryDetailScreen(
     onShare: (ShayariEntity) -> Unit,
     commentCounts: Map<String, Int> = emptyMap(),
     isOwner: Boolean = false,
+    showCounts: Boolean = isOwner,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
@@ -315,7 +371,7 @@ fun CategoryDetailScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = if (isOwner) {
+                        text = if (showCounts) {
                             "${category.taglineHi} • ${shayariList.size} शायरी"
                         } else {
                             category.taglineHi

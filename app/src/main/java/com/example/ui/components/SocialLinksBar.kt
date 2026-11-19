@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddLink
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
@@ -334,6 +335,11 @@ private fun SocialLinkField(
     value: String,
     onValueChange: (String) -> Unit
 ) {
+    val trimmed = value.trim()
+    val previewUrl = remember(platform, trimmed) {
+        if (trimmed.isBlank()) null else platform.normalizeUrl(trimmed)?.removePrefix("https://")
+    }
+
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -342,6 +348,40 @@ private fun SocialLinkField(
         leadingIcon = {
             SocialPlatformBadge(platform = platform, size = 26)
         },
+        trailingIcon = if (value.isNotEmpty()) {
+            {
+                androidx.compose.material3.IconButton(
+                    onClick = { onValueChange("") },
+                    modifier = Modifier.testTag("social_clear_${platform.id}")
+                ) {
+                    Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Rounded.Close,
+                        contentDescription = "${platform.label} लिंक हटाएँ",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+        } else null,
+        supportingText = if (!previewUrl.isNullOrBlank()) {
+            {
+                Text(
+                    text = "लिंक: $previewUrl",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else null,
+        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+            keyboardType = if (platform == SocialLinkPlatform.WHATSAPP) {
+                androidx.compose.ui.text.input.KeyboardType.Text
+            } else {
+                androidx.compose.ui.text.input.KeyboardType.Uri
+            },
+            imeAction = androidx.compose.ui.text.input.ImeAction.Next
+        ),
         singleLine = true,
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier

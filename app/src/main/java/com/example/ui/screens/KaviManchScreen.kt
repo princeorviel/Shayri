@@ -89,7 +89,7 @@ import com.example.R
 import com.example.ai.ShayariAiUiState
 import com.example.ai.ShayariAssistMode
 import com.example.ai.ShayariDraftEditorHelper
-import com.example.auth.onGoogleSignInClicked
+import com.example.auth.rememberGoogleSignInLauncher
 import android.net.Uri
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,10 +121,11 @@ fun KaviManchAuthGate(
     ),
     onSignInClickOverride: (() -> Unit)? = null
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
-    var isLoading by remember { mutableStateOf(false) }
+    val googleSignIn = rememberGoogleSignInLauncher(
+        onAuthSuccess = onAuthSuccess,
+        onAuthError = onAuthError,
+        onClickOverride = onSignInClickOverride
+    )
 
     Box(
         modifier = modifier
@@ -193,37 +194,15 @@ fun KaviManchAuthGate(
                 Spacer(modifier = Modifier.height(26.dp))
 
                 Button(
-                    onClick = {
-                        if (onSignInClickOverride != null) {
-                            onSignInClickOverride()
-                            return@Button
-                        }
-                        isLoading = true
-                        onGoogleSignInClicked(
-                            context = context,
-                            credentialManager = credentialManager,
-                            scope = coroutineScope,
-                            onAuthSuccess = {
-                                isLoading = false
-                                onAuthSuccess()
-                            },
-                            onAuthError = { msg ->
-                                isLoading = false
-                                onAuthError(msg)
-                            },
-                            onAuthCancelled = {
-                                isLoading = false
-                            }
-                        )
-                    },
-                    enabled = !isLoading,
+                    onClick = { googleSignIn.launch() },
+                    enabled = !googleSignIn.isLoading,
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(52.dp)
                         .testTag("google_sign_in_button")
                 ) {
-                    if (isLoading) {
+                    if (googleSignIn.isLoading) {
                         CircularProgressIndicator(
                             modifier = Modifier.size(22.dp),
                             color = MaterialTheme.colorScheme.onPrimary,

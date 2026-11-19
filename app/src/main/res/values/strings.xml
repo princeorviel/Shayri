@@ -238,5 +238,11 @@
     <string name="social_links_add_cta">+ सोशल लिंक जोड़ें (FB, IG, WhatsApp)</string>
     <string name="social_link_open_error">लिंक खोला नहीं जा सका, कृपया सही यूज़रनेम या URL डालें</string>
     <string name="social_profile_links_heading">सोशल कनेक्ट</string>
+
+    <string name="admin_dashboard_title">Admin Dashboard</string>
+    <string name="admin_dashboard_subtitle">Firestore कैटेगरी शायरी आँकड़े</string>
+    <string name="admin_dashboard_refresh_cd">आँकड़े रिफ्रेश करें</string>
+    <string name="admin_dashboard_loading">Firestore से शायरी आँकड़े लोड हो रहे हैं…</string>
+    <string name="admin_dashboard_search_hint">कैटेगरी खोजें (जैसे: मोहब्बत, दर्द, Dosti)…</string>
 </resources>
 

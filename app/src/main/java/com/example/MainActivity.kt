@@ -70,7 +70,6 @@ import com.example.auth.attemptAutoSignIn
 import com.example.auth.isAppOwner
 import com.example.auth.isFirebaseAvailable
 import com.example.auth.isLocalOwnerAccount
-import com.example.auth.onGoogleSignInClicked
 import com.example.auth.safeAuthStateFlow
 import com.example.auth.safeCurrentUser
 import com.example.auth.signOutFromGoogle
@@ -91,6 +90,7 @@ import com.example.data.model.ShayariEntity
 import com.example.data.model.ThemeModeOption
 import com.example.data.model.shayariCommentKey
 import com.example.data.model.toShayariEntity
+import com.example.data.remote.AdminDashboardRepository
 import com.example.data.remote.CommunityShayariRepository
 import com.example.data.remote.PersonalShayariRepository
 import com.example.data.remote.PostNotificationsRepository
@@ -98,20 +98,21 @@ import com.example.data.remote.ShayariCommentsRepository
 import com.example.notifications.DailyShayariNotificationHelper
 import com.example.notifications.DailyShayariScheduler
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.ProfileManagementSheet
 import com.example.ui.components.ShareContentMode
 import com.example.ui.components.ShareShayariSheet
 import com.example.ui.components.ShareTarget
-import com.example.ui.components.ShayarAuthSheet
 import com.example.ui.components.ShayariBottomBar
 import com.example.ui.components.toCardEntity
 import com.example.ui.components.toCustomBadgeLabel
 import com.example.ui.components.toPreviewTitle
 import com.example.ui.components.toShareText
 import com.example.ui.screens.AccountScreen
+import com.example.ui.screens.AdminDashboardScreen
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.CategoriesScreen
 import com.example.ui.screens.CategoryDetailScreen
 import com.example.ui.screens.CommentTarget
-import com.example.ui.screens.EditPoetProfileDialog
 import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.KaviManchAuthGate
 import com.example.ui.screens.KaviManchScreen
@@ -122,6 +123,8 @@ import com.example.ui.screens.ShayariCommentsSheet
 import com.example.ui.screens.ShayariReaderScreen
 import com.example.ui.theme.ShayariReadingStyle
 import com.example.ui.theme.ShayariTheme
+import com.example.ui.viewmodel.AdminDashboardUiState
+import com.example.ui.viewmodel.AdminDashboardViewModel
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
@@ -140,6 +143,8 @@ const val ROUTE_CATEGORIES = "categories"
 const val ROUTE_CATEGORY_DETAIL = "category_detail/{categoryId}"
 const val ROUTE_FAVORITES = "favorites"
 const val ROUTE_ACCOUNT = "account"
+const val ROUTE_AUTH = "auth"
+const val ROUTE_ADMIN_DASHBOARD = "admin_dashboard"
 const val ROUTE_KAVI_MANCH = "kavi_manch"
 const val ROUTE_POET_PROFILE = "poet_profile/{poetUserId}"
 const val ROUTE_WRITE_STUDIO = "write_studio"
@@ -269,8 +274,7 @@ private fun ShayariAppRoot(
     var previewCommunityEntity by remember { mutableStateOf<ShayariEntity?>(null) }
     var previewCommunityPost by remember { mutableStateOf<CommunityShayari?>(null) }
     var showNotificationSheet by remember { mutableStateOf(false) }
-    var showAuthSheet by remember { mutableStateOf(false) }
-    var authSheetError by remember { mutableStateOf<String?>(null) }
+    var authScreenError by remember { mutableStateOf<String?>(null) }
     var homeRefreshTick by remember { mutableIntStateOf(0) }
     var isHomeSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchFocusTrigger by remember { mutableIntStateOf(0) }
@@ -282,8 +286,14 @@ private fun ShayariAppRoot(
     }.collectAsStateWithLifecycle(
         initialValue = safeCurrentUser(context)
     )
-    val isOwner = remember(currentUser?.email, uiState.preferences.localAccount) {
-        isAppOwner(currentUser) || isLocalOwnerAccount(uiState.preferences.localAccount)
+    val isOwner = remember(
+        currentUser?.email,
+        uiState.preferences.localAccount,
+        uiState.preferences.ownerStatsEnabled
+    ) {
+        uiState.preferences.ownerStatsEnabled ||
+            isAppOwner(currentUser) ||
+            isLocalOwnerAccount(uiState.preferences.localAccount)
     }
     val commentsRepository = remember(context, firebaseReady) {
         if (firebaseReady) ShayariCommentsRepository(context.applicationContext) else null
@@ -435,6 +445,18 @@ private fun ShayariAppRoot(
         viewModel.refreshFeed()
         homeRefreshTick++
         showFeedback(context.getString(R.string.app_refreshed_snackbar))
+    }
+
+    fun handleTripleTapOwnerToggle() {
+        viewModel.toggleOwnerStatsEnabled { enabled ->
+            showFeedback(
+                if (enabled) {
+                    "👑 Owner मोड ऑन — अब सभी कैटेगरी की शायरी संख्या दिखेगी"
+                } else {
+                    "Owner मोड बंद — शायरी संख्या छुपा दी गई"
+                }
+            )
+        }
     }
 
     fun handleHomeTabClick() {
@@ -1018,7 +1040,9 @@ private fun ShayariAppRoot(
                                 refreshTrigger = homeRefreshTick,
                                 onRefreshApp = ::triggerAppRefresh,
                                 onShareApp = ::handleShareApp,
-                                isOwner = isOwner
+                                isOwner = isOwner,
+                                showCounts = isOwner,
+                                onTripleTapOwnerToggle = ::handleTripleTapOwnerToggle
                             )
                         }
 
@@ -1029,7 +1053,14 @@ private fun ShayariAppRoot(
                                     navController.navigate("category_detail/${category.id}")
                                 },
                                 onBack = { navController.popBackStack() },
-                                isOwner = isOwner
+                                isOwner = isOwner,
+                                showCounts = isOwner,
+                                onTripleTapOwnerToggle = ::handleTripleTapOwnerToggle,
+                                onOpenAdminDashboard = {
+                                    navController.navigate(ROUTE_ADMIN_DASHBOARD) {
+                                        launchSingleTop = true
+                                    }
+                                }
                             )
                         }
 
@@ -1051,7 +1082,8 @@ private fun ShayariAppRoot(
                                 onComment = ::openCommentsForShayari,
                                 onShare = ::handleShareShayari,
                                 commentCounts = commentCounts,
-                                isOwner = isOwner
+                                isOwner = isOwner,
+                                showCounts = isOwner
                             )
                         }
 
@@ -1112,8 +1144,10 @@ private fun ShayariAppRoot(
                                         authorPenName = resolvedAuthorName,
                                         localAccount = localAccount,
                                         onOpenAuthSheet = {
-                                            authSheetError = null
-                                            showAuthSheet = true
+                                            authScreenError = null
+                                            navController.navigate(ROUTE_AUTH) {
+                                                launchSingleTop = true
+                                            }
                                         },
                                         onUpdateLocalProfile = { newName, newBio, newSocials ->
                                             viewModel.updateLocalProfileAndSocialLinks(
@@ -1126,7 +1160,7 @@ private fun ShayariAppRoot(
                                         totalCatalogShayariCount = uiState.allShayari.size,
                                         categoryCount = ShayariCategory.entries.size,
                                         onOpenOwnerCategoryStats = {
-                                            navController.navigate(ROUTE_CATEGORIES) {
+                                            navController.navigate(ROUTE_ADMIN_DASHBOARD) {
                                                 launchSingleTop = true
                                             }
                                         }
@@ -1190,10 +1224,138 @@ private fun ShayariAppRoot(
                                         totalCatalogShayariCount = uiState.allShayari.size,
                                         categoryCount = ShayariCategory.entries.size,
                                         onOpenOwnerCategoryStats = {
-                                            navController.navigate(ROUTE_CATEGORIES) {
+                                            navController.navigate(ROUTE_ADMIN_DASHBOARD) {
                                                 launchSingleTop = true
                                             }
                                         }
+                                    )
+                                }
+                            }
+                        }
+
+                        composable(ROUTE_AUTH) {
+                            LaunchedEffect(currentUser?.uid) {
+                                if (currentUser != null) {
+                                    authScreenError = null
+                                    navController.popBackStack()
+                                }
+                            }
+                            AuthScreen(
+                                localAccount = localAccount,
+                                errorMessage = authScreenError,
+                                showGoogleSignIn = firebaseReady,
+                                onClearError = { authScreenError = null },
+                                onRegisterSubmit = { fullName, username, contact, password, bio, socialLinks ->
+                                    viewModel.registerLocalAccount(
+                                        fullName = fullName,
+                                        username = username,
+                                        contact = contact,
+                                        password = password,
+                                        bio = bio,
+                                        socialLinks = socialLinks
+                                    ) {
+                                        authScreenError = null
+                                        navController.popBackStack()
+                                        showFeedback(context.getString(R.string.auth_register_success))
+                                    }
+                                },
+                                onLoginSubmit = { identifier, password ->
+                                    viewModel.loginLocalAccount(identifier, password) { result ->
+                                        when (result) {
+                                            LoginLocalResult.Success -> {
+                                                authScreenError = null
+                                                navController.popBackStack()
+                                                showFeedback(context.getString(R.string.auth_login_success))
+                                            }
+                                            LoginLocalResult.NoAccountRegistered -> {
+                                                authScreenError = context.getString(R.string.auth_no_account_error)
+                                            }
+                                            LoginLocalResult.InvalidCredentials -> {
+                                                authScreenError = context.getString(R.string.auth_invalid_credentials_error)
+                                            }
+                                        }
+                                    }
+                                },
+                                onResetPasswordSubmit = { newPassword ->
+                                    viewModel.resetLocalPasswordAndLogin(newPassword) { ok ->
+                                        if (ok) {
+                                            authScreenError = null
+                                            navController.popBackStack()
+                                            showFeedback("नया पासवर्ड सेट हो गया और लॉगिन सफल ✨")
+                                        } else {
+                                            authScreenError = "पासवर्ड अपडेट नहीं हो सका, कृपया फिर कोशिश करें।"
+                                        }
+                                    }
+                                },
+                                onGoogleAuthSuccess = {
+                                    authScreenError = null
+                                    navController.popBackStack()
+                                    showFeedback(context.getString(R.string.account_welcome_snackbar))
+                                },
+                                onGoogleAuthError = { err ->
+                                    authScreenError = err
+                                    showFeedback(err)
+                                },
+                                onBack = {
+                                    authScreenError = null
+                                    navController.popBackStack()
+                                }
+                            )
+                        }
+
+                        composable(ROUTE_ADMIN_DASHBOARD) {
+                            val activeUser = currentUser
+                            if (activeUser == null || !firebaseReady) {
+                                AdminDashboardScreen(
+                                    isFirebaseSignedIn = false,
+                                    uiState = AdminDashboardUiState(),
+                                    catalogCategoryCounts = uiState.categoryCounts,
+                                    onSearchQueryChanged = {},
+                                    onSortOrderChanged = {},
+                                    onToggleOnlyPopulated = {},
+                                    onRefresh = {},
+                                    onCategoryClick = { category ->
+                                        navController.navigate("category_detail/${category.id}")
+                                    },
+                                    onOpenKaviManch = {
+                                        navController.navigate(ROUTE_KAVI_MANCH) {
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                    onAuthSuccess = {
+                                        showFeedback(context.getString(R.string.account_welcome_snackbar))
+                                    },
+                                    onAuthError = ::showFeedback,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            } else {
+                                key(activeUser.uid) {
+                                    val adminRepository = remember(context) {
+                                        AdminDashboardRepository(context.applicationContext)
+                                    }
+                                    val adminViewModel: AdminDashboardViewModel = viewModel(
+                                        key = "admin_dashboard_${activeUser.uid}",
+                                        factory = AdminDashboardViewModel.Factory(adminRepository)
+                                    )
+                                    val adminUiState by adminViewModel.uiState.collectAsStateWithLifecycle()
+
+                                    AdminDashboardScreen(
+                                        isFirebaseSignedIn = true,
+                                        uiState = adminUiState,
+                                        catalogCategoryCounts = uiState.categoryCounts,
+                                        onSearchQueryChanged = adminViewModel::onSearchQueryChanged,
+                                        onSortOrderChanged = adminViewModel::onSortOrderChanged,
+                                        onToggleOnlyPopulated = adminViewModel::onToggleOnlyPopulated,
+                                        onRefresh = adminViewModel::refresh,
+                                        onCategoryClick = { category ->
+                                            navController.navigate("category_detail/${category.id}")
+                                        },
+                                        onOpenKaviManch = {
+                                            navController.navigate(ROUTE_KAVI_MANCH) {
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                        onBack = { navController.popBackStack() }
                                     )
                                 }
                             }
@@ -1337,12 +1499,12 @@ private fun ShayariAppRoot(
                                 )
 
                                 if (showEditLocalProfileDialog) {
-                                    EditPoetProfileDialog(
+                                    ProfileManagementSheet(
                                         initialPenName = localPoetProfile.penName,
                                         initialBio = localPoetProfile.bio,
                                         initialSocialLinks = localAccount.socialLinks,
                                         onDismiss = { showEditLocalProfileDialog = false },
-                                        onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
+                                        onSave = { newPenName, newBio, newSocialLinks ->
                                             viewModel.updateLocalProfileAndSocialLinks(
                                                 penName = newPenName,
                                                 bio = newBio,
@@ -1492,13 +1654,13 @@ private fun ShayariAppRoot(
                                 )
 
                                 if (showEditMyProfileDialog && isOwnProfile) {
-                                    EditPoetProfileDialog(
+                                    ProfileManagementSheet(
                                         initialPenName = poetProfile.penName,
                                         initialBio = poetProfile.bio,
                                         initialSocialLinks = poetProfile.toSocialLinks(),
                                         isSaving = communityUiState.isSubmitting,
                                         onDismiss = { showEditMyProfileDialog = false },
-                                        onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
+                                        onSave = { newPenName, newBio, newSocialLinks ->
                                             activeCommunityVm.updatePoetProfile(
                                                 penName = newPenName,
                                                 bio = newBio,
@@ -1789,65 +1951,6 @@ private fun ShayariAppRoot(
                     if (!isPreparingShareImage) {
                         shareTarget = null
                     }
-                }
-            )
-        }
-
-        if (showAuthSheet) {
-            ShayarAuthSheet(
-                localAccount = localAccount,
-                errorMessage = authSheetError,
-                onClearError = { authSheetError = null },
-                onRegisterSubmit = { fullName, username, contact, password, bio, socialLinks ->
-                    viewModel.registerLocalAccount(
-                        fullName = fullName,
-                        username = username,
-                        contact = contact,
-                        password = password,
-                        bio = bio,
-                        socialLinks = socialLinks
-                    ) {
-                        authSheetError = null
-                        showAuthSheet = false
-                        showFeedback(context.getString(R.string.auth_register_success))
-                    }
-                },
-                onLoginSubmit = { identifier, password ->
-                    viewModel.loginLocalAccount(identifier, password) { result ->
-                        when (result) {
-                            LoginLocalResult.Success -> {
-                                authSheetError = null
-                                showAuthSheet = false
-                                showFeedback(context.getString(R.string.auth_login_success))
-                            }
-                            LoginLocalResult.NoAccountRegistered -> {
-                                authSheetError = context.getString(R.string.auth_no_account_error)
-                            }
-                            LoginLocalResult.InvalidCredentials -> {
-                                authSheetError = context.getString(R.string.auth_invalid_credentials_error)
-                            }
-                        }
-                    }
-                },
-                onGoogleSignInClick = {
-                    onGoogleSignInClicked(
-                        context = context,
-                        credentialManager = credentialManager,
-                        onAuthSuccess = {
-                            authSheetError = null
-                            showAuthSheet = false
-                            showFeedback(context.getString(R.string.account_welcome_snackbar))
-                        },
-                        onAuthError = { err ->
-                            authSheetError = err
-                            showFeedback(err)
-                        },
-                        scope = scope
-                    )
-                },
-                onDismiss = {
-                    authSheetError = null
-                    showAuthSheet = false
                 }
             )
         }

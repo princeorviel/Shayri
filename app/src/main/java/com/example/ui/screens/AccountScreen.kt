@@ -54,10 +54,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
-import com.example.auth.onGoogleSignInClicked
+import com.example.auth.rememberGoogleSignInLauncher
 import com.example.data.model.CommunityShayari
 import com.example.data.model.LocalShayarAccount
 import com.example.data.model.PersonalShayari
@@ -66,6 +65,7 @@ import com.example.data.model.SocialLinkPlatform
 import com.example.data.model.SocialLinks
 import com.example.data.model.openSocialProfileUrl
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.ProfileManagementSheet
 import com.example.ui.components.SocialLinksChipsRow
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
@@ -174,23 +174,11 @@ fun AccountScreen(
     var showEditProfileDialog by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { CredentialManager.create(context) }
-
-    fun triggerGoogleSignIn() {
-        val override = signInClickOverride
-        if (override != null) {
-            override()
-            return
-        }
-        onGoogleSignInClicked(
-            context = context,
-            credentialManager = credentialManager,
-            onAuthSuccess = onAuthSuccess,
-            onAuthError = onAuthError,
-            scope = scope
-        )
-    }
+    val googleSignIn = rememberGoogleSignInLauncher(
+        onAuthSuccess = onAuthSuccess,
+        onAuthError = onAuthError,
+        onClickOverride = signInClickOverride
+    )
 
     val canEditProfile = (isFirebaseSignedIn && communityViewModel != null) || isLocalSignedIn
 
@@ -209,7 +197,7 @@ fun AccountScreen(
                 if (onOpenAuthSheet != null) {
                     onOpenAuthSheet()
                 } else {
-                    triggerGoogleSignIn()
+                    googleSignIn.launch()
                 }
             },
             onShareApp = onShareApp,
@@ -266,13 +254,13 @@ fun AccountScreen(
     }
 
     if (showEditProfileDialog && canEditProfile) {
-        EditPoetProfileDialog(
+        ProfileManagementSheet(
             initialPenName = displayName,
             initialBio = currentBio,
             initialSocialLinks = activeSocialLinks,
             isSaving = communityUiState?.isSubmitting == true,
             onDismiss = { showEditProfileDialog = false },
-            onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
+            onSave = { newPenName, newBio, newSocialLinks ->
                 if (isFirebaseSignedIn && communityViewModel != null) {
                     communityViewModel.updatePoetProfile(
                         penName = newPenName,
