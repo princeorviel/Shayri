@@ -1,5 +1,4 @@
 User-agent: *
 Allow: /
 
-# Replace YOUR_DOMAIN with your deployed GitHub Pages / Firebase Hosting URL
-Sitemap: https://YOUR_DOMAIN/sitemap.xml
+Sitemap: https://princeorviel.github.io/Shayri/sitemap.xml
