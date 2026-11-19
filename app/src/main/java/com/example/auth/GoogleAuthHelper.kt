@@ -14,6 +14,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -23,6 +24,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -35,6 +37,39 @@ fun isOwnerEmail(email: String?): Boolean {
 
 fun isAppOwner(user: FirebaseUser?): Boolean {
     return isOwnerEmail(user?.email)
+}
+
+fun isFirebaseAvailable(context: Context): Boolean {
+    return runCatching {
+        val appContext = context.applicationContext
+        if (FirebaseApp.getApps(appContext).isNotEmpty()) {
+            true
+        } else {
+            FirebaseApp.initializeApp(appContext) != null
+        }
+    }.getOrDefault(false)
+}
+
+fun safeCurrentUser(context: Context): FirebaseUser? {
+    if (!isFirebaseAvailable(context)) return null
+    return runCatching { Firebase.auth.currentUser }.getOrNull()
+}
+
+fun safeAuthStateFlow(context: Context): Flow<FirebaseUser?> {
+    if (!isFirebaseAvailable(context)) return flowOf(null)
+    return runCatching { Firebase.auth.authStateFlow() }.getOrElse { flowOf(null) }
+}
+
+private fun resolveDefaultWebClientId(context: Context): String? {
+    val resId = context.resources.getIdentifier(
+        "default_web_client_id",
+        "string",
+        context.packageName
+    )
+    if (resId == 0) return null
+    return runCatching { context.getString(resId) }
+        .getOrNull()
+        ?.takeIf { it.isNotBlank() }
 }
 
 fun FirebaseAuth.authStateFlow(): Flow<FirebaseUser?> = callbackFlow {
@@ -52,13 +87,16 @@ fun attemptAutoSignIn(
     onAuthSuccess: () -> Unit = {},
     onUnauthenticated: () -> Unit = {}
 ) {
+    if (!isFirebaseAvailable(context)) {
+        onUnauthenticated()
+        return
+    }
     if (Firebase.auth.currentUser != null) {
         onAuthSuccess()
         return
     }
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
+    val clientId = resolveDefaultWebClientId(context)
+    if (clientId == null) {
         onUnauthenticated()
         return
     }
@@ -99,9 +137,12 @@ fun onGoogleSignInClicked(
     onAuthError: (String) -> Unit,
     onAuthCancelled: () -> Unit = {}
 ) {
-    val clientId = try {
-        context.getString(R.string.default_web_client_id)
-    } catch (e: Exception) {
+    if (!isFirebaseAvailable(context)) {
+        onAuthError("इस APK बिल्ड में क्लाउड लॉगिन कॉन्फ़िगर नहीं है — आप ऑफलाइन शायरी, रील्स और कार्ड मेकर इस्तेमाल कर सकते हैं।")
+        return
+    }
+    val clientId = resolveDefaultWebClientId(context)
+    if (clientId == null) {
         onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
         return
     }
@@ -147,7 +188,7 @@ fun signOutFromGoogle(
             } catch (e: Exception) {
                 Log.w("Auth", "Failed to clear credential state: ${e.message}")
             } finally {
-                Firebase.auth.signOut()
+                runCatching { Firebase.auth.signOut() }
                 onSignOutComplete()
             }
         }

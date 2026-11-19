@@ -67,8 +67,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ai.configureAppCheck
 import com.example.auth.attemptAutoSignIn
-import com.example.auth.authStateFlow
 import com.example.auth.isAppOwner
+import com.example.auth.isFirebaseAvailable
+import com.example.auth.safeAuthStateFlow
+import com.example.auth.safeCurrentUser
 import com.example.auth.signOutFromGoogle
 import com.example.data.local.LocalPersonalShayariRepository
 import com.example.data.local.ShayariDatabase
@@ -268,12 +270,19 @@ private fun ShayariAppRoot(
     var searchFocusTrigger by remember { mutableIntStateOf(0) }
 
     val credentialManager = remember(context) { CredentialManager.create(context) }
-    val currentUser by Firebase.auth.authStateFlow().collectAsStateWithLifecycle(
-        initialValue = Firebase.auth.currentUser
+    val firebaseReady = remember(context) { isFirebaseAvailable(context) }
+    val currentUser by remember(firebaseReady) {
+        safeAuthStateFlow(context)
+    }.collectAsStateWithLifecycle(
+        initialValue = safeCurrentUser(context)
     )
     val isOwner = remember(currentUser?.email) { isAppOwner(currentUser) }
-    val commentsRepository = remember(context) { ShayariCommentsRepository(context.applicationContext) }
-    val notificationsRepository = remember(context) { PostNotificationsRepository(context.applicationContext) }
+    val commentsRepository = remember(context, firebaseReady) {
+        if (firebaseReady) ShayariCommentsRepository(context.applicationContext) else null
+    }
+    val notificationsRepository = remember(context, firebaseReady) {
+        if (firebaseReady) PostNotificationsRepository(context.applicationContext) else null
+    }
     val localPersonalRepository = remember(context) {
         LocalPersonalShayariRepository(
             ShayariDatabase.getInstance(context.applicationContext).localPersonalShayariDao()
@@ -344,30 +353,34 @@ private fun ShayariAppRoot(
                     localPersonalRepository.migrateAllToCloud(cloudRepo)
                 }
             }
-            launch {
-                commentsRepository.observeCommentCounts()
-                    .catch { /* Keep previous counts on transient failure */ }
-                    .collect { commentCounts = it }
+            if (commentsRepository != null) {
+                launch {
+                    commentsRepository.observeCommentCounts()
+                        .catch { /* Keep previous counts on transient failure */ }
+                        .collect { commentCounts = it }
+                }
             }
-            launch {
-                notificationsLoading = true
-                notificationsError = null
-                notificationsRepository.observeMyNotifications(uid)
-                    .catch {
-                        notificationsLoading = false
-                        notificationsError = "नोटिफिकेशन लोड नहीं हो सके"
-                    }
-                    .collect { list ->
-                        postNotifications = list
-                        notificationsLoading = false
-                    }
+            if (notificationsRepository != null) {
+                launch {
+                    notificationsLoading = true
+                    notificationsError = null
+                    notificationsRepository.observeMyNotifications(uid)
+                        .catch {
+                            notificationsLoading = false
+                            notificationsError = "नोटिफिकेशन लोड नहीं हो सके"
+                        }
+                        .collect { list ->
+                            postNotifications = list
+                            notificationsLoading = false
+                        }
+                }
             }
         }
     }
 
     LaunchedEffect(commentingTarget?.shayariKey, currentUser?.uid) {
         val target = commentingTarget
-        if (target == null || currentUser == null) {
+        if (target == null || currentUser == null || commentsRepository == null) {
             activeComments = emptyList()
             commentsLoading = false
             commentsError = null
@@ -537,7 +550,7 @@ private fun ShayariAppRoot(
 
     fun notifyCommunityShareIfNeeded(post: CommunityShayari) {
         val activeUser = currentUser
-        if (activeUser != null && post.userId != activeUser.uid) {
+        if (activeUser != null && post.userId != activeUser.uid && notificationsRepository != null) {
             val actorName = activeUser.displayName?.takeIf { it.isNotBlank() } ?: "शायर दोस्त"
             scope.launch {
                 notificationsRepository.sendNotification(
@@ -1493,7 +1506,7 @@ private fun ShayariAppRoot(
                 isLoading = notificationsLoading,
                 errorMessage = notificationsError,
                 onNotificationClick = { notif ->
-                    if (!notif.isRead) {
+                    if (!notif.isRead && notificationsRepository != null) {
                         scope.launch {
                             notificationsRepository.markAsRead(notif.id)
                         }
@@ -1509,16 +1522,20 @@ private fun ShayariAppRoot(
                 },
                 onMarkAllRead = {
                     val unreadIds = postNotifications.filter { !it.isRead }.map { it.id }
-                    scope.launch {
-                        val res = notificationsRepository.markAllAsRead(unreadIds)
-                        if (res.isSuccess) {
-                            showFeedback(context.getString(R.string.activity_notif_marked_all_read))
+                    if (notificationsRepository != null) {
+                        scope.launch {
+                            val res = notificationsRepository.markAllAsRead(unreadIds)
+                            if (res.isSuccess) {
+                                showFeedback(context.getString(R.string.activity_notif_marked_all_read))
+                            }
                         }
                     }
                 },
                 onDeleteNotification = { notifId ->
-                    scope.launch {
-                        notificationsRepository.deleteNotification(notifId)
+                    if (notificationsRepository != null) {
+                        scope.launch {
+                            notificationsRepository.deleteNotification(notifId)
+                        }
                     }
                 },
                 onAuthSuccess = {
@@ -1539,10 +1556,11 @@ private fun ShayariAppRoot(
                 isSubmitting = commentsSubmitting,
                 errorMessage = commentsError,
                 onAddComment = { commentText ->
+                    val repo = commentsRepository ?: return@ShayariCommentsSheet
                     val authorName = currentUser?.displayName?.takeIf { it.isNotBlank() } ?: "शायर दोस्त"
                     scope.launch {
                         commentsSubmitting = true
-                        val result = commentsRepository.addComment(
+                        val result = repo.addComment(
                             shayariKey = activeCommentTarget.shayariKey,
                             authorName = authorName,
                             text = commentText
@@ -1551,7 +1569,7 @@ private fun ShayariAppRoot(
                         if (result.isSuccess) {
                             val postId = activeCommentTarget.communityPostId
                             val recipientId = activeCommentTarget.recipientUserId
-                            if (postId != null && recipientId != null && recipientId != currentUser?.uid) {
+                            if (postId != null && recipientId != null && recipientId != currentUser?.uid && notificationsRepository != null) {
                                 notificationsRepository.sendNotification(
                                     recipientUserId = recipientId,
                                     actorName = authorName,
@@ -1568,8 +1586,9 @@ private fun ShayariAppRoot(
                     }
                 },
                 onDeleteComment = { commentId ->
+                    val repo = commentsRepository ?: return@ShayariCommentsSheet
                     scope.launch {
-                        val result = commentsRepository.deleteComment(commentId)
+                        val result = repo.deleteComment(commentId)
                         if (result.isSuccess) {
                             showFeedback(context.getString(R.string.comment_deleted_snackbar))
                         } else {
