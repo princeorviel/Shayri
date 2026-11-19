@@ -25,8 +25,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -67,6 +69,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -78,7 +81,11 @@ import com.example.data.model.CommunityShayari
 import com.example.data.model.PoetFollower
 import com.example.data.model.PoetProfile
 import com.example.data.model.ShayariCategory
+import com.example.data.model.SocialLinks
+import com.example.data.model.openSocialProfileUrl
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.SocialLinksChipsRow
+import com.example.ui.components.SocialLinksEditorFields
 import com.example.ui.theme.LocalShayariReadingStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -98,14 +105,17 @@ fun PoetProfileScreen(
     onOpenPostAsCard: (CommunityShayari) -> Unit,
     onCommentPost: (CommunityShayari) -> Unit,
     onSharePost: (CommunityShayari) -> Unit,
+    onFeedback: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
 
+    val context = LocalContext.current
     var showFollowersSheet by remember { mutableStateOf(false) }
 
     val resolvedName = poetProfile.penName.trim().ifBlank { "शायर दोस्त" }
     val resolvedBio = poetProfile.bio.trim().ifBlank { stringResource(R.string.poet_bio_default) }
+    val poetSocialLinks = remember(poetProfile) { poetProfile.toSocialLinks() }
     val displayedFollowerCount = maxOf(poetProfile.followerCount, followers.size.toLong())
     val displayedPostCount = maxOf(poetProfile.postCount, poetPosts.size.toLong())
 
@@ -223,6 +233,21 @@ fun PoetProfileScreen(
                                         .padding(horizontal = 8.dp)
                                         .testTag("poet_profile_bio")
                                 )
+
+                                if (poetSocialLinks.hasAny() || isOwnProfile) {
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    SocialLinksChipsRow(
+                                        socialLinks = poetSocialLinks,
+                                        onOpenLink = { platform, rawValue ->
+                                            val opened = openSocialProfileUrl(context, platform, rawValue)
+                                            if (!opened) {
+                                                onFeedback(context.getString(R.string.social_link_open_error))
+                                            }
+                                        },
+                                        onDarkSurface = true,
+                                        onAddLinksClick = if (isOwnProfile) onEditProfile else null
+                                    )
+                                }
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -718,12 +743,15 @@ private fun PoetShayariPostCard(
 fun EditPoetProfileDialog(
     initialPenName: String,
     initialBio: String,
+    initialSocialLinks: SocialLinks = SocialLinks(),
     isSaving: Boolean = false,
     onDismiss: () -> Unit,
-    onSave: (penName: String, bio: String) -> Unit
+    onSave: (penName: String, bio: String) -> Unit = { _, _ -> },
+    onSaveWithSocials: ((penName: String, bio: String, socialLinks: SocialLinks) -> Unit)? = null
 ) {
     var penName by remember(initialPenName) { mutableStateOf(initialPenName) }
     var bio by remember(initialBio) { mutableStateOf(initialBio) }
+    var socialLinks by remember(initialSocialLinks) { mutableStateOf(initialSocialLinks) }
     val cleanPenName = penName.trim()
     val canSave = cleanPenName.length >= 2 && !isSaving
 
@@ -736,16 +764,38 @@ fun EditPoetProfileDialog(
             )
         },
         text = {
-            EditPoetProfileFields(
-                penName = penName,
-                onPenNameChange = { if (it.length <= 40) penName = it },
-                bio = bio,
-                onBioChange = { if (it.length <= 160) bio = it }
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 440.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                EditPoetProfileFields(
+                    penName = penName,
+                    onPenNameChange = { if (it.length <= 40) penName = it },
+                    bio = bio,
+                    onBioChange = { if (it.length <= 160) bio = it }
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                SocialLinksEditorFields(
+                    socialLinks = socialLinks,
+                    onSocialLinksChange = { socialLinks = it },
+                    collapseSecondaryByDefault = false
+                )
+            }
         },
         confirmButton = {
             Button(
-                onClick = { onSave(cleanPenName, bio.trim()) },
+                onClick = {
+                    val trimmedBio = bio.trim()
+                    val normalizedLinks = socialLinks.normalized()
+                    if (onSaveWithSocials != null) {
+                        onSaveWithSocials(cleanPenName, trimmedBio, normalizedLinks)
+                    } else {
+                        onSave(cleanPenName, trimmedBio)
+                    }
+                },
                 enabled = canSave,
                 modifier = Modifier.testTag("save_poet_profile_button")
             ) {

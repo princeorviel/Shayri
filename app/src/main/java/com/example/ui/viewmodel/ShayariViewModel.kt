@@ -263,6 +263,62 @@ class ShayariViewModel(
         }
     }
 
+    fun registerLocalAccount(
+        fullName: String,
+        username: String,
+        contact: String,
+        password: String,
+        bio: String,
+        socialLinks: com.example.data.model.SocialLinks,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.registerLocalAccount(
+                fullName = fullName,
+                username = username,
+                contact = contact,
+                password = password,
+                bio = bio,
+                socialLinks = socialLinks
+            )
+            onComplete()
+        }
+    }
+
+    fun loginLocalAccount(
+        identifier: String,
+        password: String,
+        onResult: (com.example.data.local.LoginLocalResult) -> Unit
+    ) {
+        viewModelScope.launch {
+            val result = preferencesRepository.loginLocalAccount(identifier, password)
+            onResult(result)
+        }
+    }
+
+    fun logoutLocalAccount(onComplete: () -> Unit = {}) {
+        viewModelScope.launch {
+            preferencesRepository.logoutLocalAccount()
+            onComplete()
+        }
+    }
+
+    fun updateLocalProfileAndSocialLinks(
+        penName: String,
+        bio: String,
+        socialLinks: com.example.data.model.SocialLinks,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.updateLocalProfileAndSocialLinks(
+                penName = penName,
+                bio = bio,
+                socialLinks = socialLinks
+            )
+            onComplete()
+        }
+    }
+
     fun setDailyNotificationSettings(enabled: Boolean, hour: Int, minute: Int) {
         viewModelScope.launch {
             preferencesRepository.setDailyNotificationSettings(enabled, hour, minute)

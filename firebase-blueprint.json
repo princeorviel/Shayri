@@ -154,6 +154,30 @@
           "type": "integer",
           "description": "Number of published community Shayari posts."
         },
+        "facebookUrl": {
+          "type": "string",
+          "description": "Optional Facebook profile URL or handle (up to 160 characters)."
+        },
+        "instagramUrl": {
+          "type": "string",
+          "description": "Optional Instagram profile URL or handle (up to 160 characters)."
+        },
+        "whatsappUrl": {
+          "type": "string",
+          "description": "Optional WhatsApp link or number (up to 160 characters)."
+        },
+        "twitterUrl": {
+          "type": "string",
+          "description": "Optional X (Twitter) profile URL or handle (up to 160 characters)."
+        },
+        "telegramUrl": {
+          "type": "string",
+          "description": "Optional Telegram profile/channel URL or handle (up to 160 characters)."
+        },
+        "youtubeUrl": {
+          "type": "string",
+          "description": "Optional YouTube channel URL or handle (up to 160 characters)."
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",

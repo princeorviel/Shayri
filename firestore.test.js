@@ -598,3 +598,55 @@ test("Community shayari supports joke and extended categories", async () => {
     );
   }
 });
+
+test("Poet profile supports owner social links and blocks oversized or cross-user edits", async () => {
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const now = new Date();
+
+  await assertSucceeds(
+    aliceDb.collection("poet_profiles").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      penName: "अमन मिर्ज़ा",
+      bio: "मोहब्बत और दर्द की शायरी",
+      isPublic: true,
+      followerCount: 0,
+      followingCount: 0,
+      postCount: 0,
+      facebookUrl: "https://facebook.com/amanmirza",
+      instagramUrl: "https://instagram.com/amanmirza",
+      whatsappUrl: "https://wa.me/919876543210",
+      twitterUrl: "https://x.com/amanmirza",
+      telegramUrl: "https://t.me/amanmirza",
+      youtubeUrl: "https://youtube.com/@amanmirza",
+      createdAt: now,
+      updatedAt: now,
+    })
+  );
+
+  // Owner can update social links
+  await assertSucceeds(
+    aliceDb.collection("poet_profiles").doc(ALICE_UID).update({
+      instagramUrl: "https://instagram.com/aman_shayari",
+      whatsappUrl: "https://wa.me/919999999999",
+      updatedAt: new Date(),
+    })
+  );
+
+  // Oversized social URL (> 160 chars) must fail
+  await assertFails(
+    aliceDb.collection("poet_profiles").doc(ALICE_UID).update({
+      facebookUrl: "https://facebook.com/" + "a".repeat(150),
+      updatedAt: new Date(),
+    })
+  );
+
+  // Cross-user social link edit must fail
+  await assertFails(
+    bobDb.collection("poet_profiles").doc(ALICE_UID).update({
+      instagramUrl: "https://instagram.com/hacked",
+      updatedAt: new Date(),
+    })
+  );
+});
+

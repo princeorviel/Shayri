@@ -446,7 +446,8 @@ class CommunityShayariRepository(
     suspend fun upsertUserProfile(
         penName: String,
         bio: String,
-        postCount: Int? = null
+        postCount: Int? = null,
+        socialLinks: com.example.data.model.SocialLinks? = null
     ): Result<Unit> {
         val uid = requireUserId()
         val docRef = db.collection("users").document(uid)
@@ -455,6 +456,7 @@ class CommunityShayariRepository(
             if (it.length < 2) "शायर दोस्त" else it
         }
         val cleanBio = bio.trim().take(160)
+        val normalizedSocials = socialLinks?.normalized()
         return try {
             val existingSnap = docRef.get().await()
             if (existingSnap.exists()) {
@@ -487,21 +489,36 @@ class CommunityShayariRepository(
                 if (postCount != null) {
                     poetUpdates["postCount"] = postCount.toLong().coerceAtLeast(0L)
                 }
+                if (normalizedSocials != null) {
+                    poetUpdates["facebookUrl"] = normalizedSocials.facebookUrl
+                    poetUpdates["instagramUrl"] = normalizedSocials.instagramUrl
+                    poetUpdates["whatsappUrl"] = normalizedSocials.whatsappUrl
+                    poetUpdates["twitterUrl"] = normalizedSocials.twitterUrl
+                    poetUpdates["telegramUrl"] = normalizedSocials.telegramUrl
+                    poetUpdates["youtubeUrl"] = normalizedSocials.youtubeUrl
+                }
                 poetRef.update(poetUpdates).await()
             } else {
-                poetRef.set(
-                    mapOf(
-                        "userId" to uid,
-                        "penName" to cleanPenName,
-                        "bio" to cleanBio,
-                        "isPublic" to true,
-                        "followerCount" to 0L,
-                        "followingCount" to 0L,
-                        "postCount" to (postCount?.toLong()?.coerceAtLeast(0L) ?: 0L),
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "updatedAt" to FieldValue.serverTimestamp()
-                    )
-                ).await()
+                val createPayload = mutableMapOf<String, Any>(
+                    "userId" to uid,
+                    "penName" to cleanPenName,
+                    "bio" to cleanBio,
+                    "isPublic" to true,
+                    "followerCount" to 0L,
+                    "followingCount" to 0L,
+                    "postCount" to (postCount?.toLong()?.coerceAtLeast(0L) ?: 0L),
+                    "createdAt" to FieldValue.serverTimestamp(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+                if (normalizedSocials != null) {
+                    createPayload["facebookUrl"] = normalizedSocials.facebookUrl
+                    createPayload["instagramUrl"] = normalizedSocials.instagramUrl
+                    createPayload["whatsappUrl"] = normalizedSocials.whatsappUrl
+                    createPayload["twitterUrl"] = normalizedSocials.twitterUrl
+                    createPayload["telegramUrl"] = normalizedSocials.telegramUrl
+                    createPayload["youtubeUrl"] = normalizedSocials.youtubeUrl
+                }
+                poetRef.set(createPayload).await()
             }
             Result.success(Unit)
         } catch (e: CancellationException) {

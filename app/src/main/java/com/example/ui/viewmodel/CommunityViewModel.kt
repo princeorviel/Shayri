@@ -374,6 +374,7 @@ class CommunityViewModel(
     fun updatePoetProfile(
         penName: String,
         bio: String,
+        socialLinks: com.example.data.model.SocialLinks? = null,
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
@@ -390,7 +391,8 @@ class CommunityViewModel(
             val result = repository.upsertUserProfile(
                 penName = cleanName,
                 bio = bio.trim().take(160),
-                postCount = myPostCount
+                postCount = myPostCount,
+                socialLinks = socialLinks
             )
             isSubmittingFlow.value = false
             if (result.isSuccess) {

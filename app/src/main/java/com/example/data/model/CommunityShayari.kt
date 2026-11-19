@@ -55,9 +55,24 @@ data class PoetProfile(
     val followerCount: Long = 0L,
     val followingCount: Long = 0L,
     val postCount: Long = 0L,
+    val facebookUrl: String = "",
+    val instagramUrl: String = "",
+    val whatsappUrl: String = "",
+    val twitterUrl: String = "",
+    val telegramUrl: String = "",
+    val youtubeUrl: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
-)
+) {
+    fun toSocialLinks(): SocialLinks = SocialLinks(
+        facebookUrl = facebookUrl,
+        instagramUrl = instagramUrl,
+        whatsappUrl = whatsappUrl,
+        twitterUrl = twitterUrl,
+        telegramUrl = telegramUrl,
+        youtubeUrl = youtubeUrl
+    )
+}
 
 @Keep
 @IgnoreExtraProperties

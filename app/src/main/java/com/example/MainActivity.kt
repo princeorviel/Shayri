@@ -69,10 +69,12 @@ import com.example.ai.configureAppCheck
 import com.example.auth.attemptAutoSignIn
 import com.example.auth.isAppOwner
 import com.example.auth.isFirebaseAvailable
+import com.example.auth.onGoogleSignInClicked
 import com.example.auth.safeAuthStateFlow
 import com.example.auth.safeCurrentUser
 import com.example.auth.signOutFromGoogle
 import com.example.data.local.LocalPersonalShayariRepository
+import com.example.data.local.LoginLocalResult
 import com.example.data.local.ShayariDatabase
 import com.example.data.local.ShayariRepository
 import com.example.data.local.UserPreferencesRepository
@@ -98,6 +100,7 @@ import com.example.ui.components.AccountAvatar
 import com.example.ui.components.ShareContentMode
 import com.example.ui.components.ShareShayariSheet
 import com.example.ui.components.ShareTarget
+import com.example.ui.components.ShayarAuthSheet
 import com.example.ui.components.ShayariBottomBar
 import com.example.ui.components.toCardEntity
 import com.example.ui.components.toCustomBadgeLabel
@@ -265,6 +268,8 @@ private fun ShayariAppRoot(
     var previewCommunityEntity by remember { mutableStateOf<ShayariEntity?>(null) }
     var previewCommunityPost by remember { mutableStateOf<CommunityShayari?>(null) }
     var showNotificationSheet by remember { mutableStateOf(false) }
+    var showAuthSheet by remember { mutableStateOf(false) }
+    var authSheetError by remember { mutableStateOf<String?>(null) }
     var homeRefreshTick by remember { mutableIntStateOf(0) }
     var isHomeSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchFocusTrigger by remember { mutableIntStateOf(0) }
@@ -823,9 +828,15 @@ private fun ShayariAppRoot(
         }
     }
 
-    val resolvedAuthorName = remember(uiState.preferences.authorPenName, currentUser) {
+    val localAccount = uiState.preferences.localAccount
+    val isAnySignedIn = currentUser != null || localAccount.isLoggedIn
+    val navAvatarDisplayName = currentUser?.displayName?.takeIf { it.isNotBlank() }
+        ?: localAccount.fullName.takeIf { localAccount.isLoggedIn && it.isNotBlank() }
+
+    val resolvedAuthorName = remember(uiState.preferences.authorPenName, localAccount, currentUser) {
         uiState.preferences.authorPenName.trim().ifBlank {
-            currentUser?.displayName?.trim()?.takeIf { it.isNotBlank() }
+            localAccount.fullName.trim().takeIf { localAccount.isLoggedIn && it.isNotBlank() }
+                ?: currentUser?.displayName?.trim()?.takeIf { it.isNotBlank() }
                 ?: currentUser?.email?.substringBefore("@")?.takeIf { it.isNotBlank() }
                 ?: ""
         }
@@ -886,8 +897,8 @@ private fun ShayariAppRoot(
                         isFavoritesSelected = currentRoute == ROUTE_FAVORITES,
                         isAccountSelected = currentRoute == ROUTE_ACCOUNT,
                         currentUserPhotoUrl = currentUser?.photoUrl,
-                        currentUserDisplayName = currentUser?.displayName,
-                        isSignedIn = currentUser != null,
+                        currentUserDisplayName = navAvatarDisplayName,
+                        isSignedIn = isAnySignedIn,
                         onHomeClick = ::handleHomeTabClick,
                         onFavoritesClick = { navigateToTab(ROUTE_FAVORITES) },
                         onCreateClick = ::handleCreateTabClick,
@@ -930,8 +941,8 @@ private fun ShayariAppRoot(
                                     if (tab == BottomTab.ACCOUNT) {
                                         AccountAvatar(
                                             photoUrl = currentUser?.photoUrl,
-                                            displayName = currentUser?.displayName,
-                                            isSignedIn = currentUser != null,
+                                            displayName = navAvatarDisplayName,
+                                            isSignedIn = isAnySignedIn,
                                             isSelected = selected,
                                             size = 24.dp,
                                             contentDescription = stringResource(tab.labelRes)
@@ -1063,7 +1074,11 @@ private fun ShayariAppRoot(
                                         currentUser = null,
                                         personalViewModel = activePersonalViewModel,
                                         communityViewModel = null,
-                                        onSignOut = {},
+                                        onSignOut = {
+                                            viewModel.logoutLocalAccount {
+                                                showFeedback("लॉगआउट हो गया")
+                                            }
+                                        },
                                         onOpenPersonalCard = { entity ->
                                             previewCommunityPost = null
                                             previewCommunityEntity = entity
@@ -1084,8 +1099,25 @@ private fun ShayariAppRoot(
                                                 launchSingleTop = true
                                             }
                                         },
+                                        onOpenMyPoetProfile = {
+                                            navController.navigate("poet_profile/${Uri.encode(LOCAL_GUEST_USER_ID)}") {
+                                                launchSingleTop = true
+                                            }
+                                        },
                                         onAuthorNameChanged = viewModel::setAuthorPenName,
-                                        authorPenName = resolvedAuthorName
+                                        authorPenName = resolvedAuthorName,
+                                        localAccount = localAccount,
+                                        onOpenAuthSheet = {
+                                            authSheetError = null
+                                            showAuthSheet = true
+                                        },
+                                        onUpdateLocalProfile = { newName, newBio, newSocials ->
+                                            viewModel.updateLocalProfileAndSocialLinks(
+                                                penName = newName,
+                                                bio = newBio,
+                                                socialLinks = newSocials
+                                            )
+                                        }
                                     )
                                 }
                             } else {
@@ -1095,6 +1127,7 @@ private fun ShayariAppRoot(
                                         personalViewModel = activePersonalViewModel,
                                         communityViewModel = activeCommunityVm,
                                         onSignOut = {
+                                            viewModel.logoutLocalAccount()
                                             signOutFromGoogle(
                                                 credentialManager = credentialManager,
                                                 scope = scope,
@@ -1132,7 +1165,15 @@ private fun ShayariAppRoot(
                                             }
                                         },
                                         onAuthorNameChanged = viewModel::setAuthorPenName,
-                                        authorPenName = resolvedAuthorName
+                                        authorPenName = resolvedAuthorName,
+                                        localAccount = localAccount,
+                                        onUpdateLocalProfile = { newName, newBio, newSocials ->
+                                            viewModel.updateLocalProfileAndSocialLinks(
+                                                penName = newName,
+                                                bio = newBio,
+                                                socialLinks = newSocials
+                                            )
+                                        }
                                     )
                                 }
                             }
@@ -1213,7 +1254,87 @@ private fun ShayariAppRoot(
                             val poetUserId = Uri.decode(entry.arguments?.getString("poetUserId").orEmpty())
                             val activeUser = currentUser
                             val activeCommunityVm = sharedCommunityViewModel
-                            if (activeUser == null || activeCommunityVm == null || poetUserId.isBlank()) {
+                            if (poetUserId == LOCAL_GUEST_USER_ID && localAccount.isLoggedIn && activeUser == null) {
+                                val personalUiState by activePersonalViewModel.uiState.collectAsStateWithLifecycle()
+                                var showEditLocalProfileDialog by remember { mutableStateOf(false) }
+                                val localPoetName = localAccount.fullName.trim().ifBlank {
+                                    resolvedAuthorName.ifBlank { "शायर दोस्त" }
+                                }
+                                val localPoetPosts = remember(personalUiState.allItems, localPoetName) {
+                                    personalUiState.allItems.map { item ->
+                                        val mappedEntity = item.toShayariEntity(localPoetName)
+                                        CommunityShayari(
+                                            id = item.id,
+                                            userId = LOCAL_GUEST_USER_ID,
+                                            penName = localPoetName,
+                                            couplet = item.couplet,
+                                            categoryId = mappedEntity.categoryId,
+                                            promptTitle = item.title
+                                        )
+                                    }
+                                }
+                                val localPoetProfile = remember(localAccount, localPoetName, localPoetPosts.size) {
+                                    PoetProfile(
+                                        id = LOCAL_GUEST_USER_ID,
+                                        userId = LOCAL_GUEST_USER_ID,
+                                        penName = localPoetName,
+                                        bio = localAccount.bio,
+                                        isPublic = true,
+                                        followerCount = 0L,
+                                        followingCount = 0L,
+                                        postCount = localPoetPosts.size.toLong(),
+                                        facebookUrl = localAccount.socialLinks.facebookUrl,
+                                        instagramUrl = localAccount.socialLinks.instagramUrl,
+                                        whatsappUrl = localAccount.socialLinks.whatsappUrl,
+                                        twitterUrl = localAccount.socialLinks.twitterUrl,
+                                        telegramUrl = localAccount.socialLinks.telegramUrl,
+                                        youtubeUrl = localAccount.socialLinks.youtubeUrl
+                                    )
+                                }
+
+                                PoetProfileScreen(
+                                    poetProfile = localPoetProfile,
+                                    poetPosts = localPoetPosts,
+                                    followers = emptyList(),
+                                    isOwnProfile = true,
+                                    isFollowing = false,
+                                    userWahIds = emptySet(),
+                                    ownPhotoUrl = null,
+                                    onBack = { navController.popBackStack() },
+                                    onToggleFollow = {},
+                                    onEditProfile = { showEditLocalProfileDialog = true },
+                                    onToggleWah = {},
+                                    onOpenPostAsCard = { post ->
+                                        val matchedPersonal = personalUiState.allItems.firstOrNull { it.id == post.id }
+                                        val entity = matchedPersonal?.toShayariEntity(localPoetName) ?: post.toShayariEntity()
+                                        previewCommunityPost = null
+                                        previewCommunityEntity = entity
+                                        navigateToReader(entity.id, "personal")
+                                    },
+                                    onCommentPost = ::openCommentsForCommunityPost,
+                                    onSharePost = ::handleShareCommunityPost,
+                                    onFeedback = ::showFeedback
+                                )
+
+                                if (showEditLocalProfileDialog) {
+                                    EditPoetProfileDialog(
+                                        initialPenName = localPoetProfile.penName,
+                                        initialBio = localPoetProfile.bio,
+                                        initialSocialLinks = localAccount.socialLinks,
+                                        onDismiss = { showEditLocalProfileDialog = false },
+                                        onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
+                                            viewModel.updateLocalProfileAndSocialLinks(
+                                                penName = newPenName,
+                                                bio = newBio,
+                                                socialLinks = newSocialLinks
+                                            ) {
+                                                showEditLocalProfileDialog = false
+                                                showFeedback(context.getString(R.string.poet_profile_saved_snackbar))
+                                            }
+                                        }
+                                    )
+                                }
+                            } else if (activeUser == null || activeCommunityVm == null || poetUserId.isBlank()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     Row(
                                         modifier = Modifier
@@ -1263,22 +1384,45 @@ private fun ShayariAppRoot(
                                     poetPosts,
                                     poetUserId,
                                     isOwnProfile,
-                                    actorDisplayName
+                                    actorDisplayName,
+                                    localAccount.socialLinks
                                 ) {
-                                    communityUiState.profileFor(poetUserId) ?: PoetProfile(
-                                        id = poetUserId,
-                                        userId = poetUserId,
-                                        penName = if (isOwnProfile) {
-                                            actorDisplayName
+                                    val remote = communityUiState.profileFor(poetUserId)
+                                    if (remote != null) {
+                                        if (isOwnProfile && !remote.toSocialLinks().hasAny() && localAccount.socialLinks.hasAny()) {
+                                            remote.copy(
+                                                facebookUrl = localAccount.socialLinks.facebookUrl,
+                                                instagramUrl = localAccount.socialLinks.instagramUrl,
+                                                whatsappUrl = localAccount.socialLinks.whatsappUrl,
+                                                twitterUrl = localAccount.socialLinks.twitterUrl,
+                                                telegramUrl = localAccount.socialLinks.telegramUrl,
+                                                youtubeUrl = localAccount.socialLinks.youtubeUrl
+                                            )
                                         } else {
-                                            poetPosts.firstOrNull()?.penName?.ifBlank { "शायर दोस्त" } ?: "शायर दोस्त"
-                                        },
-                                        bio = if (isOwnProfile) communityUiState.userProfile?.bio.orEmpty() else "",
-                                        isPublic = true,
-                                        followerCount = 0L,
-                                        followingCount = if (isOwnProfile) communityUiState.followingIds.size.toLong() else 0L,
-                                        postCount = poetPosts.size.toLong()
-                                    )
+                                            remote
+                                        }
+                                    } else {
+                                        PoetProfile(
+                                            id = poetUserId,
+                                            userId = poetUserId,
+                                            penName = if (isOwnProfile) {
+                                                actorDisplayName
+                                            } else {
+                                                poetPosts.firstOrNull()?.penName?.ifBlank { "शायर दोस्त" } ?: "शायर दोस्त"
+                                            },
+                                            bio = if (isOwnProfile) communityUiState.userProfile?.bio.orEmpty() else "",
+                                            isPublic = true,
+                                            followerCount = 0L,
+                                            followingCount = if (isOwnProfile) communityUiState.followingIds.size.toLong() else 0L,
+                                            postCount = poetPosts.size.toLong(),
+                                            facebookUrl = if (isOwnProfile) localAccount.socialLinks.facebookUrl else "",
+                                            instagramUrl = if (isOwnProfile) localAccount.socialLinks.instagramUrl else "",
+                                            whatsappUrl = if (isOwnProfile) localAccount.socialLinks.whatsappUrl else "",
+                                            twitterUrl = if (isOwnProfile) localAccount.socialLinks.twitterUrl else "",
+                                            telegramUrl = if (isOwnProfile) localAccount.socialLinks.telegramUrl else "",
+                                            youtubeUrl = if (isOwnProfile) localAccount.socialLinks.youtubeUrl else ""
+                                        )
+                                    }
                                 }
                                 val isFollowing = communityUiState.followingIds.contains(poetUserId)
 
@@ -1323,20 +1467,28 @@ private fun ShayariAppRoot(
                                         navigateToReader(entity.id, "community")
                                     },
                                     onCommentPost = ::openCommentsForCommunityPost,
-                                    onSharePost = ::handleShareCommunityPost
+                                    onSharePost = ::handleShareCommunityPost,
+                                    onFeedback = ::showFeedback
                                 )
 
                                 if (showEditMyProfileDialog && isOwnProfile) {
                                     EditPoetProfileDialog(
                                         initialPenName = poetProfile.penName,
                                         initialBio = poetProfile.bio,
+                                        initialSocialLinks = poetProfile.toSocialLinks(),
                                         isSaving = communityUiState.isSubmitting,
                                         onDismiss = { showEditMyProfileDialog = false },
-                                        onSave = { newPenName, newBio ->
+                                        onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
                                             activeCommunityVm.updatePoetProfile(
                                                 penName = newPenName,
                                                 bio = newBio,
+                                                socialLinks = newSocialLinks,
                                                 onSuccess = {
+                                                    viewModel.updateLocalProfileAndSocialLinks(
+                                                        penName = newPenName,
+                                                        bio = newBio,
+                                                        socialLinks = newSocialLinks
+                                                    )
                                                     viewModel.setAuthorPenName(newPenName)
                                                     showEditMyProfileDialog = false
                                                     showFeedback(context.getString(R.string.poet_profile_saved_snackbar))
@@ -1617,6 +1769,65 @@ private fun ShayariAppRoot(
                     if (!isPreparingShareImage) {
                         shareTarget = null
                     }
+                }
+            )
+        }
+
+        if (showAuthSheet) {
+            ShayarAuthSheet(
+                localAccount = localAccount,
+                errorMessage = authSheetError,
+                onClearError = { authSheetError = null },
+                onRegisterSubmit = { fullName, username, contact, password, bio, socialLinks ->
+                    viewModel.registerLocalAccount(
+                        fullName = fullName,
+                        username = username,
+                        contact = contact,
+                        password = password,
+                        bio = bio,
+                        socialLinks = socialLinks
+                    ) {
+                        authSheetError = null
+                        showAuthSheet = false
+                        showFeedback(context.getString(R.string.auth_register_success))
+                    }
+                },
+                onLoginSubmit = { identifier, password ->
+                    viewModel.loginLocalAccount(identifier, password) { result ->
+                        when (result) {
+                            LoginLocalResult.Success -> {
+                                authSheetError = null
+                                showAuthSheet = false
+                                showFeedback(context.getString(R.string.auth_login_success))
+                            }
+                            LoginLocalResult.NoAccountRegistered -> {
+                                authSheetError = context.getString(R.string.auth_no_account_error)
+                            }
+                            LoginLocalResult.InvalidCredentials -> {
+                                authSheetError = context.getString(R.string.auth_invalid_credentials_error)
+                            }
+                        }
+                    }
+                },
+                onGoogleSignInClick = {
+                    onGoogleSignInClicked(
+                        context = context,
+                        credentialManager = credentialManager,
+                        onAuthSuccess = {
+                            authSheetError = null
+                            showAuthSheet = false
+                            showFeedback(context.getString(R.string.account_welcome_snackbar))
+                        },
+                        onAuthError = { err ->
+                            authSheetError = err
+                            showFeedback(err)
+                        },
+                        scope = scope
+                    )
+                },
+                onDismiss = {
+                    authSheetError = null
+                    showAuthSheet = false
                 }
             )
         }

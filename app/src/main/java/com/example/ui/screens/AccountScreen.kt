@@ -58,9 +58,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.auth.onGoogleSignInClicked
 import com.example.data.model.CommunityShayari
+import com.example.data.model.LocalShayarAccount
 import com.example.data.model.PersonalShayari
 import com.example.data.model.ShayariEntity
+import com.example.data.model.SocialLinkPlatform
+import com.example.data.model.SocialLinks
+import com.example.data.model.openSocialProfileUrl
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.SocialLinksChipsRow
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
@@ -87,6 +92,9 @@ fun AccountScreen(
     onOpenMyPoetProfile: () -> Unit = {},
     onAuthorNameChanged: (String) -> Unit = {},
     authorPenName: String = "",
+    localAccount: LocalShayarAccount = LocalShayarAccount(),
+    onOpenAuthSheet: (() -> Unit)? = null,
+    onUpdateLocalProfile: ((penName: String, bio: String, socialLinks: SocialLinks) -> Unit)? = null,
     signInClickOverride: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -94,7 +102,10 @@ fun AccountScreen(
     val communityUiState = communityViewModel?.uiState?.collectAsStateWithLifecycle()?.value
 
     val allCommunityPosts = (communityUiState?.feedState as? CommunityFeedState.Success)?.posts.orEmpty()
-    val isSignedIn = currentUser != null
+    val isFirebaseSignedIn = currentUser != null
+    val isLocalSignedIn = !isFirebaseSignedIn && localAccount.isLoggedIn
+    val isSignedIn = isFirebaseSignedIn || isLocalSignedIn
+
     val myCommunityPosts = remember(allCommunityPosts, currentUser?.uid) {
         val uid = currentUser?.uid ?: return@remember emptyList()
         allCommunityPosts.filter { it.userId == uid }
@@ -109,17 +120,50 @@ fun AccountScreen(
     val followingCount = communityUiState?.followingIds?.size?.toLong()
         ?: myPoetProfile?.followingCount
         ?: 0L
-    val currentBio = communityUiState?.userProfile?.bio?.takeIf { it.isNotBlank() }
-        ?: myPoetProfile?.bio
-        ?: ""
-
-    val displayName = if (currentUser != null) {
-        communityUiState?.userProfile?.penName?.takeIf { it.isNotBlank() }
-            ?: authorPenName.trim().takeIf { it.isNotBlank() }
-            ?: currentUser.displayName?.takeIf { it.isNotBlank() }
-            ?: "शायर दोस्त"
+    val currentBio = if (isFirebaseSignedIn) {
+        communityUiState?.userProfile?.bio?.takeIf { it.isNotBlank() }
+            ?: myPoetProfile?.bio?.takeIf { it.isNotBlank() }
+            ?: localAccount.bio
+    } else if (isLocalSignedIn) {
+        localAccount.bio
     } else {
-        authorPenName.trim().ifBlank { stringResource(R.string.guest_writer_title) }
+        ""
+    }
+    val activeSocialLinks = remember(myPoetProfile, localAccount.socialLinks, isFirebaseSignedIn) {
+        val remoteLinks = myPoetProfile?.toSocialLinks()
+        if (isFirebaseSignedIn && remoteLinks != null && remoteLinks.hasAny()) {
+            remoteLinks
+        } else {
+            localAccount.socialLinks
+        }
+    }
+
+    val displayName = when {
+        isFirebaseSignedIn -> {
+            communityUiState?.userProfile?.penName?.takeIf { it.isNotBlank() }
+                ?: authorPenName.trim().takeIf { it.isNotBlank() }
+                ?: currentUser?.displayName?.takeIf { it.isNotBlank() }
+                ?: "शायर दोस्त"
+        }
+        isLocalSignedIn -> {
+            localAccount.fullName.trim().takeIf { it.isNotBlank() }
+                ?: authorPenName.trim().takeIf { it.isNotBlank() }
+                ?: "शायर दोस्त"
+        }
+        else -> {
+            authorPenName.trim().ifBlank { stringResource(R.string.guest_writer_title) }
+        }
+    }
+
+    val accountSubtitle = when {
+        isFirebaseSignedIn -> currentUser?.email ?: stringResource(R.string.guest_writer_subtitle)
+        isLocalSignedIn -> {
+            listOfNotNull(
+                localAccount.handleDisplay.takeIf { it.isNotBlank() },
+                localAccount.contact.takeIf { it.isNotBlank() }
+            ).joinToString(" • ").ifBlank { "रजिस्टर्ड शायर अकाउंट" }
+        }
+        else -> stringResource(R.string.guest_writer_subtitle)
     }
 
     var showEditProfileDialog by remember { mutableStateOf(false) }
@@ -143,6 +187,8 @@ fun AccountScreen(
         )
     }
 
+    val canEditProfile = (isFirebaseSignedIn && communityViewModel != null) || isLocalSignedIn
+
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -150,18 +196,31 @@ fun AccountScreen(
         AccountProfileHeader(
             photoUrl = currentUser?.photoUrl,
             displayName = displayName,
-            email = currentUser?.email ?: stringResource(R.string.guest_writer_subtitle),
+            email = accountSubtitle,
             postCount = totalPostCount,
             onSignOut = onSignOut,
             isSignedIn = isSignedIn,
-            onSignInClick = ::triggerGoogleSignIn,
+            onSignInClick = {
+                if (onOpenAuthSheet != null) {
+                    onOpenAuthSheet()
+                } else {
+                    triggerGoogleSignIn()
+                }
+            },
             onShareApp = onShareApp,
             onRateApp = onRateApp,
             bio = currentBio,
+            socialLinks = activeSocialLinks,
+            onOpenSocialLink = { platform, rawValue ->
+                val opened = openSocialProfileUrl(context, platform, rawValue)
+                if (!opened) {
+                    onFeedback(context.getString(R.string.social_link_open_error))
+                }
+            },
             followerCount = followerCount,
             followingCount = followingCount,
             showSocialStats = isSignedIn,
-            onEditProfile = if (isSignedIn && communityViewModel != null) {
+            onEditProfile = if (canEditProfile) {
                 { showEditProfileDialog = true }
             } else null,
             onOpenMyPoetProfile = if (isSignedIn) onOpenMyPoetProfile else null,
@@ -191,29 +250,39 @@ fun AccountScreen(
                     )
                 },
                 onOpenWriteStudio = onOpenWriteStudio,
-                authorPenName = authorPenName,
+                authorPenName = displayName,
                 showHeader = false
             )
         }
     }
 
-    if (showEditProfileDialog && communityViewModel != null) {
+    if (showEditProfileDialog && canEditProfile) {
         EditPoetProfileDialog(
             initialPenName = displayName,
             initialBio = currentBio,
+            initialSocialLinks = activeSocialLinks,
             isSaving = communityUiState?.isSubmitting == true,
             onDismiss = { showEditProfileDialog = false },
-            onSave = { newPenName, newBio ->
-                communityViewModel.updatePoetProfile(
-                    penName = newPenName,
-                    bio = newBio,
-                    onSuccess = {
-                        onAuthorNameChanged(newPenName)
-                        showEditProfileDialog = false
-                        onFeedback(context.getString(R.string.poet_profile_saved_snackbar))
-                    },
-                    onError = onFeedback
-                )
+            onSaveWithSocials = { newPenName, newBio, newSocialLinks ->
+                if (isFirebaseSignedIn && communityViewModel != null) {
+                    communityViewModel.updatePoetProfile(
+                        penName = newPenName,
+                        bio = newBio,
+                        socialLinks = newSocialLinks,
+                        onSuccess = {
+                            onUpdateLocalProfile?.invoke(newPenName, newBio, newSocialLinks)
+                            onAuthorNameChanged(newPenName)
+                            showEditProfileDialog = false
+                            onFeedback(context.getString(R.string.poet_profile_saved_snackbar))
+                        },
+                        onError = onFeedback
+                    )
+                } else {
+                    onUpdateLocalProfile?.invoke(newPenName, newBio, newSocialLinks)
+                    onAuthorNameChanged(newPenName)
+                    showEditProfileDialog = false
+                    onFeedback(context.getString(R.string.poet_profile_saved_snackbar))
+                }
             }
         )
     }
@@ -231,6 +300,8 @@ fun AccountProfileHeader(
     onShareApp: () -> Unit = {},
     onRateApp: (() -> Unit)? = null,
     bio: String = "",
+    socialLinks: SocialLinks = SocialLinks(),
+    onOpenSocialLink: (SocialLinkPlatform, String) -> Unit = { _, _ -> },
     followerCount: Long = 0L,
     followingCount: Long = 0L,
     showSocialStats: Boolean = false,
@@ -379,6 +450,16 @@ fun AccountProfileHeader(
                     )
                 }
             }
+        }
+
+        if (socialLinks.hasAny() || (isSignedIn && onEditProfile != null)) {
+            Spacer(modifier = Modifier.height(10.dp))
+            SocialLinksChipsRow(
+                socialLinks = socialLinks,
+                onOpenLink = onOpenSocialLink,
+                onDarkSurface = false,
+                onAddLinksClick = onEditProfile
+            )
         }
 
         if (isSignedIn && (onEditProfile != null || onOpenMyPoetProfile != null)) {

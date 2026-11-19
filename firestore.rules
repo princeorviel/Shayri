@@ -160,6 +160,10 @@ service cloud.firestore {
              data.updatedAt <= request.time;
     }
 
+    function isOptionalSocialLink(data, field) {
+      return !(field in data) || (data[field] is string && data[field].size() <= 160);
+    }
+
     function isValidPoetProfile(data) {
       return isValidId(data.userId) &&
              data.penName is string &&
@@ -174,6 +178,12 @@ service cloud.firestore {
              data.followingCount >= 0 &&
              data.postCount is int &&
              data.postCount >= 0 &&
+             isOptionalSocialLink(data, 'facebookUrl') &&
+             isOptionalSocialLink(data, 'instagramUrl') &&
+             isOptionalSocialLink(data, 'whatsappUrl') &&
+             isOptionalSocialLink(data, 'twitterUrl') &&
+             isOptionalSocialLink(data, 'telegramUrl') &&
+             isOptionalSocialLink(data, 'youtubeUrl') &&
              data.createdAt is timestamp &&
              data.createdAt <= request.time &&
              data.updatedAt is timestamp &&
@@ -466,6 +476,8 @@ service cloud.firestore {
                        incoming().keys().hasOnly([
                          'userId', 'penName', 'bio', 'isPublic',
                          'followerCount', 'followingCount', 'postCount',
+                         'facebookUrl', 'instagramUrl', 'whatsappUrl',
+                         'twitterUrl', 'telegramUrl', 'youtubeUrl',
                          'createdAt', 'updatedAt'
                        ]) &&
                        isValidPoetProfile(incoming());
@@ -476,12 +488,15 @@ service cloud.firestore {
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
                        incoming().isPublic == true && (
-                         // Action 1: Owner edits penName, bio, postCount, or syncs own followingCount
+                         // Action 1: Owner edits penName, bio, social links, postCount, or syncs own followingCount
                          (
                            existing().userId == request.auth.uid &&
                            incoming().followerCount == existing().followerCount &&
                            incoming().diff(existing()).affectedKeys().hasOnly([
-                             'penName', 'bio', 'postCount', 'followingCount', 'updatedAt'
+                             'penName', 'bio', 'postCount', 'followingCount',
+                             'facebookUrl', 'instagramUrl', 'whatsappUrl',
+                             'twitterUrl', 'telegramUrl', 'youtubeUrl',
+                             'updatedAt'
                            ])
                          ) ||
                          // Action 2: Another signed-in user follows (+1) atomically with /users/{uid}/following/{poetUserId}

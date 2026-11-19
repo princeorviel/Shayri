@@ -215,4 +215,28 @@
     <string name="account_open_kavi_manch_title">कवि मंच व अन्य शायर</string>
     <string name="account_open_kavi_manch_subtitle">दूसरे शायरों की प्रोफ़ाइल देखें, फ़ॉलो करें और कम्युनिटी में जुड़ें</string>
     <string name="account_my_public_profile">मेरी प्रोफ़ाइल</string>
+
+    <string name="auth_sheet_title">शायर अकाउंट</string>
+    <string name="auth_sheet_subtitle">अपना अकाउंट बनाएँ या लॉगिन करें और Facebook, Instagram, WhatsApp लिंक जोड़ें</string>
+    <string name="auth_tab_register">नया रजिस्टर</string>
+    <string name="auth_tab_login">लॉगिन</string>
+    <string name="auth_full_name_label">शायर नाम (Full Name)</string>
+    <string name="auth_username_label">यूज़रनेम (@username)</string>
+    <string name="auth_contact_label">ईमेल या मोबाइल नंबर (वैकल्पिक)</string>
+    <string name="auth_identifier_label">यूज़रनेम, ईमेल या मोबाइल</string>
+    <string name="auth_password_label">पासवर्ड (कम से कम 4 अक्षर)</string>
+    <string name="auth_register_cta">अकाउंट रजिस्टर करें</string>
+    <string name="auth_login_cta">लॉगिन करें</string>
+    <string name="auth_google_cta">Google से लॉगिन करें</string>
+    <string name="auth_or_divider">या</string>
+    <string name="auth_register_success">अकाउंट रजिस्टर और लॉगिन हो गया ✨</string>
+    <string name="auth_login_success">वापसी पर स्वागत है ✨</string>
+    <string name="auth_no_account_error">अभी कोई रजिस्टर्ड अकाउंट नहीं मिला — कृपया पहले \'नया रजिस्टर\' टैब से अकाउंट बनाएँ।</string>
+    <string name="auth_invalid_credentials_error">यूज़रनेम या पासवर्ड सही नहीं है, कृपया फिर से जाँचें।</string>
+    <string name="social_links_section_title">सोशल मीडिया लिंक</string>
+    <string name="social_links_section_subtitle">Facebook, Instagram, WhatsApp, X, Telegram, YouTube जोड़ें</string>
+    <string name="social_links_add_cta">+ सोशल लिंक जोड़ें (FB, IG, WhatsApp)</string>
+    <string name="social_link_open_error">लिंक खोला नहीं जा सका, कृपया सही यूज़रनेम या URL डालें</string>
+    <string name="social_profile_links_heading">सोशल कनेक्ट</string>
 </resources>
+
