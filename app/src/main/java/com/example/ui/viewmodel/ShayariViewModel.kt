@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -55,21 +56,30 @@ class ShayariViewModel(
         }
     }
 
+    private val initialPreferences: UserPreferences = preferencesRepository.readCachedPreferencesSync()
+
+    private val allShayariSharedFlow = repository.allShayari.shareIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        replay = 1
+    )
+
     private data class CatalogDerivedState(
-        val allShayari: List<ShayariEntity>,
-        val categoryCounts: Map<String, Int>,
-        val popularShayari: List<ShayariEntity>,
-        val featuredShayari: ShayariEntity?
+        val isLoaded: Boolean = false,
+        val allShayari: List<ShayariEntity> = emptyList(),
+        val categoryCounts: Map<String, Int> = emptyMap(),
+        val popularShayari: List<ShayariEntity> = emptyList(),
+        val featuredShayari: ShayariEntity? = null
     )
 
     private data class FilterResult(
-        val filtered: List<ShayariEntity>,
-        val selectedCategoryId: String?,
-        val searchQuery: String
+        val filtered: List<ShayariEntity> = emptyList(),
+        val selectedCategoryId: String? = null,
+        val searchQuery: String = ""
     )
 
-    private val catalogDerivedFlow = combine(
-        repository.allShayari,
+    private val catalogDerivedFlow: StateFlow<CatalogDerivedState> = combine(
+        allShayariSharedFlow,
         refreshSeedFlow
     ) { all, refreshSeed ->
         val counts = HashMap<String, Int>(ShayariCategory.entries.size * 2)
@@ -103,12 +113,19 @@ class ShayariViewModel(
         }
 
         CatalogDerivedState(
+            isLoaded = true,
             allShayari = all,
             categoryCounts = counts,
             popularShayari = popularList,
             featuredShayari = popularList.firstOrNull()
         )
-    }.flowOn(Dispatchers.Default)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = CatalogDerivedState()
+        )
 
     private val filterInputsFlow = combine(
         searchQueryFlow,
@@ -118,8 +135,8 @@ class ShayariViewModel(
         Triple(query, selectedCat, refreshSeed)
     }
 
-    private val filteredFlow = combine(
-        repository.allShayari,
+    private val filteredFlow: StateFlow<FilterResult> = combine(
+        allShayariSharedFlow,
         filterInputsFlow
     ) { all, (query, selectedCat, refreshSeed) ->
         val trimmed = query.trim()
@@ -165,16 +182,34 @@ class ShayariViewModel(
             selectedCategoryId = selectedCat,
             searchQuery = query
         )
-    }.flowOn(Dispatchers.Default)
+    }
+        .flowOn(Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = FilterResult()
+        )
+
+    private val favoritesFlow: StateFlow<List<ShayariEntity>> = repository.favoriteShayari.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = emptyList()
+    )
+
+    private val preferencesFlow: StateFlow<UserPreferences> = preferencesRepository.preferencesFlow.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.Eagerly,
+        initialValue = initialPreferences
+    )
 
     val uiState: StateFlow<ShayariUiState> = combine(
         catalogDerivedFlow,
         filteredFlow,
-        repository.favoriteShayari,
-        preferencesRepository.preferencesFlow
+        favoritesFlow,
+        preferencesFlow
     ) { catalog, filterResult, favorites, prefs ->
         ShayariUiState(
-            isLoading = false,
+            isLoading = !catalog.isLoaded,
             allShayari = catalog.allShayari,
             filteredShayari = filterResult.filtered,
             favoriteShayari = favorites,
@@ -187,8 +222,8 @@ class ShayariViewModel(
         )
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = ShayariUiState()
+        started = SharingStarted.Eagerly,
+        initialValue = ShayariUiState(preferences = initialPreferences)
     )
 
     fun refreshFeed() {

@@ -242,4 +242,64 @@ class ExampleRobolectricTest {
             db.close()
         }
     }
+
+    @Test
+    fun `local login session persists immediately on startup across fresh repository and ViewModel instances`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val prefsRepo1 = com.example.data.local.UserPreferencesRepository(context)
+            prefsRepo1.registerLocalAccount(
+                fullName = "प्रिंस शायर",
+                username = "princeorviel",
+                contact = "princeorviel@gmail.com",
+                password = "secret123",
+                bio = "दिल से लिखने वाला",
+                socialLinks = com.example.data.model.SocialLinks(instagramUrl = "@princeorviel")
+            )
+
+            // Simulate closing and reopening the app with brand-new instances
+            val prefsRepo2 = com.example.data.local.UserPreferencesRepository(context)
+            val shayariRepo2 = ShayariRepository(db.shayariDao())
+            val vm2 = com.example.ui.viewmodel.ShayariViewModel(
+                repository = shayariRepo2,
+                preferencesRepository = prefsRepo2,
+                autoSeed = false
+            )
+
+            // Must be logged in IMMEDIATELY on frame 0 before Room even emits
+            val frame0Account = vm2.uiState.value.preferences.localAccount
+            assertTrue("Account should remain registered on relaunch", frame0Account.isRegistered)
+            assertTrue("Account should remain logged in immediately on relaunch", frame0Account.isLoggedIn)
+            assertEquals("प्रिंस शायर", frame0Account.fullName)
+            assertEquals("princeorviel", frame0Account.username)
+            assertEquals("princeorviel@gmail.com", frame0Account.contact)
+            assertTrue(frame0Account.socialLinks.instagramUrl.contains("princeorviel"))
+
+            // Also verify preferencesFlow stays logged in after DataStore emission
+            val emittedAccount = prefsRepo2.preferencesFlow.first().localAccount
+            assertTrue("DataStore flow should preserve logged-in state", emittedAccount.isLoggedIn)
+            assertEquals("प्रिंस शायर", emittedAccount.fullName)
+
+            // Explicit logout persists cleanly while keeping account registered
+            prefsRepo2.logoutLocalAccount()
+            val prefsRepo3 = com.example.data.local.UserPreferencesRepository(context)
+            val afterLogout = prefsRepo3.readCachedPreferencesSync().localAccount
+            assertTrue("Account should remain registered after logout", afterLogout.isRegistered)
+            assertTrue("Account should be logged out after explicit logout", !afterLogout.isLoggedIn)
+
+            // Logging back in persists across next restart
+            val loginResult = prefsRepo3.loginLocalAccount("princeorviel", "secret123")
+            assertEquals(com.example.data.local.LoginLocalResult.Success, loginResult)
+            val prefsRepo4 = com.example.data.local.UserPreferencesRepository(context)
+            assertTrue(
+                "Account should be logged in again on next launch",
+                prefsRepo4.readCachedPreferencesSync().localAccount.isLoggedIn
+            )
+        } finally {
+            db.close()
+        }
+    }
 }
