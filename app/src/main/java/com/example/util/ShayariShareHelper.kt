@@ -514,6 +514,40 @@ object ShayariShareHelper {
         return bitmap
     }
 
+    suspend fun createDesignedCardImageUri(
+        context: Context,
+        couplet: String,
+        authorName: String,
+        title: String,
+        tag: String,
+        design: ShayariDesignState
+    ): Uri = withContext(Dispatchers.IO) {
+        val bitmap = renderDesignedCardBitmap(
+            context = context,
+            couplet = couplet,
+            authorName = authorName,
+            title = title,
+            tag = tag,
+            design = design
+        )
+        try {
+            val cardsDir = File(context.cacheDir, "shared_cards").apply { mkdirs() }
+            val outFile = File(cardsDir, "shayari_designed_${System.currentTimeMillis()}.png")
+            FileOutputStream(outFile).use { stream ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                    "Failed to compress designed card bitmap"
+                }
+            }
+            FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                outFile
+            )
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     suspend fun shareDesignedCard(
         context: Context,
         couplet: String,
@@ -523,7 +557,7 @@ object ShayariShareHelper {
         design: ShayariDesignState
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val bitmap = renderDesignedCardBitmap(
+            val uri = createDesignedCardImageUri(
                 context = context,
                 couplet = couplet,
                 authorName = authorName,
@@ -531,22 +565,6 @@ object ShayariShareHelper {
                 tag = tag,
                 design = design
             )
-            val uri = try {
-                val cardsDir = File(context.cacheDir, "shared_cards").apply { mkdirs() }
-                val outFile = File(cardsDir, "shayari_designed_${System.currentTimeMillis()}.png")
-                FileOutputStream(outFile).use { stream ->
-                    check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
-                        "Failed to compress designed card bitmap"
-                    }
-                }
-                FileProvider.getUriForFile(
-                    context,
-                    "${context.packageName}.fileprovider",
-                    outFile
-                )
-            } finally {
-                bitmap.recycle()
-            }
             val signature = authorName.trim()
             val baseShareText = buildString {
                 if (title.isNotBlank()) append("✦ ").append(title.trim()).append("\n\n")

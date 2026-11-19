@@ -106,6 +106,7 @@ fun ShayariWriteStudioScreen(
     onClose: () -> Unit,
     onSaved: (wasUpdate: Boolean) -> Unit,
     onFeedback: (String) -> Unit,
+    onRequestShareDesignedCard: ((couplet: String, authorName: String, title: String, tag: String, design: ShayariDesignState) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -345,7 +346,15 @@ fun ShayariWriteStudioScreen(
                                 )
                             },
                             onShareCard = {
-                                if (!isSharingImage) {
+                                if (onRequestShareDesignedCard != null) {
+                                    onRequestShareDesignedCard(
+                                        uiState.coupletInput.trim(),
+                                        signature,
+                                        uiState.titleInput,
+                                        uiState.themeTagInput,
+                                        designState
+                                    )
+                                } else if (!isSharingImage) {
                                     scope.launch {
                                         isSharingImage = true
                                         val ok = try {

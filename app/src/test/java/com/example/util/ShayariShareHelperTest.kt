@@ -219,4 +219,36 @@ class ShayariShareHelperTest {
         val homeTarget = ShayariShareHelper.parseDeepLink(android.net.Uri.parse("shayari://home"))
         assertEquals(ShayariShareHelper.DeepLinkTarget.OpenHome, homeTarget)
     }
+
+    @Test
+    fun `SocialShareLauncher builds targeted app intents and web fallback URLs for all platforms`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val sampleText = "दिल की बात, शब्दों के साथ #शायरी"
+
+        val waIntent = SocialShareLauncher.buildTargetedAppIntent(
+            context = context,
+            packageName = "com.whatsapp",
+            text = sampleText,
+            previewTitle = "शायरी"
+        )
+        assertEquals("com.whatsapp", waIntent.`package`)
+        assertEquals(Intent.ACTION_SEND, waIntent.action)
+        assertEquals("text/plain", waIntent.type)
+        assertEquals(sampleText, waIntent.getStringExtra(Intent.EXTRA_TEXT))
+
+        assertTrue(SocialShareLauncher.buildWebShareUrl(SocialSharePlatform.WHATSAPP, sampleText)!!.startsWith("https://api.whatsapp.com/send?text="))
+        assertTrue(SocialShareLauncher.buildWebShareUrl(SocialSharePlatform.FACEBOOK, sampleText)!!.contains("facebook.com/sharer"))
+        assertTrue(SocialShareLauncher.buildWebShareUrl(SocialSharePlatform.TWITTER, sampleText)!!.startsWith("https://twitter.com/intent/tweet?text="))
+        assertTrue(SocialShareLauncher.buildWebShareUrl(SocialSharePlatform.THREADS, sampleText)!!.startsWith("https://www.threads.net/intent/post?text="))
+        assertTrue(SocialShareLauncher.buildWebShareUrl(SocialSharePlatform.TELEGRAM, sampleText)!!.startsWith("https://t.me/share/url?"))
+    }
+
+    @Test
+    fun `SocialShareLauncher renders branded App Promo Card bitmap with valid dimensions`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val bitmap = SocialShareLauncher.renderAppPromoCardBitmap(context)
+        assertEquals(1080, bitmap.width)
+        assertEquals(1350, bitmap.height)
+        bitmap.recycle()
+    }
 }

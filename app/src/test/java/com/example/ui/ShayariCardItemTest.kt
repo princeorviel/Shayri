@@ -970,9 +970,11 @@ class ShayariCardItemTest {
     }
 
     @Test
-    fun `ShareShayariSheet offers text and image share modes and triggers callbacks`() {
-        var textShared = false
-        var imageShared = false
+    fun `ShareShayariSheet displays all trending social platforms, copy, download, and mode toggles`() {
+        val clickedPlatforms = mutableListOf<Pair<com.example.util.SocialSharePlatform, com.example.ui.components.ShareContentMode>>()
+        var moreClickedMode: com.example.ui.components.ShareContentMode? = null
+        var copyClicked = false
+        var downloadClicked = false
         var dismissed = false
 
         composeRule.setContent {
@@ -980,8 +982,10 @@ class ShayariCardItemTest {
                 com.example.ui.components.ShareShayariSheet(
                     target = com.example.ui.components.ShareTarget.Catalog(sampleShayari),
                     isPreparingImage = false,
-                    onShareText = { textShared = true },
-                    onShareImage = { imageShared = true },
+                    onShareToPlatform = { _, platform, mode -> clickedPlatforms += platform to mode },
+                    onShareMore = { _, mode -> moreClickedMode = mode },
+                    onCopy = { copyClicked = true },
+                    onDownload = { downloadClicked = true },
                     onDismiss = { dismissed = true }
                 )
             }
@@ -989,14 +993,75 @@ class ShayariCardItemTest {
 
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("share_options_sheet").assertIsDisplayed()
-        composeRule.onNodeWithTag("share_option_text").assertIsDisplayed().performClick()
-        assertTrue(textShared)
 
+        // Default mode is TEXT — click WhatsApp, Facebook, Threads, Telegram, Signal
+        composeRule.onNodeWithTag("share_platform_whatsapp").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_facebook").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_twitter").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_threads").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_telegram").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_signal").assertIsDisplayed().performClick()
+
+        // Switch to Photo Card (IMAGE) mode and tap Instagram + More
         composeRule.onNodeWithTag("share_option_image").assertIsDisplayed().performClick()
-        assertTrue(imageShared)
+        composeRule.onNodeWithTag("share_platform_instagram").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_platform_more").assertIsDisplayed().performClick()
+
+        // Switch back to Text mode
+        composeRule.onNodeWithTag("share_option_text").assertIsDisplayed().performClick()
+
+        // Tap Copy & Download
+        composeRule.onNodeWithTag("share_action_copy").assertIsDisplayed().performClick()
+        composeRule.onNodeWithTag("share_action_download").assertIsDisplayed().performClick()
+
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.WHATSAPP to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.FACEBOOK to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.TWITTER to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.THREADS to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.TELEGRAM to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.SIGNAL to com.example.ui.components.ShareContentMode.TEXT))
+        assertTrue(clickedPlatforms.contains(com.example.util.SocialSharePlatform.INSTAGRAM to com.example.ui.components.ShareContentMode.IMAGE))
+        assertEquals(com.example.ui.components.ShareContentMode.IMAGE, moreClickedMode)
+        assertTrue(copyClicked)
+        assertTrue(downloadClicked)
 
         composeRule.onNodeWithTag("share_sheet_close_button").assertIsDisplayed().performClick()
         assertTrue(dismissed)
+    }
+
+    @Test
+    fun `ShareShayariSheet supports ShareTarget App with trending social options`() {
+        var copiedApp = false
+        var downloadedAppCard = false
+
+        composeRule.setContent {
+            ShayariTheme {
+                com.example.ui.components.ShareShayariSheet(
+                    target = com.example.ui.components.ShareTarget.App,
+                    isPreparingImage = false,
+                    onShareToPlatform = { _, _, _ -> },
+                    onShareMore = { _, _ -> },
+                    onCopy = { copiedApp = true },
+                    onDownload = { downloadedAppCard = true },
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("share_options_sheet").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_whatsapp").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_instagram").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_facebook").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_twitter").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_threads").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_telegram").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_platform_signal").assertIsDisplayed()
+        composeRule.onNodeWithTag("share_action_copy").performClick()
+        composeRule.onNodeWithTag("share_action_download").performClick()
+
+        assertTrue(copiedApp)
+        assertTrue(downloadedAppCard)
     }
 
     @Test

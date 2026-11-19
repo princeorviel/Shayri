@@ -93,6 +93,7 @@ import com.example.data.remote.ShayariCommentsRepository
 import com.example.notifications.DailyShayariNotificationHelper
 import com.example.notifications.DailyShayariScheduler
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.ShareContentMode
 import com.example.ui.components.ShareShayariSheet
 import com.example.ui.components.ShareTarget
 import com.example.ui.components.ShayariBottomBar
@@ -120,6 +121,9 @@ import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.ui.viewmodel.ShayariViewModel
 import com.example.util.ShayariShareHelper
+import com.example.util.SocialShareLauncher
+import com.example.util.SocialSharePlatform
+import com.example.util.SocialShareResult
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.flow.catch
@@ -547,45 +551,237 @@ private fun ShayariAppRoot(
         }
     }
 
-    fun executeShareText(target: ShareTarget) {
-        val defaultTitle = context.getString(R.string.share_chooser_title)
-        val viralText = ShayariShareHelper.appendAppPromoFooter(context, target.toShareText())
-        val ok = ShayariShareHelper.sharePlainText(
-            context = context,
-            text = viralText,
-            previewTitle = target.toPreviewTitle(defaultTitle)
-        )
-        if (!ok) {
-            showFeedback(context.getString(R.string.share_error_snackbar))
-        } else if (target is ShareTarget.Community) {
-            notifyCommunityShareIfNeeded(target.post)
+    fun resolveShareTextWithPromo(target: ShareTarget): String {
+        val raw = target.toShareText(context)
+        return if (target is ShareTarget.App) {
+            raw
+        } else {
+            ShayariShareHelper.appendAppPromoFooter(context, raw)
         }
     }
 
-    fun executeShareImage(target: ShareTarget) {
-        if (isPreparingShareImage) return
-        scope.launch {
-            isPreparingShareImage = true
-            val ok = try {
-                ShayariShareHelper.shareAsImageCard(
+    suspend fun resolveShareImageUri(target: ShareTarget): Uri? {
+        return when (target) {
+            is ShareTarget.Catalog,
+            is ShareTarget.Personal,
+            is ShareTarget.Community -> {
+                val entity = target.toCardEntity() ?: return null
+                ShayariShareHelper.createShareImageUri(
                     context = context,
-                    shayari = target.toCardEntity(),
+                    shayari = entity,
                     style = uiState.preferences.cardStyle,
                     fontStyle = uiState.preferences.fontStyle,
-                    customText = ShayariShareHelper.appendAppPromoFooter(context, target.toShareText()),
                     customBadgeLabel = target.toCustomBadgeLabel()
                 )
+            }
+            is ShareTarget.DesignedCard -> {
+                ShayariShareHelper.createDesignedCardImageUri(
+                    context = context,
+                    couplet = target.couplet,
+                    authorName = target.authorName,
+                    title = target.title,
+                    tag = target.tag,
+                    design = target.design
+                )
+            }
+            ShareTarget.App -> {
+                SocialShareLauncher.createAppPromoImageUri(context)
+            }
+        }
+    }
+
+    fun executeShareToPlatform(
+        target: ShareTarget,
+        platform: SocialSharePlatform,
+        mode: ShareContentMode
+    ) {
+        if (isPreparingShareImage) return
+        val defaultTitle = if (target is ShareTarget.App) {
+            context.getString(R.string.share_app_subject, context.getString(R.string.app_name))
+        } else {
+            context.getString(R.string.share_chooser_title)
+        }
+        val previewTitle = target.toPreviewTitle(defaultTitle)
+        val viralText = resolveShareTextWithPromo(target)
+        val shouldAttachImage = mode == ShareContentMode.IMAGE || platform.prefersImageCard
+
+        if (!shouldAttachImage) {
+            shareTarget = null
+            val result = SocialShareLauncher.shareToPlatform(
+                context = context,
+                platform = platform,
+                text = viralText,
+                previewTitle = previewTitle,
+                imageUri = null
+            )
+            when (result) {
+                SocialShareResult.LAUNCHED_NATIVE_APP,
+                SocialShareResult.LAUNCHED_WEB_FALLBACK -> {
+                    if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
+                }
+                SocialShareResult.LAUNCHED_CHOOSER_FALLBACK -> {
+                    showFeedback(context.getString(R.string.share_platform_copied_fallback))
+                    if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
+                }
+                SocialShareResult.FAILED -> {
+                    showFeedback(context.getString(R.string.share_error_snackbar))
+                }
+            }
+            return
+        }
+
+        scope.launch {
+            isPreparingShareImage = true
+            val imageUri = try {
+                runCatching { resolveShareImageUri(target) }.getOrNull()
             } finally {
                 isPreparingShareImage = false
             }
             shareTarget = null
-            if (ok) {
-                if (target is ShareTarget.Community) {
-                    notifyCommunityShareIfNeeded(target.post)
+            val result = SocialShareLauncher.shareToPlatform(
+                context = context,
+                platform = platform,
+                text = viralText,
+                previewTitle = previewTitle,
+                imageUri = imageUri
+            )
+            when (result) {
+                SocialShareResult.LAUNCHED_NATIVE_APP,
+                SocialShareResult.LAUNCHED_WEB_FALLBACK -> {
+                    if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
                 }
+                SocialShareResult.LAUNCHED_CHOOSER_FALLBACK -> {
+                    showFeedback(context.getString(R.string.share_platform_copied_fallback))
+                    if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
+                }
+                SocialShareResult.FAILED -> {
+                    showFeedback(context.getString(R.string.share_error_snackbar))
+                }
+            }
+        }
+    }
+
+    fun executeShareMore(target: ShareTarget, mode: ShareContentMode) {
+        if (isPreparingShareImage) return
+        val defaultTitle = if (target is ShareTarget.App) {
+            context.getString(R.string.share_app_subject, context.getString(R.string.app_name))
+        } else {
+            context.getString(R.string.share_chooser_title)
+        }
+        val previewTitle = target.toPreviewTitle(defaultTitle)
+        val viralText = resolveShareTextWithPromo(target)
+
+        if (mode == ShareContentMode.TEXT) {
+            shareTarget = null
+            val ok = if (target is ShareTarget.App) {
+                ShayariShareHelper.shareApp(context)
+            } else {
+                ShayariShareHelper.sharePlainText(
+                    context = context,
+                    text = viralText,
+                    previewTitle = previewTitle
+                )
+            }
+            if (!ok) {
+                showFeedback(context.getString(R.string.share_error_snackbar))
+            } else if (target is ShareTarget.Community) {
+                notifyCommunityShareIfNeeded(target.post)
+            }
+            return
+        }
+
+        scope.launch {
+            isPreparingShareImage = true
+            val imageUri = try {
+                runCatching { resolveShareImageUri(target) }.getOrNull()
+            } finally {
+                isPreparingShareImage = false
+            }
+            shareTarget = null
+            val ok = if (imageUri != null) {
+                runCatching {
+                    context.startActivity(
+                        ShayariShareHelper.buildShareImageChooserIntent(
+                            context = context,
+                            imageUri = imageUri,
+                            text = viralText,
+                            previewTitle = previewTitle
+                        )
+                    )
+                    true
+                }.getOrDefault(false)
+            } else {
+                false
+            }
+            if (ok) {
+                if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
             } else {
                 showFeedback(context.getString(R.string.share_card_error))
-                executeShareText(target)
+                ShayariShareHelper.sharePlainText(
+                    context = context,
+                    text = viralText,
+                    previewTitle = previewTitle
+                )
+            }
+        }
+    }
+
+    fun executeCopyShareTarget(target: ShareTarget) {
+        val textToCopy = target.toShareText(context)
+        ShayariShareHelper.copyPlainText(context, textToCopy)
+        shareTarget = null
+        showFeedback(
+            if (target is ShareTarget.App) {
+                context.getString(R.string.share_copy_app_snackbar)
+            } else {
+                context.getString(R.string.copied_snackbar)
+            }
+        )
+    }
+
+    fun executeDownloadShareTarget(target: ShareTarget) {
+        if (isPreparingShareImage) return
+        scope.launch {
+            isPreparingShareImage = true
+            val result = try {
+                when (target) {
+                    is ShareTarget.Catalog,
+                    is ShareTarget.Personal,
+                    is ShareTarget.Community -> {
+                        val entity = target.toCardEntity()
+                        if (entity != null) {
+                            ShayariShareHelper.saveCardToGallery(
+                                context = context,
+                                shayari = entity,
+                                style = uiState.preferences.cardStyle,
+                                fontStyle = uiState.preferences.fontStyle
+                            )
+                        } else {
+                            Result.failure(IllegalStateException("Missing card entity"))
+                        }
+                    }
+                    is ShareTarget.DesignedCard -> {
+                        ShayariShareHelper.saveDesignedCardToGallery(
+                            context = context,
+                            couplet = target.couplet,
+                            authorName = target.authorName,
+                            title = target.title,
+                            tag = target.tag,
+                            design = target.design
+                        )
+                    }
+                    ShareTarget.App -> {
+                        SocialShareLauncher.saveAppPromoCardToGallery(context)
+                    }
+                }
+            } finally {
+                isPreparingShareImage = false
+            }
+            shareTarget = null
+            if (result.isSuccess) {
+                showFeedback(context.getString(R.string.download_image_success))
+            } else {
+                showFeedback(context.getString(R.string.download_image_error))
             }
         }
     }
@@ -649,9 +845,7 @@ private fun ShayariAppRoot(
     }
 
     fun handleShareApp() {
-        if (!ShayariShareHelper.shareApp(context)) {
-            showFeedback(context.getString(R.string.share_error_snackbar))
-        }
+        shareTarget = ShareTarget.App
     }
 
     fun handleRateApp() {
@@ -1158,7 +1352,16 @@ private fun ShayariAppRoot(
                                     )
                                     navController.popBackStack()
                                 },
-                                onFeedback = ::showFeedback
+                                onFeedback = ::showFeedback,
+                                onRequestShareDesignedCard = { couplet, author, title, tag, design ->
+                                    shareTarget = ShareTarget.DesignedCard(
+                                        couplet = couplet,
+                                        authorName = author,
+                                        title = title,
+                                        tag = tag,
+                                        design = design
+                                    )
+                                }
                             )
                         }
 
@@ -1387,11 +1590,10 @@ private fun ShayariAppRoot(
             ShareShayariSheet(
                 target = pendingShareTarget,
                 isPreparingImage = isPreparingShareImage,
-                onShareText = { selected ->
-                    shareTarget = null
-                    executeShareText(selected)
-                },
-                onShareImage = ::executeShareImage,
+                onShareToPlatform = ::executeShareToPlatform,
+                onShareMore = ::executeShareMore,
+                onCopy = ::executeCopyShareTarget,
+                onDownload = ::executeDownloadShareTarget,
                 onDismiss = {
                     if (!isPreparingShareImage) {
                         shareTarget = null
