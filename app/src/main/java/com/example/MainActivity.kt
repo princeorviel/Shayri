@@ -69,6 +69,7 @@ import com.example.ai.configureAppCheck
 import com.example.auth.attemptAutoSignIn
 import com.example.auth.isAppOwner
 import com.example.auth.isFirebaseAvailable
+import com.example.auth.isLocalOwnerAccount
 import com.example.auth.onGoogleSignInClicked
 import com.example.auth.safeAuthStateFlow
 import com.example.auth.safeCurrentUser
@@ -281,7 +282,9 @@ private fun ShayariAppRoot(
     }.collectAsStateWithLifecycle(
         initialValue = safeCurrentUser(context)
     )
-    val isOwner = remember(currentUser?.email) { isAppOwner(currentUser) }
+    val isOwner = remember(currentUser?.email, uiState.preferences.localAccount) {
+        isAppOwner(currentUser) || isLocalOwnerAccount(uiState.preferences.localAccount)
+    }
     val commentsRepository = remember(context, firebaseReady) {
         if (firebaseReady) ShayariCommentsRepository(context.applicationContext) else null
     }
@@ -1047,7 +1050,8 @@ private fun ShayariAppRoot(
                                 onToggleFavorite = ::handleToggleFavorite,
                                 onComment = ::openCommentsForShayari,
                                 onShare = ::handleShareShayari,
-                                commentCounts = commentCounts
+                                commentCounts = commentCounts,
+                                isOwner = isOwner
                             )
                         }
 
@@ -1117,6 +1121,14 @@ private fun ShayariAppRoot(
                                                 bio = newBio,
                                                 socialLinks = newSocials
                                             )
+                                        },
+                                        isOwner = isOwner,
+                                        totalCatalogShayariCount = uiState.allShayari.size,
+                                        categoryCount = ShayariCategory.entries.size,
+                                        onOpenOwnerCategoryStats = {
+                                            navController.navigate(ROUTE_CATEGORIES) {
+                                                launchSingleTop = true
+                                            }
                                         }
                                     )
                                 }
@@ -1173,6 +1185,14 @@ private fun ShayariAppRoot(
                                                 bio = newBio,
                                                 socialLinks = newSocials
                                             )
+                                        },
+                                        isOwner = isOwner,
+                                        totalCatalogShayariCount = uiState.allShayari.size,
+                                        categoryCount = ShayariCategory.entries.size,
+                                        onOpenOwnerCategoryStats = {
+                                            navController.navigate(ROUTE_CATEGORIES) {
+                                                launchSingleTop = true
+                                            }
                                         }
                                     )
                                 }

@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.StarRate
@@ -95,6 +96,10 @@ fun AccountScreen(
     localAccount: LocalShayarAccount = LocalShayarAccount(),
     onOpenAuthSheet: (() -> Unit)? = null,
     onUpdateLocalProfile: ((penName: String, bio: String, socialLinks: SocialLinks) -> Unit)? = null,
+    isOwner: Boolean = false,
+    totalCatalogShayariCount: Int = 0,
+    categoryCount: Int = 0,
+    onOpenOwnerCategoryStats: (() -> Unit)? = null,
     signInClickOverride: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -225,6 +230,10 @@ fun AccountScreen(
             } else null,
             onOpenMyPoetProfile = if (isSignedIn) onOpenMyPoetProfile else null,
             onOpenKaviManch = onOpenKaviManch,
+            isOwner = isOwner,
+            totalCatalogShayariCount = totalCatalogShayariCount,
+            categoryCount = categoryCount,
+            onOpenOwnerCategoryStats = onOpenOwnerCategoryStats,
             modifier = Modifier.widthIn(max = 760.dp)
         )
 
@@ -308,6 +317,10 @@ fun AccountProfileHeader(
     onEditProfile: (() -> Unit)? = null,
     onOpenMyPoetProfile: (() -> Unit)? = null,
     onOpenKaviManch: (() -> Unit)? = null,
+    isOwner: Boolean = false,
+    totalCatalogShayariCount: Int = 0,
+    categoryCount: Int = 0,
+    onOpenOwnerCategoryStats: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val resolvedName = displayName?.takeIf { it.isNotBlank() }
@@ -513,6 +526,57 @@ fun AccountProfileHeader(
                             maxLines = 1
                         )
                     }
+                }
+            }
+        }
+
+        if (isOwner && onOpenOwnerCategoryStats != null) {
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 48.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onOpenOwnerCategoryStats)
+                    .testTag("account_owner_stats_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Insights,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "👑 Owner रिपोर्ट • कुल $totalCatalogShayariCount शायरी",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "$categoryCount कैटेगरी में किसमें कितनी शायरी है, यहाँ देखें",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
                 }
             }
         }

@@ -30,6 +30,7 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 const val OWNER_EMAIL = "princeorviel@gmail.com"
+const val OWNER_USERNAME = "princeorviel"
 
 fun isOwnerEmail(email: String?): Boolean {
     return email?.trim()?.equals(OWNER_EMAIL, ignoreCase = true) == true
@@ -37,6 +38,13 @@ fun isOwnerEmail(email: String?): Boolean {
 
 fun isAppOwner(user: FirebaseUser?): Boolean {
     return isOwnerEmail(user?.email)
+}
+
+fun isLocalOwnerAccount(account: com.example.data.model.LocalShayarAccount?): Boolean {
+    if (account == null || !account.isLoggedIn) return false
+    if (isOwnerEmail(account.contact)) return true
+    val cleanUsername = account.username.trim().removePrefix("@")
+    return cleanUsername.equals(OWNER_USERNAME, ignoreCase = true)
 }
 
 fun isFirebaseAvailable(context: Context): Boolean {

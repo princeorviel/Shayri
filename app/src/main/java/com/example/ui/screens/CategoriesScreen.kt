@@ -262,6 +262,7 @@ fun CategoryDetailScreen(
     onComment: (ShayariEntity) -> Unit,
     onShare: (ShayariEntity) -> Unit,
     commentCounts: Map<String, Int> = emptyMap(),
+    isOwner: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
@@ -314,9 +315,14 @@ fun CategoryDetailScreen(
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text = category.taglineHi,
+                        text = if (isOwner) {
+                            "${category.taglineHi} • ${shayariList.size} शायरी"
+                        } else {
+                            category.taglineHi
+                        },
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.testTag("category_detail_subtitle")
                     )
                 }
             }
