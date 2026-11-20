@@ -4,14 +4,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -58,18 +58,29 @@ fun WriteStudioDesignCardPreview(
     val subTextColor = design.textColor.copy(alpha = 0.78f)
     val watermarkColor = design.textColor.copy(alpha = 0.55f)
 
-    Surface(
-        shape = cardShape,
-        shadowElevation = 6.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
-        modifier = modifier
-            .widthIn(max = 420.dp)
-            .fillMaxWidth()
-            .aspectRatio(4f / 4.2f)
-            .clip(cardShape)
-            .testTag("studio_live_card_preview")
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        val ratio = 4f / 4.2f
+        val availableWidth = maxWidth.coerceAtMost(420.dp).coerceAtLeast(0.dp)
+        val (cardWidth, cardHeight) = if (constraints.hasBoundedHeight && availableWidth / ratio > maxHeight) {
+            val boundedHeight = maxHeight.coerceAtLeast(0.dp)
+            (boundedHeight * ratio) to boundedHeight
+        } else {
+            availableWidth to (availableWidth / ratio)
+        }
+
+        Surface(
+            shape = cardShape,
+            shadowElevation = 6.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            modifier = Modifier
+                .size(width = cardWidth, height = cardHeight)
+                .clip(cardShape)
+                .testTag("studio_live_card_preview")
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
             when (val wp = design.wallpaper) {
                 is StudioWallpaper.SolidOrGradient -> {
                     Box(
@@ -188,6 +199,7 @@ fun WriteStudioDesignCardPreview(
                     .align(Alignment.BottomStart)
                     .padding(horizontal = 16.dp, vertical = 12.dp)
             )
+            }
         }
     }
 }

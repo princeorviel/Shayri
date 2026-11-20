@@ -72,6 +72,7 @@ class UserPreferencesRepository(context: Context) {
         val SOCIAL_TWITTER = stringPreferencesKey("social_twitter")
         val SOCIAL_TELEGRAM = stringPreferencesKey("social_telegram")
         val SOCIAL_YOUTUBE = stringPreferencesKey("social_youtube")
+        val LOCAL_PROFILE_PHOTO_URI = stringPreferencesKey("local_profile_photo_uri")
         val OWNER_STATS_ENABLED = booleanPreferencesKey("owner_stats_enabled")
     }
 
@@ -96,7 +97,8 @@ class UserPreferencesRepository(context: Context) {
             contact = syncPrefs.getString(SYNC_LOCAL_CONTACT, "").orEmpty(),
             bio = syncPrefs.getString(SYNC_LOCAL_BIO, "").orEmpty(),
             passwordHash = syncPrefs.getString(SYNC_LOCAL_PASSWORD_HASH, "").orEmpty(),
-            socialLinks = socialLinks
+            socialLinks = socialLinks,
+            profilePhotoUri = syncPrefs.getString(SYNC_LOCAL_PROFILE_PHOTO_URI, "").orEmpty()
         )
         return UserPreferences(
             themeMode = ThemeModeOption.fromId(
@@ -144,6 +146,7 @@ class UserPreferencesRepository(context: Context) {
             .putString(SYNC_SOCIAL_TWITTER, account.socialLinks.twitterUrl)
             .putString(SYNC_SOCIAL_TELEGRAM, account.socialLinks.telegramUrl)
             .putString(SYNC_SOCIAL_YOUTUBE, account.socialLinks.youtubeUrl)
+            .putString(SYNC_LOCAL_PROFILE_PHOTO_URI, account.profilePhotoUri)
         if (commitImmediately) {
             editor.commit()
         } else {
@@ -185,7 +188,8 @@ class UserPreferencesRepository(context: Context) {
                     contact = prefs[Keys.LOCAL_ACCOUNT_CONTACT] ?: cached.localAccount.contact,
                     bio = prefs[Keys.LOCAL_ACCOUNT_BIO] ?: cached.localAccount.bio,
                     passwordHash = prefs[Keys.LOCAL_ACCOUNT_PASSWORD_HASH] ?: cached.localAccount.passwordHash,
-                    socialLinks = socialLinks
+                    socialLinks = socialLinks,
+                    profilePhotoUri = prefs[Keys.LOCAL_PROFILE_PHOTO_URI] ?: cached.localAccount.profilePhotoUri
                 )
                 if (!cached.localAccount.isRegistered) {
                     mirrorAccountToSyncPrefs(
@@ -199,14 +203,17 @@ class UserPreferencesRepository(context: Context) {
                 cached.localAccount
             } else {
                 LocalShayarAccount(
+                    fullName = prefs[Keys.LOCAL_ACCOUNT_FULL_NAME] ?: cached.localAccount.fullName,
+                    bio = prefs[Keys.LOCAL_ACCOUNT_BIO] ?: cached.localAccount.bio,
                     socialLinks = SocialLinks(
-                        facebookUrl = prefs[Keys.SOCIAL_FACEBOOK] ?: "",
-                        instagramUrl = prefs[Keys.SOCIAL_INSTAGRAM] ?: "",
-                        whatsappUrl = prefs[Keys.SOCIAL_WHATSAPP] ?: "",
-                        twitterUrl = prefs[Keys.SOCIAL_TWITTER] ?: "",
-                        telegramUrl = prefs[Keys.SOCIAL_TELEGRAM] ?: "",
-                        youtubeUrl = prefs[Keys.SOCIAL_YOUTUBE] ?: ""
-                    )
+                        facebookUrl = prefs[Keys.SOCIAL_FACEBOOK] ?: cached.localAccount.socialLinks.facebookUrl,
+                        instagramUrl = prefs[Keys.SOCIAL_INSTAGRAM] ?: cached.localAccount.socialLinks.instagramUrl,
+                        whatsappUrl = prefs[Keys.SOCIAL_WHATSAPP] ?: cached.localAccount.socialLinks.whatsappUrl,
+                        twitterUrl = prefs[Keys.SOCIAL_TWITTER] ?: cached.localAccount.socialLinks.twitterUrl,
+                        telegramUrl = prefs[Keys.SOCIAL_TELEGRAM] ?: cached.localAccount.socialLinks.telegramUrl,
+                        youtubeUrl = prefs[Keys.SOCIAL_YOUTUBE] ?: cached.localAccount.socialLinks.youtubeUrl
+                    ),
+                    profilePhotoUri = prefs[Keys.LOCAL_PROFILE_PHOTO_URI] ?: cached.localAccount.profilePhotoUri
                 )
             }
 
@@ -489,6 +496,54 @@ class UserPreferencesRepository(context: Context) {
         }
     }
 
+    suspend fun updateEasyProfile(
+        penName: String,
+        bio: String,
+        profilePhotoUri: String,
+        socialLinks: SocialLinks? = null
+    ) {
+        val cleanName = penName.trim().take(40)
+        val cleanBio = bio.trim().take(160)
+        val cleanPhoto = profilePhotoUri.trim().take(512)
+        val normalizedLinks = socialLinks?.normalized()
+
+        withContext(Dispatchers.IO) {
+            val editor = syncPrefs.edit()
+                .putString(SYNC_LOCAL_BIO, cleanBio)
+                .putString(SYNC_LOCAL_PROFILE_PHOTO_URI, cleanPhoto)
+            if (cleanName.isNotBlank()) {
+                editor.putString(SYNC_AUTHOR_PEN_NAME, cleanName)
+                editor.putString(SYNC_LOCAL_FULL_NAME, cleanName)
+            }
+            if (normalizedLinks != null) {
+                editor.putString(SYNC_SOCIAL_FACEBOOK, normalizedLinks.facebookUrl)
+                    .putString(SYNC_SOCIAL_INSTAGRAM, normalizedLinks.instagramUrl)
+                    .putString(SYNC_SOCIAL_WHATSAPP, normalizedLinks.whatsappUrl)
+                    .putString(SYNC_SOCIAL_TWITTER, normalizedLinks.twitterUrl)
+                    .putString(SYNC_SOCIAL_TELEGRAM, normalizedLinks.telegramUrl)
+                    .putString(SYNC_SOCIAL_YOUTUBE, normalizedLinks.youtubeUrl)
+            }
+            editor.commit()
+        }
+
+        appContext.shayariDataStore.edit { prefs ->
+            if (cleanName.isNotBlank()) {
+                prefs[Keys.AUTHOR_PEN_NAME] = cleanName
+                prefs[Keys.LOCAL_ACCOUNT_FULL_NAME] = cleanName
+            }
+            prefs[Keys.LOCAL_ACCOUNT_BIO] = cleanBio
+            prefs[Keys.LOCAL_PROFILE_PHOTO_URI] = cleanPhoto
+            if (normalizedLinks != null) {
+                prefs[Keys.SOCIAL_FACEBOOK] = normalizedLinks.facebookUrl
+                prefs[Keys.SOCIAL_INSTAGRAM] = normalizedLinks.instagramUrl
+                prefs[Keys.SOCIAL_WHATSAPP] = normalizedLinks.whatsappUrl
+                prefs[Keys.SOCIAL_TWITTER] = normalizedLinks.twitterUrl
+                prefs[Keys.SOCIAL_TELEGRAM] = normalizedLinks.telegramUrl
+                prefs[Keys.SOCIAL_YOUTUBE] = normalizedLinks.youtubeUrl
+            }
+        }
+    }
+
     private companion object {
         const val SYNC_PREFS_NAME = "shayari_account_session_sync"
         const val SYNC_THEME_MODE = "theme_mode"
@@ -514,6 +569,7 @@ class UserPreferencesRepository(context: Context) {
         const val SYNC_SOCIAL_TWITTER = "social_twitter"
         const val SYNC_SOCIAL_TELEGRAM = "social_telegram"
         const val SYNC_SOCIAL_YOUTUBE = "social_youtube"
+        const val SYNC_LOCAL_PROFILE_PHOTO_URI = "local_profile_photo_uri"
     }
 }
 

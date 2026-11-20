@@ -835,6 +835,8 @@ private fun PersonalShayariCard(
 
 private fun formatTimestamp(timestamp: Timestamp?): String {
     if (timestamp == null) return ""
-    val formatter = SimpleDateFormat("d MMM yyyy", Locale.forLanguageTag("hi-IN"))
-    return formatter.format(timestamp.toDate())
+    return runCatching {
+        val formatter = SimpleDateFormat("d MMM yyyy", Locale.forLanguageTag("hi-IN"))
+        formatter.format(timestamp.toDate())
+    }.getOrDefault("")
 }

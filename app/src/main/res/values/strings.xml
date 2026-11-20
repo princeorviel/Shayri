@@ -246,5 +246,23 @@
     <string name="admin_dashboard_refresh_cd">आँकड़े रिफ्रेश करें</string>
     <string name="admin_dashboard_loading">Firestore से शायरी आँकड़े लोड हो रहे हैं…</string>
     <string name="admin_dashboard_search_hint">कैटेगरी खोजें (जैसे: मोहब्बत, दर्द, Dosti)…</string>
+
+    <string name="inline_categories_heading">सभी श्रेणियाँ चुनें</string>
+    <string name="inline_categories_close">बंद करें</string>
+    <string name="inline_categories_show_more">और %1$d श्रेणियाँ देखें</string>
+    <string name="inline_categories_show_less">कम दिखाएँ</string>
+
+    <string name="profile_editor_title">Account</string>
+    <string name="profile_photo_heading">Profile Photo</string>
+    <string name="profile_photo_choose">फ़ोटो चुनें</string>
+    <string name="profile_photo_selected">फ़ोटो चुनी गई ✓</string>
+    <string name="profile_photo_none">कोई फ़ोटो नहीं चुनी</string>
+    <string name="profile_photo_remove_cd">प्रोफ़ाइल फ़ोटो हटाएँ</string>
+    <string name="profile_name_placeholder">आपका नाम लिखें…</string>
+    <string name="profile_bio_placeholder">अपना अंदाज़ या बायो लिखें…</string>
+    <string name="profile_save_cta">प्रोफ़ाइल सेव करें</string>
+    <string name="profile_saved_snackbar">प्रोफ़ाइल सेव हो गई ✨</string>
+    <string name="profile_photo_error_snackbar">फ़ोटो लोड नहीं हो सकी, कृपया कोई दूसरी फ़ोटो चुनें</string>
+    <string name="profile_social_links_optional">सोशल मीडिया लिंक जोड़ें (वैकल्पिक)</string>
 </resources>
 

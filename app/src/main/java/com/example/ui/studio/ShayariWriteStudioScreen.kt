@@ -68,13 +68,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
@@ -85,12 +90,16 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.R
 import com.example.ai.ShayariAssistMode
 import com.example.data.model.ShayariCategory
 import com.example.ui.components.ShayariAiAssistPanel
 import com.example.ui.theme.LocalShayariReadingStyle
+import com.example.ui.viewmodel.PersonalShayariEvent
 import com.example.ui.viewmodel.PersonalShayariUiState
 import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.util.HinglishTransliterator
@@ -111,7 +120,17 @@ fun ShayariWriteStudioScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
+
+    val latestOnSaved by rememberUpdatedState(onSaved)
+    val latestOnFeedback by rememberUpdatedState(onFeedback)
+    val latestOnClose by rememberUpdatedState(onClose)
+
+    var activeSubmissionId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var hasDispatchedSaveNavigation by remember { mutableStateOf(false) }
 
     var currentStep by remember { mutableStateOf(initialStep) }
     var activeDesignTab by remember { mutableStateOf(DesignTab.WALLPAPER) }
@@ -124,6 +143,44 @@ fun ShayariWriteStudioScreen(
         )
     }
     var isSharingImage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.events.collect { event ->
+                when (event) {
+                    is PersonalShayariEvent.SaveSucceeded -> {
+                        if (activeSubmissionId == event.submissionId && !hasDispatchedSaveNavigation) {
+                            activeSubmissionId = null
+                            hasDispatchedSaveNavigation = true
+                            focusManager.clearFocus(force = true)
+                            keyboardController?.hide()
+                            latestOnSaved(event.wasUpdate)
+                        }
+                    }
+
+                    is PersonalShayariEvent.SaveFailed -> {
+                        if (activeSubmissionId == event.submissionId) {
+                            activeSubmissionId = null
+                            latestOnFeedback(event.message)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    val submitPost: () -> Unit = {
+        if (!hasDispatchedSaveNavigation && !uiState.isSaving && activeSubmissionId == null) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            val submissionId = viewModel.nextSubmissionId()
+            activeSubmissionId = submissionId
+            val accepted = viewModel.submitShayari(submissionId)
+            if (!accepted) {
+                activeSubmissionId = null
+            }
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -138,17 +195,19 @@ fun ShayariWriteStudioScreen(
     }
 
     val handleBack: () -> Unit = {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
         if (currentStep == StudioStep.DESIGN) {
             currentStep = StudioStep.WRITE
         } else {
-            onClose()
+            latestOnClose()
         }
     }
     BackHandler(onBack = handleBack)
 
     val isEditing = uiState.editingItem != null
     val trimmedCouplet = uiState.coupletInput.trim()
-    val canProceed = trimmedCouplet.length >= 4 && !uiState.isSaving
+    val canProceed = trimmedCouplet.length >= 4 && !uiState.isSaving && !hasDispatchedSaveNavigation
     var localAuthorName by remember(authorName) { mutableStateOf(authorName.trim()) }
     val signature = localAuthorName.trim()
 
@@ -222,12 +281,7 @@ fun ShayariWriteStudioScreen(
                     }
                 } else {
                     Button(
-                        onClick = {
-                            viewModel.saveShayari(
-                                onSuccess = onSaved,
-                                onError = onFeedback
-                            )
-                        },
+                        onClick = submitPost,
                         enabled = canProceed,
                         shape = RoundedCornerShape(50),
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
@@ -283,12 +337,7 @@ fun ShayariWriteStudioScreen(
                             onInsertRhymingWord = viewModel::insertRhymingWord,
                             onApplyLineCompletion = viewModel::applyLineCompletion,
                             onDismissAi = viewModel::dismissAiSuggestions,
-                            onQuickSave = {
-                                viewModel.saveShayari(
-                                    onSuccess = onSaved,
-                                    onError = onFeedback
-                                )
-                            }
+                            onQuickSave = submitPost
                         )
                     }
 
@@ -300,6 +349,7 @@ fun ShayariWriteStudioScreen(
                             tag = uiState.themeTagInput,
                             design = designState,
                             activeTab = activeDesignTab,
+                            canSavePost = canProceed,
                             isSaving = uiState.isSaving,
                             isSharingImage = isSharingImage,
                             onTabSelected = { activeDesignTab = it },
@@ -339,12 +389,7 @@ fun ShayariWriteStudioScreen(
                                 designState = designState.copy(scrimDimness = nextDim)
                             },
                             onDesignUpdated = { designState = it },
-                            onSavePost = {
-                                viewModel.saveShayari(
-                                    onSuccess = onSaved,
-                                    onError = onFeedback
-                                )
-                            },
+                            onSavePost = submitPost,
                             onShareCard = {
                                 if (onRequestShareDesignedCard != null) {
                                     onRequestShareDesignedCard(
@@ -853,6 +898,7 @@ private fun StudioDesignStepContent(
     tag: String,
     design: ShayariDesignState,
     activeTab: DesignTab,
+    canSavePost: Boolean,
     isSaving: Boolean,
     isSharingImage: Boolean,
     onTabSelected: (DesignTab) -> Unit,
@@ -870,6 +916,7 @@ private fun StudioDesignStepContent(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(0.46f)
+                .clipToBounds()
                 .background(MaterialTheme.colorScheme.surfaceContainerLow)
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             contentAlignment = Alignment.Center
@@ -999,7 +1046,7 @@ private fun StudioDesignStepContent(
 
             Button(
                 onClick = onSavePost,
-                enabled = !isSaving,
+                enabled = canSavePost && !isSaving,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier
                     .weight(1f)

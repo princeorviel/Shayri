@@ -13,12 +13,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 interface PersonalShayariStore {
     fun observePersonalShayari(userId: String): Flow<List<PersonalShayari>>
@@ -41,7 +44,8 @@ interface PersonalShayariStore {
 
 class PersonalShayariRepository(
     private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val auth: FirebaseAuth = Firebase.auth,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : PersonalShayariStore {
     constructor(context: Context) : this(
         db = FirebaseFirestore.getInstance(
@@ -91,9 +95,9 @@ class PersonalShayariRepository(
         title: String,
         themeTag: String,
         couplet: String
-    ): Result<String> {
+    ): Result<String> = withContext(ioDispatcher) {
         var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL"
-        return try {
+        try {
             val uid = requireUserId()
             val cleanTitle = title.trim().take(80)
             val rawThemeTag = themeTag.trim().take(40)
@@ -105,7 +109,7 @@ class PersonalShayariRepository(
             val cleanCouplet = couplet.trim().take(600)
 
             if (cleanCouplet.length < MIN_CLOUD_COUPLET_LENGTH) {
-                return Result.failure(
+                return@withContext Result.failure(
                     IllegalArgumentException("कृपया कम से कम $MIN_CLOUD_COUPLET_LENGTH अक्षरों की शायरी लिखें।")
                 )
             }
@@ -139,12 +143,14 @@ class PersonalShayariRepository(
         title: String,
         themeTag: String,
         couplet: String
-    ): Result<Unit> {
+    ): Result<Unit> = withContext(ioDispatcher) {
         var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL/$shayariId"
-        return try {
+        try {
             val uid = requireUserId()
             if (shayariId.isBlank()) {
-                return Result.failure(IllegalArgumentException("शायरी अपडेट करने के लिए सही ID नहीं मिली।"))
+                return@withContext Result.failure(
+                    IllegalArgumentException("शायरी अपडेट करने के लिए सही ID नहीं मिली।")
+                )
             }
             val cleanTitle = title.trim().take(80)
             val rawThemeTag = themeTag.trim().take(40)
@@ -156,7 +162,7 @@ class PersonalShayariRepository(
             val cleanCouplet = couplet.trim().take(600)
 
             if (cleanCouplet.length < MIN_CLOUD_COUPLET_LENGTH) {
-                return Result.failure(
+                return@withContext Result.failure(
                     IllegalArgumentException("कृपया कम से कम $MIN_CLOUD_COUPLET_LENGTH अक्षरों की शायरी लिखें।")
                 )
             }
@@ -183,24 +189,25 @@ class PersonalShayariRepository(
         }
     }
 
-    override suspend fun deletePersonalShayari(shayariId: String): Result<Unit> {
-        var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL/$shayariId"
-        return try {
-            val uid = requireUserId()
-            val docRef = db.collection("users")
-                .document(uid)
-                .collection(SUBCOLLECTION_PERSONAL)
-                .document(shayariId)
-            docPath = docRef.path
-            docRef.delete().await()
-            Result.success(Unit)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.DELETE, docPath)
-            Result.failure(e)
+    override suspend fun deletePersonalShayari(shayariId: String): Result<Unit> =
+        withContext(ioDispatcher) {
+            var docPath = "users/unknown/$SUBCOLLECTION_PERSONAL/$shayariId"
+            try {
+                val uid = requireUserId()
+                val docRef = db.collection("users")
+                    .document(uid)
+                    .collection(SUBCOLLECTION_PERSONAL)
+                    .document(shayariId)
+                docPath = docRef.path
+                docRef.delete().await()
+                Result.success(Unit)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                handleFirestoreError(e, OperationType.DELETE, docPath)
+                Result.failure(e)
+            }
         }
-    }
 
     companion object {
         const val SUBCOLLECTION_PERSONAL = "personal_shayari"

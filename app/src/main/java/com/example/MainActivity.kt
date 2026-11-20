@@ -113,6 +113,7 @@ import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.CategoriesScreen
 import com.example.ui.screens.CategoryDetailScreen
 import com.example.ui.screens.CommentTarget
+import com.example.ui.screens.EasyProfileEditorScreen
 import com.example.ui.screens.FavoritesScreen
 import com.example.ui.screens.KaviManchAuthGate
 import com.example.ui.screens.KaviManchScreen
@@ -129,6 +130,7 @@ import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.ui.viewmodel.ShayariViewModel
+import com.example.util.ProfilePhotoStorage
 import com.example.util.ShayariShareHelper
 import com.example.util.SocialShareLauncher
 import com.example.util.SocialSharePlatform
@@ -143,6 +145,7 @@ const val ROUTE_CATEGORIES = "categories"
 const val ROUTE_CATEGORY_DETAIL = "category_detail/{categoryId}"
 const val ROUTE_FAVORITES = "favorites"
 const val ROUTE_ACCOUNT = "account"
+const val ROUTE_EDIT_PROFILE = "edit_profile"
 const val ROUTE_AUTH = "auth"
 const val ROUTE_ADMIN_DASHBOARD = "admin_dashboard"
 const val ROUTE_KAVI_MANCH = "kavi_manch"
@@ -855,7 +858,14 @@ private fun ShayariAppRoot(
 
     val localAccount = uiState.preferences.localAccount
     val isAnySignedIn = currentUser != null || localAccount.isLoggedIn
-    val navAvatarDisplayName = currentUser?.displayName?.takeIf { it.isNotBlank() }
+    val resolvedProfilePhotoUri = remember(localAccount.profilePhotoUri, currentUser?.photoUrl) {
+        ProfilePhotoStorage.resolveDisplayUri(
+            storedPhotoUri = localAccount.profilePhotoUri,
+            fallbackRemoteUri = currentUser?.photoUrl
+        )
+    }
+    val navAvatarDisplayName = uiState.preferences.authorPenName.takeIf { it.isNotBlank() }
+        ?: currentUser?.displayName?.takeIf { it.isNotBlank() }
         ?: localAccount.fullName.takeIf { localAccount.isLoggedIn && it.isNotBlank() }
 
     val resolvedAuthorName = remember(uiState.preferences.authorPenName, localAccount, currentUser) {
@@ -908,7 +918,9 @@ private fun ShayariAppRoot(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useNavigationRail = maxWidth >= 600.dp
 
-        val isFullScreenStudioOrReader = currentRoute == ROUTE_READER || currentRoute == ROUTE_WRITE_STUDIO
+        val isFullScreenStudioOrReader = currentRoute == ROUTE_READER ||
+            currentRoute == ROUTE_WRITE_STUDIO ||
+            currentRoute == ROUTE_EDIT_PROFILE
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -921,7 +933,7 @@ private fun ShayariAppRoot(
                         isHomeSelected = currentRoute == ROUTE_MEHFIL,
                         isFavoritesSelected = currentRoute == ROUTE_FAVORITES,
                         isAccountSelected = currentRoute == ROUTE_ACCOUNT,
-                        currentUserPhotoUrl = currentUser?.photoUrl,
+                        currentUserPhotoUrl = resolvedProfilePhotoUri,
                         currentUserDisplayName = navAvatarDisplayName,
                         isSignedIn = isAnySignedIn,
                         onHomeClick = ::handleHomeTabClick,
@@ -965,7 +977,7 @@ private fun ShayariAppRoot(
                                 icon = {
                                     if (tab == BottomTab.ACCOUNT) {
                                         AccountAvatar(
-                                            photoUrl = currentUser?.photoUrl,
+                                            photoUrl = resolvedProfilePhotoUri,
                                             displayName = navAvatarDisplayName,
                                             isSignedIn = isAnySignedIn,
                                             isSelected = selected,
@@ -1027,11 +1039,7 @@ private fun ShayariAppRoot(
                                         launchSingleTop = true
                                     }
                                 },
-                                onOpenCategories = {
-                                    navController.navigate(ROUTE_CATEGORIES) {
-                                        launchSingleTop = true
-                                    }
-                                },
+                                onOpenCategories = {},
                                 unreadNotificationCount = unreadNotificationCount,
                                 onOpenNotificationSettings = { showNotificationSheet = true },
                                 searchExpanded = isHomeSearchExpanded,
@@ -1042,7 +1050,12 @@ private fun ShayariAppRoot(
                                 onShareApp = ::handleShareApp,
                                 isOwner = isOwner,
                                 showCounts = isOwner,
-                                onTripleTapOwnerToggle = ::handleTripleTapOwnerToggle
+                                onTripleTapOwnerToggle = ::handleTripleTapOwnerToggle,
+                                onOpenAdminDashboard = {
+                                    navController.navigate(ROUTE_ADMIN_DASHBOARD) {
+                                        launchSingleTop = true
+                                    }
+                                }
                             )
                         }
 
@@ -1143,6 +1156,7 @@ private fun ShayariAppRoot(
                                         onAuthorNameChanged = viewModel::setAuthorPenName,
                                         authorPenName = resolvedAuthorName,
                                         localAccount = localAccount,
+                                        profilePhotoUri = resolvedProfilePhotoUri,
                                         onOpenAuthSheet = {
                                             authScreenError = null
                                             navController.navigate(ROUTE_AUTH) {
@@ -1153,6 +1167,19 @@ private fun ShayariAppRoot(
                                             viewModel.updateLocalProfileAndSocialLinks(
                                                 penName = newName,
                                                 bio = newBio,
+                                                socialLinks = newSocials
+                                            )
+                                        },
+                                        onOpenEasyProfile = {
+                                            navController.navigate(ROUTE_EDIT_PROFILE) {
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                        onSaveEasyProfile = { newName, newBio, newPhotoUri, newSocials ->
+                                            viewModel.updateEasyProfile(
+                                                penName = newName,
+                                                bio = newBio,
+                                                profilePhotoUri = newPhotoUri,
                                                 socialLinks = newSocials
                                             )
                                         },
@@ -1213,10 +1240,24 @@ private fun ShayariAppRoot(
                                         onAuthorNameChanged = viewModel::setAuthorPenName,
                                         authorPenName = resolvedAuthorName,
                                         localAccount = localAccount,
+                                        profilePhotoUri = resolvedProfilePhotoUri,
                                         onUpdateLocalProfile = { newName, newBio, newSocials ->
                                             viewModel.updateLocalProfileAndSocialLinks(
                                                 penName = newName,
                                                 bio = newBio,
+                                                socialLinks = newSocials
+                                            )
+                                        },
+                                        onOpenEasyProfile = {
+                                            navController.navigate(ROUTE_EDIT_PROFILE) {
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                        onSaveEasyProfile = { newName, newBio, newPhotoUri, newSocials ->
+                                            viewModel.updateEasyProfile(
+                                                penName = newName,
+                                                bio = newBio,
+                                                profilePhotoUri = newPhotoUri,
                                                 socialLinks = newSocials
                                             )
                                         },
@@ -1231,6 +1272,73 @@ private fun ShayariAppRoot(
                                     )
                                 }
                             }
+                        }
+
+                        composable(ROUTE_EDIT_PROFILE) {
+                            val activeUser = currentUser
+                            val activeCommunityVm = sharedCommunityViewModel
+                            val communityUiState = activeCommunityVm?.uiState?.collectAsStateWithLifecycle()?.value
+                            val myPoetProfile = remember(communityUiState?.poetProfiles, activeUser?.uid) {
+                                val uid = activeUser?.uid ?: return@remember null
+                                communityUiState?.profileFor(uid)
+                            }
+                            val initialBio = if (activeUser != null) {
+                                communityUiState?.userProfile?.bio?.takeIf { it.isNotBlank() }
+                                    ?: myPoetProfile?.bio?.takeIf { it.isNotBlank() }
+                                    ?: localAccount.bio
+                            } else {
+                                localAccount.bio
+                            }
+                            val initialSocialLinks = remember(myPoetProfile, localAccount.socialLinks, activeUser) {
+                                val remoteLinks = myPoetProfile?.toSocialLinks()
+                                if (activeUser != null && remoteLinks != null && remoteLinks.hasAny()) {
+                                    remoteLinks
+                                } else {
+                                    localAccount.socialLinks
+                                }
+                            }
+
+                            EasyProfileEditorScreen(
+                                initialName = resolvedAuthorName,
+                                initialBio = initialBio,
+                                initialStoredPhotoUri = localAccount.profilePhotoUri,
+                                fallbackRemotePhotoUri = activeUser?.photoUrl,
+                                initialSocialLinks = initialSocialLinks,
+                                isSaving = communityUiState?.isSubmitting == true,
+                                onBack = { navController.popBackStack() },
+                                onFeedback = ::showFeedback,
+                                onSave = { newName, newBio, newPhotoUri, newSocials ->
+                                    if (activeUser != null && activeCommunityVm != null) {
+                                        activeCommunityVm.updatePoetProfile(
+                                            penName = newName,
+                                            bio = newBio,
+                                            socialLinks = newSocials,
+                                            onSuccess = {
+                                                viewModel.updateEasyProfile(
+                                                    penName = newName,
+                                                    bio = newBio,
+                                                    profilePhotoUri = newPhotoUri,
+                                                    socialLinks = newSocials
+                                                ) {
+                                                    navController.popBackStack()
+                                                    showFeedback(context.getString(R.string.profile_saved_snackbar))
+                                                }
+                                            },
+                                            onError = ::showFeedback
+                                        )
+                                    } else {
+                                        viewModel.updateEasyProfile(
+                                            penName = newName,
+                                            bio = newBio,
+                                            profilePhotoUri = newPhotoUri,
+                                            socialLinks = newSocials
+                                        ) {
+                                            navController.popBackStack()
+                                            showFeedback(context.getString(R.string.profile_saved_snackbar))
+                                        }
+                                    }
+                                }
+                            )
                         }
 
                         composable(ROUTE_AUTH) {

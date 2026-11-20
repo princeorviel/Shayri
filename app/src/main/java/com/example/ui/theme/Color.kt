@@ -13,6 +13,8 @@ val SlateMuted = Color(0xFF5E5C6B)
 val CrimsonRosePrimary = Color(0xFFE11D48)
 val RoseTintContainer = Color(0xFFFFE4EB)
 val OnRoseTintContainer = Color(0xFF881337)
+val RoseVioletGradientStart = Color(0xFFEC4899)
+val RoseVioletGradientEnd = Color(0xFF9333EA)
 
 val WarmCoralSecondary = Color(0xFFD96B27)
 val WarmPeachContainer = Color(0xFFFFEDE0)

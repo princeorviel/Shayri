@@ -19,9 +19,12 @@ import com.example.data.remote.CommunityShayariRepository
 import com.example.data.remote.PostNotificationsRepository
 import com.google.firebase.firestore.FirebaseFirestoreException
 import java.util.Calendar
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -29,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -36,6 +40,11 @@ sealed interface CommunityFeedState {
     data object Loading : CommunityFeedState
     data class Success(val posts: List<CommunityShayari>) : CommunityFeedState
     data class Error(val message: String) : CommunityFeedState
+}
+
+sealed interface CommunityPostEvent {
+    data class PublishSucceeded(val wasUpdate: Boolean, val submissionId: Long) : CommunityPostEvent
+    data class PublishFailed(val message: String, val submissionId: Long) : CommunityPostEvent
 }
 
 data class CommunityUiState(
@@ -68,6 +77,10 @@ class CommunityViewModel(
     private val showMyPostsOnlyFlow = MutableStateFlow(false)
     private val showFollowingOnlyFlow = MutableStateFlow(false)
     private val isSubmittingFlow = MutableStateFlow(false)
+    private val isPostInFlight = AtomicBoolean(false)
+    private val postSubmissionIdGenerator = AtomicLong(0L)
+    private val postEventChannel = Channel<CommunityPostEvent>(Channel.BUFFERED)
+    val postEvents: Flow<CommunityPostEvent> = postEventChannel.receiveAsFlow()
     private val aiUiStateFlow = MutableStateFlow<ShayariAiUiState>(ShayariAiUiState.Idle)
     private var aiJob: Job? = null
     private val promptIndexFlow = MutableStateFlow(
@@ -425,47 +438,114 @@ class CommunityViewModel(
         }
     }
 
+    fun nextPostSubmissionId(): Long = postSubmissionIdGenerator.incrementAndGet()
+
+    fun submitCommunityShayari(
+        editingId: String?,
+        penName: String,
+        couplet: String,
+        categoryId: String,
+        promptTitle: String,
+        submissionId: Long = nextPostSubmissionId()
+    ): Boolean = publishOrUpdateShayariInternal(
+        editingId = editingId,
+        penName = penName,
+        couplet = couplet,
+        categoryId = categoryId,
+        promptTitle = promptTitle,
+        submissionId = submissionId,
+        onSuccess = null,
+        onError = null
+    )
+
     fun publishOrUpdateShayari(
         editingId: String?,
         penName: String,
         couplet: String,
         categoryId: String,
         promptTitle: String,
-        onSuccess: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        if (isSubmittingFlow.value) return
+        onSuccess: () -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): Boolean = publishOrUpdateShayariInternal(
+        editingId = editingId,
+        penName = penName,
+        couplet = couplet,
+        categoryId = categoryId,
+        promptTitle = promptTitle,
+        submissionId = nextPostSubmissionId(),
+        onSuccess = onSuccess,
+        onError = onError
+    )
+
+    private fun publishOrUpdateShayariInternal(
+        editingId: String?,
+        penName: String,
+        couplet: String,
+        categoryId: String,
+        promptTitle: String,
+        submissionId: Long,
+        onSuccess: (() -> Unit)?,
+        onError: ((String) -> Unit)?
+    ): Boolean {
+        if (!isPostInFlight.compareAndSet(false, true)) return false
+        val wasUpdate = editingId != null
+        isSubmittingFlow.value = true
+
         viewModelScope.launch {
-            isSubmittingFlow.value = true
-            val result = try {
-                if (editingId == null) {
-                    repository.publishShayari(penName, couplet, categoryId, promptTitle)
+            var outcome: Result<Unit>? = null
+            try {
+                val writeResult = if (editingId == null) {
+                    repository.publishShayari(penName, couplet, categoryId, promptTitle).map { Unit }
                 } else {
                     repository.updateShayari(editingId, penName, couplet, categoryId, promptTitle)
                 }
+                if (writeResult.isSuccess) {
+                    val existingPosts = (uiState.value.feedState as? CommunityFeedState.Success)?.posts.orEmpty()
+                    val myCount = existingPosts.count { it.userId == currentUserId } + if (editingId == null) 1 else 0
+                    try {
+                        repository.upsertUserProfile(
+                            penName = penName,
+                            bio = uiState.value.userProfile?.bio.orEmpty(),
+                            postCount = myCount
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Profile sync after publish failed (post already saved)", e)
+                    }
+                }
+                outcome = writeResult
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Unexpected error publishing shayari", e)
-                Result.failure(e)
+                outcome = Result.failure(e)
+            } finally {
+                isSubmittingFlow.value = false
+                isPostInFlight.set(false)
             }
-            if (result.isSuccess) {
-                val existingPosts = (uiState.value.feedState as? CommunityFeedState.Success)?.posts.orEmpty()
-                val myCount = existingPosts.count { it.userId == currentUserId } + if (editingId == null) 1 else 0
-                runCatching {
-                    repository.upsertUserProfile(
-                        penName = penName,
-                        bio = uiState.value.userProfile?.bio.orEmpty(),
-                        postCount = myCount
+
+            val finalOutcome = outcome ?: return@launch
+            if (finalOutcome.isSuccess) {
+                postEventChannel.send(
+                    CommunityPostEvent.PublishSucceeded(
+                        wasUpdate = wasUpdate,
+                        submissionId = submissionId
                     )
-                }
-                isSubmittingFlow.value = false
-                onSuccess()
+                )
+                onSuccess?.invoke()
             } else {
-                isSubmittingFlow.value = false
-                onError(result.exceptionOrNull()?.localizedMessage ?: "शायरी पोस्ट नहीं हो सकी")
+                val message = finalOutcome.exceptionOrNull()?.localizedMessage ?: "शायरी पोस्ट नहीं हो सकी"
+                postEventChannel.send(
+                    CommunityPostEvent.PublishFailed(
+                        message = message,
+                        submissionId = submissionId
+                    )
+                )
+                onError?.invoke(message)
             }
         }
+        return true
     }
 
     fun deleteShayari(shayariId: String, onSuccess: () -> Unit, onError: (String) -> Unit) {

@@ -95,6 +95,7 @@ import com.example.data.model.ShayariEntity
 import com.example.data.model.shayariCommentKey
 import com.example.ui.components.CategoryChipStrip
 import com.example.ui.components.FloatingScrollButtons
+import com.example.ui.components.InlineCategoryPickerCard
 import com.example.ui.components.OptimizedDrawableImage
 import com.example.ui.components.ShayariCardItem
 import com.example.ui.theme.LocalShayariReadingStyle
@@ -127,9 +128,11 @@ fun MehfilScreen(
     isOwner: Boolean = false,
     showCounts: Boolean = isOwner,
     onTripleTapOwnerToggle: (() -> Unit)? = null,
+    onOpenAdminDashboard: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    var isCategoryGridExpanded by remember { mutableStateOf(false) }
     val popularPool = remember(uiState.popularShayari, uiState.featuredShayari) {
         uiState.popularShayari.ifEmpty { listOfNotNull(uiState.featuredShayari) }
     }
@@ -138,6 +141,7 @@ fun MehfilScreen(
 
     LaunchedEffect(refreshTrigger) {
         if (refreshTrigger > 0) {
+            isCategoryGridExpanded = false
             listState.animateScrollToItem(0)
         }
     }
@@ -317,17 +321,37 @@ fun MehfilScreen(
                             )
                         }
 
-                        IconButton(
-                            onClick = onOpenCategories,
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = if (isCategoryGridExpanded) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.primaryContainer
+                            },
+                            shadowElevation = if (isCategoryGridExpanded) 3.dp else 0.dp,
                             modifier = Modifier
+                                .padding(start = 4.dp, end = 4.dp)
                                 .minimumInteractiveComponentSize()
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    isCategoryGridExpanded = !isCategoryGridExpanded
+                                    onOpenCategories()
+                                }
                                 .testTag("top_categories_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.GridView,
-                                contentDescription = stringResource(R.string.action_categories),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.GridView,
+                                    contentDescription = stringResource(R.string.action_categories),
+                                    tint = if (isCategoryGridExpanded) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    },
+                                    modifier = Modifier.size(21.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -452,6 +476,29 @@ fun MehfilScreen(
                             .fillMaxWidth()
                             .height(1.dp)
                             .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    )
+                }
+            }
+
+            // 2.6 Easy Inline Expandable "सभी श्रेणियाँ चुनें" 3-column Grid Panel
+            item(key = "inline_categories_grid") {
+                AnimatedVisibility(
+                    visible = isCategoryGridExpanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    InlineCategoryPickerCard(
+                        selectedCategoryId = uiState.selectedCategoryId,
+                        categoryCounts = uiState.categoryCounts,
+                        showCounts = showCounts,
+                        onSelectCategory = { catId ->
+                            onCategorySelected(catId)
+                            isCategoryGridExpanded = false
+                        },
+                        onClose = { isCategoryGridExpanded = false },
+                        isOwner = isOwner,
+                        onOpenAdminDashboard = onOpenAdminDashboard,
+                        modifier = Modifier.padding(horizontal = 16.dp)
                     )
                 }
             }

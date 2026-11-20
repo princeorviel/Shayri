@@ -35,7 +35,7 @@ fun AccountAvatar(
     contentDescription: String? = null,
     modifier: Modifier = Modifier
 ) {
-    if (!isSignedIn) {
+    if (!isSignedIn && photoUrl == null) {
         Icon(
             imageVector = if (isSelected) Icons.Rounded.Person else Icons.Outlined.Person,
             contentDescription = contentDescription,

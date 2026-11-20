@@ -16,16 +16,20 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 class CommunityShayariRepository(
     private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val auth: FirebaseAuth = Firebase.auth,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     constructor(context: Context) : this(
         db = FirebaseFirestore.getInstance(
@@ -215,15 +219,22 @@ class CommunityShayariRepository(
         couplet: String,
         categoryId: String,
         promptTitle: String
-    ): Result<String> {
+    ): Result<String> = withContext(ioDispatcher) {
         var docPath = COLLECTION_COMMUNITY
-        return try {
+        try {
             val uid = requireUserId()
-            val docRef = db.collection(COLLECTION_COMMUNITY).document()
-            docPath = docRef.path
             val cleanPenName = penName.trim().ifBlank { "शायर दोस्त" }.take(40)
             val cleanCouplet = couplet.trim().take(500)
             val cleanPrompt = promptTitle.trim().take(120)
+
+            if (cleanCouplet.length < 10) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("कृपया कम से कम 10 अक्षरों की शायरी लिखें।")
+                )
+            }
+
+            val docRef = db.collection(COLLECTION_COMMUNITY).document()
+            docPath = docRef.path
 
             val payload = mapOf(
                 "userId" to uid,
@@ -252,15 +263,21 @@ class CommunityShayariRepository(
         couplet: String,
         categoryId: String,
         promptTitle: String
-    ): Result<Unit> {
+    ): Result<Unit> = withContext(ioDispatcher) {
         var docPath = "$COLLECTION_COMMUNITY/$shayariId"
-        return try {
+        try {
             requireUserId()
+            val cleanCouplet = couplet.trim().take(500)
+            if (cleanCouplet.length < 10) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("कृपया कम से कम 10 अक्षरों की शायरी लिखें।")
+                )
+            }
             val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
             docPath = docRef.path
             val updates = mapOf(
                 "penName" to penName.trim().ifBlank { "शायर दोस्त" }.take(40),
-                "couplet" to couplet.trim().take(500),
+                "couplet" to cleanCouplet,
                 "categoryId" to categoryId,
                 "promptTitle" to promptTitle.trim().take(120),
                 "updatedAt" to FieldValue.serverTimestamp()
@@ -275,9 +292,9 @@ class CommunityShayariRepository(
         }
     }
 
-    suspend fun deleteShayari(shayariId: String): Result<Unit> {
+    suspend fun deleteShayari(shayariId: String): Result<Unit> = withContext(ioDispatcher) {
         var docPath = "$COLLECTION_COMMUNITY/$shayariId"
-        return try {
+        try {
             requireUserId()
             val docRef = db.collection(COLLECTION_COMMUNITY).document(shayariId)
             docPath = docRef.path
@@ -454,16 +471,18 @@ class CommunityShayariRepository(
         bio: String,
         postCount: Int? = null,
         socialLinks: com.example.data.model.SocialLinks? = null
-    ): Result<Unit> {
-        val uid = requireUserId()
-        val docRef = db.collection("users").document(uid)
-        val poetRef = db.collection(COLLECTION_POET_PROFILES).document(uid)
-        val cleanPenName = penName.trim().ifBlank { "शायर दोस्त" }.take(40).let {
-            if (it.length < 2) "शायर दोस्त" else it
-        }
-        val cleanBio = bio.trim().take(160)
-        val normalizedSocials = socialLinks?.normalized()
-        return try {
+    ): Result<Unit> = withContext(ioDispatcher) {
+        var docPath = "users/unknown"
+        try {
+            val uid = requireUserId()
+            val docRef = db.collection("users").document(uid)
+            docPath = docRef.path
+            val poetRef = db.collection(COLLECTION_POET_PROFILES).document(uid)
+            val cleanPenName = penName.trim().ifBlank { "शायर दोस्त" }.take(40).let {
+                if (it.length < 2) "शायर दोस्त" else it
+            }
+            val cleanBio = bio.trim().take(160)
+            val normalizedSocials = socialLinks?.normalized()
             val existingSnap = docRef.get().await()
             if (existingSnap.exists()) {
                 docRef.update(
@@ -530,7 +549,7 @@ class CommunityShayariRepository(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            handleFirestoreError(e, OperationType.WRITE, docRef.path)
+            handleFirestoreError(e, OperationType.WRITE, docPath)
             Result.failure(e)
         }
     }

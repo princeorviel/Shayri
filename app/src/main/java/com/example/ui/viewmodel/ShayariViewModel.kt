@@ -371,6 +371,24 @@ class ShayariViewModel(
         }
     }
 
+    fun updateEasyProfile(
+        penName: String,
+        bio: String,
+        profilePhotoUri: String,
+        socialLinks: com.example.data.model.SocialLinks? = null,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.updateEasyProfile(
+                penName = penName,
+                bio = bio,
+                profilePhotoUri = profilePhotoUri,
+                socialLinks = socialLinks
+            )
+            onComplete()
+        }
+    }
+
     fun setDailyNotificationSettings(enabled: Boolean, hour: Int, minute: Int) {
         viewModelScope.launch {
             preferencesRepository.setDailyNotificationSettings(enabled, hour, minute)

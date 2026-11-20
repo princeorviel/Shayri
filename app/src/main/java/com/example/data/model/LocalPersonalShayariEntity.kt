@@ -21,9 +21,16 @@ fun LocalPersonalShayariEntity.toPersonalShayari(userId: String = LOCAL_GUEST_US
         title = title,
         themeTag = themeTag,
         couplet = couplet,
-        createdAt = Timestamp(createdAtMillis / 1000L, ((createdAtMillis % 1000L) * 1_000_000L).toInt()),
-        updatedAt = Timestamp(updatedAtMillis / 1000L, ((updatedAtMillis % 1000L) * 1_000_000L).toInt())
+        createdAt = safeTimestampFromMillis(createdAtMillis),
+        updatedAt = safeTimestampFromMillis(updatedAtMillis)
     )
+}
+
+private fun safeTimestampFromMillis(millis: Long): Timestamp {
+    val safeMillis = millis.coerceAtLeast(0L)
+    val seconds = safeMillis / 1000L
+    val nanos = ((safeMillis % 1000L) * 1_000_000L).toInt().coerceIn(0, 999_999_999)
+    return Timestamp(seconds, nanos)
 }
 
 const val LOCAL_GUEST_USER_ID = "guest_local"

@@ -12,15 +12,20 @@ import com.example.ai.ShayariDraftEditorHelper
 import com.example.data.model.PersonalShayari
 import com.example.data.remote.PersonalShayariStore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -28,6 +33,11 @@ sealed interface PersonalCollectionState {
     data object Loading : PersonalCollectionState
     data class Success(val items: List<PersonalShayari>) : PersonalCollectionState
     data class Error(val message: String) : PersonalCollectionState
+}
+
+sealed interface PersonalShayariEvent {
+    data class SaveSucceeded(val wasUpdate: Boolean, val submissionId: Long) : PersonalShayariEvent
+    data class SaveFailed(val message: String, val submissionId: Long) : PersonalShayariEvent
 }
 
 data class PersonalShayariUiState(
@@ -61,6 +71,10 @@ class PersonalShayariViewModel(
     private val searchQueryFlow = MutableStateFlow("")
     private val isSavingFlow = MutableStateFlow(false)
     private val aiUiStateFlow = MutableStateFlow<ShayariAiUiState>(ShayariAiUiState.Idle)
+    private val isSaveInFlight = AtomicBoolean(false)
+    private val submissionIdGenerator = AtomicLong(0L)
+    private val eventChannel = Channel<PersonalShayariEvent>(Channel.BUFFERED)
+    val events: Flow<PersonalShayariEvent> = eventChannel.receiveAsFlow()
     private var aiJob: Job? = null
 
     private val itemsFlow: StateFlow<PersonalCollectionState> = repository
@@ -304,26 +318,57 @@ class PersonalShayariViewModel(
         aiUiStateFlow.value = ShayariAiUiState.Idle
     }
 
+    fun nextSubmissionId(): Long = submissionIdGenerator.incrementAndGet()
+
+    /**
+     * Starts an asynchronous save operation and emits the result via the lifecycle-safe
+     * [events] stream. Returns true if the submission was accepted, or false if a save is
+     * already in progress.
+     */
+    fun submitShayari(submissionId: Long = nextSubmissionId()): Boolean =
+        saveShayariInternal(submissionId = submissionId, onSuccess = null, onError = null)
+
     fun saveShayari(
-        onSuccess: (wasUpdate: Boolean) -> Unit,
-        onError: (String) -> Unit
-    ) {
-        if (isSavingFlow.value) return
+        onSuccess: (wasUpdate: Boolean) -> Unit = {},
+        onError: (String) -> Unit = {}
+    ): Boolean = saveShayariInternal(
+        submissionId = nextSubmissionId(),
+        onSuccess = onSuccess,
+        onError = onError
+    )
+
+    private fun saveShayariInternal(
+        submissionId: Long,
+        onSuccess: ((wasUpdate: Boolean) -> Unit)?,
+        onError: ((String) -> Unit)?
+    ): Boolean {
         val cleanTitle = titleInputFlow.value.trim()
         val rawTag = themeTagInputFlow.value.trim()
         val effectiveTag = if (cleanTitle.isBlank() && rawTag.isBlank()) "मेरी शायरी" else rawTag
         val cleanCouplet = coupletInputFlow.value.trim()
 
         if (cleanCouplet.length < 4) {
-            onError("कृपया कम से कम कुछ शब्द लिखें")
-            return
+            val validationMessage = "कृपया कम से कम कुछ शब्द लिखें"
+            eventChannel.trySend(
+                PersonalShayariEvent.SaveFailed(
+                    message = validationMessage,
+                    submissionId = submissionId
+                )
+            )
+            onError?.invoke(validationMessage)
+            return true
         }
 
+        if (!isSaveInFlight.compareAndSet(false, true)) return false
+
         val editing = editingItemFlow.value
+        val wasUpdate = editing != null
+        isSavingFlow.value = true
+
         viewModelScope.launch {
-            isSavingFlow.value = true
-            val result = try {
-                if (editing == null) {
+            var saveOutcome: Result<Unit>? = null
+            try {
+                saveOutcome = if (editing == null) {
                     repository.savePersonalShayari(
                         title = cleanTitle,
                         themeTag = effectiveTag,
@@ -337,27 +382,46 @@ class PersonalShayariViewModel(
                         couplet = cleanCouplet
                     )
                 }
+
+                if (saveOutcome.isSuccess) {
+                    editingItemFlow.value = null
+                    titleInputFlow.value = ""
+                    themeTagInputFlow.value = ""
+                    coupletInputFlow.value = ""
+                    aiUiStateFlow.value = ShayariAiUiState.Idle
+                    externalDraftVersionFlow.value += 1
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Unexpected error while saving personal shayari", e)
-                Result.failure(e)
+                saveOutcome = Result.failure(e)
             } finally {
                 isSavingFlow.value = false
+                isSaveInFlight.set(false)
             }
 
-            if (result.isSuccess) {
-                editingItemFlow.value = null
-                titleInputFlow.value = ""
-                themeTagInputFlow.value = ""
-                coupletInputFlow.value = ""
-                aiUiStateFlow.value = ShayariAiUiState.Idle
-                externalDraftVersionFlow.value += 1
-                onSuccess(editing != null)
+            val outcome = saveOutcome ?: return@launch
+            if (outcome.isSuccess) {
+                eventChannel.send(
+                    PersonalShayariEvent.SaveSucceeded(
+                        wasUpdate = wasUpdate,
+                        submissionId = submissionId
+                    )
+                )
+                onSuccess?.invoke(wasUpdate)
             } else {
-                onError(result.exceptionOrNull()?.localizedMessage ?: "शायरी सेव नहीं हो सकी")
+                val errorMessage = outcome.exceptionOrNull()?.localizedMessage ?: "शायरी सेव नहीं हो सकी"
+                eventChannel.send(
+                    PersonalShayariEvent.SaveFailed(
+                        message = errorMessage,
+                        submissionId = submissionId
+                    )
+                )
+                onError?.invoke(errorMessage)
             }
         }
+        return true
     }
 
     fun deleteShayari(

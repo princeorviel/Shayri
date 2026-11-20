@@ -64,10 +64,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +87,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.example.R
 import com.example.ai.ShayariAiUiState
 import com.example.ai.ShayariAssistMode
@@ -103,6 +109,7 @@ import com.example.ui.components.CategoryChipStrip
 import com.example.ui.components.ShayariAiAssistPanel
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.ui.viewmodel.CommunityFeedState
+import com.example.ui.viewmodel.CommunityPostEvent
 import com.example.ui.viewmodel.CommunityUiState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.google.firebase.auth.FirebaseUser
@@ -277,11 +284,45 @@ fun KaviManchScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val latestOnFeedback by rememberUpdatedState(onFeedback)
     var showComposer by remember { mutableStateOf(false) }
     var editingPost by remember { mutableStateOf<CommunityShayari?>(null) }
     var prefillPromptTitle by remember { mutableStateOf("") }
     var prefillCategoryId by remember { mutableStateOf(ShayariCategory.MOHABBAT.id) }
     var deleteCandidate by remember { mutableStateOf<CommunityShayari?>(null) }
+    var activeSubmissionId by rememberSaveable { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.postEvents.collect { event ->
+                when (event) {
+                    is CommunityPostEvent.PublishSucceeded -> {
+                        if (activeSubmissionId == event.submissionId) {
+                            activeSubmissionId = null
+                            viewModel.dismissAiSuggestions()
+                            showComposer = false
+                            editingPost = null
+                            latestOnFeedback(
+                                if (event.wasUpdate) {
+                                    "शायरी अपडेट हो गई"
+                                } else {
+                                    "आपकी शायरी पोस्ट हो गई!"
+                                }
+                            )
+                        }
+                    }
+
+                    is CommunityPostEvent.PublishFailed -> {
+                        if (activeSubmissionId == event.submissionId) {
+                            activeSubmissionId = null
+                            latestOnFeedback(event.message)
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     val defaultPenName = uiState.userProfile?.penName?.takeIf { it.isNotBlank() }
         ?: currentUser.displayName?.takeIf { it.isNotBlank() }
@@ -667,25 +708,21 @@ fun KaviManchScreen(
                 showComposer = false
             },
             onSubmit = { penName, couplet, categoryId, promptTitle ->
-                viewModel.publishOrUpdateShayari(
-                    editingId = editingPost?.id,
-                    penName = penName,
-                    couplet = couplet,
-                    categoryId = categoryId,
-                    promptTitle = promptTitle,
-                    onSuccess = {
-                        viewModel.dismissAiSuggestions()
-                        showComposer = false
-                        onFeedback(
-                            if (editingPost == null) {
-                                "आपकी शायरी पोस्ट हो गई!"
-                            } else {
-                                "शायरी अपडेट हो गई"
-                            }
-                        )
-                    },
-                    onError = onFeedback
-                )
+                if (activeSubmissionId == null && !uiState.isSubmitting) {
+                    val submissionId = viewModel.nextPostSubmissionId()
+                    activeSubmissionId = submissionId
+                    val accepted = viewModel.submitCommunityShayari(
+                        editingId = editingPost?.id,
+                        penName = penName,
+                        couplet = couplet,
+                        categoryId = categoryId,
+                        promptTitle = promptTitle,
+                        submissionId = submissionId
+                    )
+                    if (!accepted) {
+                        activeSubmissionId = null
+                    }
+                }
             }
         )
     }

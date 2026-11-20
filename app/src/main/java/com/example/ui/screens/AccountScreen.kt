@@ -19,11 +19,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Insights
@@ -70,6 +72,7 @@ import com.example.ui.components.SocialLinksChipsRow
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
+import com.example.util.ProfilePhotoStorage
 import com.google.firebase.auth.FirebaseUser
 
 @Composable
@@ -94,8 +97,11 @@ fun AccountScreen(
     onAuthorNameChanged: (String) -> Unit = {},
     authorPenName: String = "",
     localAccount: LocalShayarAccount = LocalShayarAccount(),
+    profilePhotoUri: Uri? = null,
     onOpenAuthSheet: (() -> Unit)? = null,
     onUpdateLocalProfile: ((penName: String, bio: String, socialLinks: SocialLinks) -> Unit)? = null,
+    onOpenEasyProfile: (() -> Unit)? = null,
+    onSaveEasyProfile: ((penName: String, bio: String, storedPhotoUri: String, socialLinks: SocialLinks) -> Unit)? = null,
     isOwner: Boolean = false,
     totalCatalogShayariCount: Int = 0,
     categoryCount: Int = 0,
@@ -129,10 +135,8 @@ fun AccountScreen(
         communityUiState?.userProfile?.bio?.takeIf { it.isNotBlank() }
             ?: myPoetProfile?.bio?.takeIf { it.isNotBlank() }
             ?: localAccount.bio
-    } else if (isLocalSignedIn) {
-        localAccount.bio
     } else {
-        ""
+        localAccount.bio
     }
     val activeSocialLinks = remember(myPoetProfile, localAccount.socialLinks, isFirebaseSignedIn) {
         val remoteLinks = myPoetProfile?.toSocialLinks()
@@ -171,7 +175,14 @@ fun AccountScreen(
         else -> stringResource(R.string.guest_writer_subtitle)
     }
 
-    var showEditProfileDialog by remember { mutableStateOf(false) }
+    val effectivePhotoUri = remember(profilePhotoUri, localAccount.profilePhotoUri, currentUser?.photoUrl) {
+        profilePhotoUri ?: ProfilePhotoStorage.resolveDisplayUri(
+            storedPhotoUri = localAccount.profilePhotoUri,
+            fallbackRemoteUri = currentUser?.photoUrl
+        )
+    }
+
+    var showInlineEasyProfile by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val googleSignIn = rememberGoogleSignInLauncher(
@@ -180,14 +191,64 @@ fun AccountScreen(
         onClickOverride = signInClickOverride
     )
 
-    val canEditProfile = (isFirebaseSignedIn && communityViewModel != null) || isLocalSignedIn
+    val triggerOpenEasyProfile: () -> Unit = {
+        if (onOpenEasyProfile != null) {
+            onOpenEasyProfile()
+        } else {
+            showInlineEasyProfile = true
+        }
+    }
+
+    if (showInlineEasyProfile) {
+        EasyProfileEditorScreen(
+            initialName = if (displayName == stringResource(R.string.guest_writer_title)) "" else displayName,
+            initialBio = currentBio,
+            initialStoredPhotoUri = localAccount.profilePhotoUri,
+            fallbackRemotePhotoUri = currentUser?.photoUrl,
+            initialSocialLinks = activeSocialLinks,
+            isSaving = communityUiState?.isSubmitting == true,
+            onBack = { showInlineEasyProfile = false },
+            onFeedback = onFeedback,
+            onSave = { newName, newBio, newPhotoUri, newSocialLinks ->
+                if (isFirebaseSignedIn && communityViewModel != null) {
+                    communityViewModel.updatePoetProfile(
+                        penName = newName,
+                        bio = newBio,
+                        socialLinks = newSocialLinks,
+                        onSuccess = {
+                            if (onSaveEasyProfile != null) {
+                                onSaveEasyProfile(newName, newBio, newPhotoUri, newSocialLinks)
+                            } else {
+                                onUpdateLocalProfile?.invoke(newName, newBio, newSocialLinks)
+                                onAuthorNameChanged(newName)
+                            }
+                            showInlineEasyProfile = false
+                            onFeedback(context.getString(R.string.profile_saved_snackbar))
+                        },
+                        onError = onFeedback
+                    )
+                } else {
+                    if (onSaveEasyProfile != null) {
+                        onSaveEasyProfile(newName, newBio, newPhotoUri, newSocialLinks)
+                    } else {
+                        onUpdateLocalProfile?.invoke(newName, newBio, newSocialLinks)
+                        onAuthorNameChanged(newName)
+                    }
+                    showInlineEasyProfile = false
+                    onFeedback(context.getString(R.string.profile_saved_snackbar))
+                }
+            },
+            modifier = modifier
+        )
+        return
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         AccountProfileHeader(
-            photoUrl = currentUser?.photoUrl,
+            photoUrl = effectivePhotoUri,
             displayName = displayName,
             email = accountSubtitle,
             postCount = totalPostCount,
@@ -213,9 +274,7 @@ fun AccountScreen(
             followerCount = followerCount,
             followingCount = followingCount,
             showSocialStats = isSignedIn,
-            onEditProfile = if (canEditProfile) {
-                { showEditProfileDialog = true }
-            } else null,
+            onEditProfile = triggerOpenEasyProfile,
             onOpenMyPoetProfile = if (isSignedIn) onOpenMyPoetProfile else null,
             onOpenKaviManch = onOpenKaviManch,
             isOwner = isOwner,
@@ -251,37 +310,6 @@ fun AccountScreen(
                 showHeader = false
             )
         }
-    }
-
-    if (showEditProfileDialog && canEditProfile) {
-        ProfileManagementSheet(
-            initialPenName = displayName,
-            initialBio = currentBio,
-            initialSocialLinks = activeSocialLinks,
-            isSaving = communityUiState?.isSubmitting == true,
-            onDismiss = { showEditProfileDialog = false },
-            onSave = { newPenName, newBio, newSocialLinks ->
-                if (isFirebaseSignedIn && communityViewModel != null) {
-                    communityViewModel.updatePoetProfile(
-                        penName = newPenName,
-                        bio = newBio,
-                        socialLinks = newSocialLinks,
-                        onSuccess = {
-                            onUpdateLocalProfile?.invoke(newPenName, newBio, newSocialLinks)
-                            onAuthorNameChanged(newPenName)
-                            showEditProfileDialog = false
-                            onFeedback(context.getString(R.string.poet_profile_saved_snackbar))
-                        },
-                        onError = onFeedback
-                    )
-                } else {
-                    onUpdateLocalProfile?.invoke(newPenName, newBio, newSocialLinks)
-                    onAuthorNameChanged(newPenName)
-                    showEditProfileDialog = false
-                    onFeedback(context.getString(R.string.poet_profile_saved_snackbar))
-                }
-            }
-        )
     }
 }
 
@@ -324,15 +352,48 @@ fun AccountProfileHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            AccountAvatar(
-                photoUrl = photoUrl,
-                displayName = resolvedName,
-                isSignedIn = isSignedIn,
-                isSelected = true,
-                size = 52.dp,
-                contentDescription = resolvedName,
-                modifier = Modifier.testTag("account_profile_avatar")
-            )
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .then(
+                        if (onEditProfile != null) {
+                            Modifier.clickable(onClick = onEditProfile)
+                        } else {
+                            Modifier
+                        }
+                    )
+            ) {
+                AccountAvatar(
+                    photoUrl = photoUrl,
+                    displayName = resolvedName,
+                    isSignedIn = isSignedIn,
+                    isSelected = true,
+                    size = 54.dp,
+                    contentDescription = resolvedName,
+                    modifier = Modifier.testTag("account_profile_avatar")
+                )
+                if (onEditProfile != null) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary,
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(20.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Rounded.CameraAlt,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
+                    }
+                }
+            }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -463,7 +524,7 @@ fun AccountProfileHeader(
             )
         }
 
-        if (isSignedIn && (onEditProfile != null || onOpenMyPoetProfile != null)) {
+        if (onEditProfile != null || (isSignedIn && onOpenMyPoetProfile != null)) {
             Spacer(modifier = Modifier.height(10.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),

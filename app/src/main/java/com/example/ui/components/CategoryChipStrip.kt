@@ -12,13 +12,21 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,9 +34,13 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
@@ -37,12 +49,35 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.ShayariCategory
+import com.example.ui.theme.RoseVioletGradientEnd
+import com.example.ui.theme.RoseVioletGradientStart
 
-private val CHIP_SHAPE = RoundedCornerShape(14.dp)
+private val PILL_CHIP_SHAPE = RoundedCornerShape(50)
+private val INLINE_CARD_SHAPE = RoundedCornerShape(22.dp)
+private val INLINE_CHIP_SHAPE = RoundedCornerShape(16.dp)
+
+private val ROSE_VIOLET_GRADIENT = Brush.horizontalGradient(
+    colors = listOf(RoseVioletGradientStart, RoseVioletGradientEnd)
+)
+
+private val QUICK_INLINE_CATEGORIES: List<ShayariCategory> = listOf(
+    ShayariCategory.ROMANTIC,
+    ShayariCategory.DOSTI,
+    ShayariCategory.ZINDAGI,
+    ShayariCategory.DARD,
+    ShayariCategory.BEWAFAI,
+    ShayariCategory.SHARABI,
+    ShayariCategory.MOHABBAT,
+    ShayariCategory.PRAKRITI,
+    ShayariCategory.HAUSLA,
+    ShayariCategory.ATTITUDE,
+    ShayariCategory.TANHAI
+)
 
 @Composable
 fun CategoryChipStrip(
@@ -88,6 +123,7 @@ fun CategoryChipStrip(
             EmojiCategoryChip(
                 label = label,
                 selected = selectedCategoryId == null,
+                useGradientWhenSelected = true,
                 onClick = { onSelectCategory(null) },
                 testTag = "category_chip_all"
             )
@@ -134,9 +170,9 @@ fun CategoryChipStrip(
                 val count = if (showCounts) categoryCounts[category.id] else null
                 val accent = if (isDarkTheme) category.darkAccent else category.lightAccent
                 val label = if (showCounts && count != null && count > 0) {
-                    "${category.titleHi} ${category.emoji} ($count)"
+                    "${category.emoji} ${category.titleHi} ($count)"
                 } else {
-                    "${category.titleHi} ${category.emoji}"
+                    "${category.emoji} ${category.titleHi}"
                 }
                 EmojiCategoryChip(
                     label = label,
@@ -152,6 +188,308 @@ fun CategoryChipStrip(
                     testTag = "category_chip_${category.id}"
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun InlineCategoryPickerCard(
+    selectedCategoryId: String?,
+    categoryCounts: Map<String, Int>,
+    showCounts: Boolean,
+    onSelectCategory: (String?) -> Unit,
+    onClose: () -> Unit,
+    isOwner: Boolean = false,
+    onOpenAdminDashboard: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val allOrderedCategories = remember {
+        QUICK_INLINE_CATEGORIES + ShayariCategory.entries.filter { it !in QUICK_INLINE_CATEGORIES }
+    }
+    var showAllCategories by remember { mutableStateOf(false) }
+
+    val visibleCategories = remember(showAllCategories, allOrderedCategories, selectedCategoryId) {
+        if (showAllCategories) {
+            allOrderedCategories
+        } else {
+            val base = QUICK_INLINE_CATEGORIES
+            val activeCategory = selectedCategoryId?.let { ShayariCategory.fromId(it) }
+            if (activeCategory != null && activeCategory !in base) {
+                listOf(activeCategory) + base.dropLast(1)
+            } else {
+                base
+            }
+        }
+    }
+    val remainingCount = (allOrderedCategories.size - QUICK_INLINE_CATEGORIES.size).coerceAtLeast(0)
+    val totalCount = if (showCounts) categoryCounts.values.sum() else 0
+
+    // Pair of (categoryId or null for "All", display label)
+    val allTitle = stringResource(R.string.all_categories)
+    val chipEntries = remember(visibleCategories, categoryCounts, showCounts, totalCount, allTitle) {
+        buildList {
+            val allLabel = if (showCounts && totalCount > 0) {
+                "✨ $allTitle ($totalCount)"
+            } else {
+                "✨ $allTitle"
+            }
+            add(null to allLabel)
+            visibleCategories.forEach { cat ->
+                val count = categoryCounts[cat.id]
+                val label = if (showCounts && count != null && count > 0) {
+                    "${cat.emoji} ${cat.titleHi} ($count)"
+                } else {
+                    "${cat.emoji} ${cat.titleHi}"
+                }
+                add(cat.id to label)
+            }
+        }
+    }
+    val rows = remember(chipEntries) { chipEntries.chunked(3) }
+
+    Surface(
+        shape = INLINE_CARD_SHAPE,
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 4.dp,
+        tonalElevation = 1.dp,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("inline_categories_panel")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Header row: "सभी श्रेणियाँ चुनें" + "बंद करें ×"
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.inline_categories_heading),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier
+                        .minimumInteractiveComponentSize()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(role = Role.Button, onClick = onClose)
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .testTag("inline_categories_close_button")
+                ) {
+                    Text(
+                        text = stringResource(R.string.inline_categories_close),
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.inline_categories_close),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            // Clean 3-column grid of rounded category pills
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                rows.forEach { rowItems ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        rowItems.forEach { (catId, label) ->
+                            val isSelected = selectedCategoryId == catId
+                            InlineGridCategoryPill(
+                                label = label,
+                                selected = isSelected,
+                                onClick = {
+                                    onSelectCategory(catId)
+                                    onClose()
+                                },
+                                testTag = if (catId == null) {
+                                    "inline_category_chip_all"
+                                } else {
+                                    "inline_category_chip_$catId"
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        // Fill remaining slots in the last row so pills keep uniform 3-column width
+                        repeat(3 - rowItems.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+
+            // Footer actions: Expand all 32 categories + Owner Admin Dashboard shortcut
+            if (remainingCount > 0 || (isOwner && onOpenAdminDashboard != null)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (remainingCount > 0) {
+                        Surface(
+                            shape = PILL_CHIP_SHAPE,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                            ),
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = 44.dp)
+                                .clip(PILL_CHIP_SHAPE)
+                                .clickable(role = Role.Button) {
+                                    showAllCategories = !showAllCategories
+                                }
+                                .testTag("inline_categories_toggle_all_button")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (showAllCategories) {
+                                        stringResource(R.string.inline_categories_show_less)
+                                    } else {
+                                        stringResource(R.string.inline_categories_show_more, remainingCount)
+                                    },
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.SemiBold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    imageVector = if (showAllCategories) {
+                                        Icons.Rounded.ExpandLess
+                                    } else {
+                                        Icons.Rounded.ExpandMore
+                                    },
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (isOwner && onOpenAdminDashboard != null) {
+                        Surface(
+                            shape = PILL_CHIP_SHAPE,
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)
+                            ),
+                            modifier = Modifier
+                                .defaultMinSize(minHeight = 44.dp)
+                                .clip(PILL_CHIP_SHAPE)
+                                .clickable(role = Role.Button) {
+                                    onClose()
+                                    onOpenAdminDashboard()
+                                }
+                                .testTag("inline_categories_admin_dashboard_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.AdminPanelSettings,
+                                    contentDescription = stringResource(R.string.admin_dashboard_title),
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Dashboard",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineGridCategoryPill(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    val unselectedBg = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+    val borderStroke = if (selected) {
+        null
+    } else {
+        BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+    }
+
+    Surface(
+        shape = INLINE_CHIP_SHAPE,
+        color = if (selected) Color.Transparent else unselectedBg,
+        border = borderStroke,
+        shadowElevation = if (selected) 3.dp else 0.dp,
+        modifier = modifier
+            .defaultMinSize(minHeight = 44.dp)
+            .clip(INLINE_CHIP_SHAPE)
+            .semantics { this.selected = selected }
+            .clickable(role = Role.Tab, onClick = onClick)
+            .testTag(testTag)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(
+                    if (selected) {
+                        Modifier.background(ROSE_VIOLET_GRADIENT)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 8.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium.copy(
+                    fontSize = 12.sp,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                ),
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -173,7 +511,7 @@ private fun CoreMoodCategoryChip(
         Color.White
     }
     val containerColor by animateColorAsState(
-        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.surfaceContainerLow,
+        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.surface,
         animationSpec = tween(200),
         label = "coreChipBg"
     )
@@ -188,28 +526,28 @@ private fun CoreMoodCategoryChip(
         label = "coreChipSecondaryFg"
     )
     val borderColor by animateColorAsState(
-        targetValue = if (selected) accentColor else accentColor.copy(alpha = 0.34f),
+        targetValue = if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant,
         animationSpec = tween(200),
         label = "coreChipBorder"
     )
 
     Surface(
-        shape = CHIP_SHAPE,
+        shape = PILL_CHIP_SHAPE,
         color = containerColor,
         border = BorderStroke(if (selected) 1.5.dp else 1.dp, borderColor),
         tonalElevation = 0.dp,
-        shadowElevation = if (selected) 3.dp else 1.dp,
+        shadowElevation = if (selected) 4.dp else 1.5.dp,
         modifier = modifier
             .minimumInteractiveComponentSize()
             .defaultMinSize(minHeight = 48.dp)
-            .clip(CHIP_SHAPE)
+            .clip(PILL_CHIP_SHAPE)
             .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag(testTag)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
             Text(
                 text = emoji,
@@ -249,16 +587,23 @@ fun EmojiCategoryChip(
     onClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
-    accentColor: Color? = null
+    accentColor: Color? = null,
+    useGradientWhenSelected: Boolean = false
 ) {
     val activeBg = accentColor ?: MaterialTheme.colorScheme.primary
-    val activeFg = if (activeBg.luminance() > 0.48f) {
+    val activeFg = if (useGradientWhenSelected) {
+        Color.White
+    } else if (activeBg.luminance() > 0.48f) {
         Color(0xFF18181F)
     } else {
         Color.White
     }
     val containerColor by animateColorAsState(
-        targetValue = if (selected) activeBg else MaterialTheme.colorScheme.surfaceContainerLow,
+        targetValue = when {
+            selected && useGradientWhenSelected -> Color.Transparent
+            selected -> activeBg
+            else -> MaterialTheme.colorScheme.surface
+        },
         animationSpec = tween(200),
         label = "chipBg"
     )
@@ -268,34 +613,46 @@ fun EmojiCategoryChip(
         label = "chipFg"
     )
     val borderColor by animateColorAsState(
-        targetValue = if (selected) activeBg else MaterialTheme.colorScheme.outlineVariant,
+        targetValue = when {
+            selected && useGradientWhenSelected -> Color.Transparent
+            selected -> activeBg
+            else -> MaterialTheme.colorScheme.outlineVariant
+        },
         animationSpec = tween(200),
         label = "chipBorder"
     )
 
     Surface(
-        shape = CHIP_SHAPE,
+        shape = PILL_CHIP_SHAPE,
         color = containerColor,
-        border = BorderStroke(1.dp, borderColor),
+        border = if (selected && useGradientWhenSelected) null else BorderStroke(1.dp, borderColor),
         tonalElevation = 0.dp,
-        shadowElevation = if (selected) 2.dp else 1.dp,
+        shadowElevation = if (selected) 4.dp else 1.5.dp,
         modifier = modifier
             .minimumInteractiveComponentSize()
             .defaultMinSize(minHeight = 48.dp)
-            .clip(CHIP_SHAPE)
+            .clip(PILL_CHIP_SHAPE)
             .semantics { this.selected = selected }
             .clickable(role = Role.Tab, onClick = onClick)
             .testTag(testTag)
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp)
+            modifier = Modifier
+                .then(
+                    if (selected && useGradientWhenSelected) {
+                        Modifier.background(ROSE_VIOLET_GRADIENT)
+                    } else {
+                        Modifier
+                    }
+                )
+                .padding(horizontal = 15.dp, vertical = 10.dp)
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelLarge.copy(
                     fontSize = 13.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                 ),
                 color = contentColor,
                 maxLines = 1

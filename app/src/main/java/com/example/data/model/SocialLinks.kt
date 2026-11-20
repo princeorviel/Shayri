@@ -171,7 +171,8 @@ data class LocalShayarAccount(
     val contact: String = "",
     val bio: String = "",
     val passwordHash: String = "",
-    val socialLinks: SocialLinks = SocialLinks()
+    val socialLinks: SocialLinks = SocialLinks(),
+    val profilePhotoUri: String = ""
 ) {
     val handleDisplay: String
         get() = username.trim().removePrefix("@").takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty()
