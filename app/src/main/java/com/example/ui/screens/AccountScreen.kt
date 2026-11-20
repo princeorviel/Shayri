@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.net.Uri
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -69,6 +72,8 @@ import com.example.data.model.openSocialProfileUrl
 import com.example.ui.components.AccountAvatar
 import com.example.ui.components.ProfileManagementSheet
 import com.example.ui.components.SocialLinksChipsRow
+import com.example.ui.theme.RoseVioletGradientEnd
+import com.example.ui.theme.RoseVioletGradientStart
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
@@ -342,180 +347,206 @@ fun AccountProfileHeader(
     val resolvedName = displayName?.takeIf { it.isNotBlank() }
         ?: if (isSignedIn) "शायर दोस्त" else stringResource(R.string.guest_writer_title)
 
+    val headerGradient = Brush.horizontalGradient(
+        colors = listOf(RoseVioletGradientStart, RoseVioletGradientEnd)
+    )
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(start = 18.dp, end = 14.dp, top = 14.dp, bottom = 12.dp)
+            .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = Color.Transparent,
+            shadowElevation = 4.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
+            Column(
                 modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .then(
-                        if (onEditProfile != null) {
-                            Modifier.clickable(onClick = onEditProfile)
-                        } else {
-                            Modifier
-                        }
-                    )
+                    .fillMaxWidth()
+                    .background(headerGradient)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
-                AccountAvatar(
-                    photoUrl = photoUrl,
-                    displayName = resolvedName,
-                    isSignedIn = isSignedIn,
-                    isSelected = true,
-                    size = 54.dp,
-                    contentDescription = resolvedName,
-                    modifier = Modifier.testTag("account_profile_avatar")
-                )
-                if (onEditProfile != null) {
-                    Surface(
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.surface),
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(20.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Rounded.CameraAlt,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(11.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = resolvedName,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onBackground,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.testTag("account_display_name")
-                )
-                if (!email.isNullOrBlank()) {
-                    Text(
-                        text = email,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                if (bio.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = bio,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.testTag("account_poet_bio")
-                    )
-                }
-                Spacer(modifier = Modifier.height(6.dp))
                 Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Surface(
-                        shape = RoundedCornerShape(50),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
-                        modifier = Modifier.testTag("account_stat_posts")
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(58.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (onEditProfile != null) {
+                                    Modifier.clickable(onClick = onEditProfile)
+                                } else {
+                                    Modifier
+                                }
+                            )
                     ) {
-                        Text(
-                            text = "मेरी पोस्ट: $postCount",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            maxLines = 1,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                        AccountAvatar(
+                            photoUrl = photoUrl,
+                            displayName = resolvedName,
+                            isSignedIn = isSignedIn,
+                            isSelected = true,
+                            size = 56.dp,
+                            contentDescription = resolvedName,
+                            modifier = Modifier.testTag("account_profile_avatar")
                         )
-                    }
-                    if (showSocialStats || followerCount > 0L || followingCount > 0L) {
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.22f)),
-                            modifier = Modifier.testTag("account_stat_followers")
-                        ) {
-                            Text(
-                                text = "फ़ॉलोअर्स: $followerCount",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(50),
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.22f)),
-                            modifier = Modifier.testTag("account_stat_following")
-                        ) {
-                            Text(
-                                text = "फ़ॉलोइंग: $followingCount",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
+                        if (onEditProfile != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = Color.White,
+                                border = BorderStroke(1.5.dp, RoseVioletGradientStart),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .size(21.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.CameraAlt,
+                                        contentDescription = null,
+                                        tint = RoseVioletGradientStart,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
                         }
                     }
-                }
-            }
 
-            if (isSignedIn) {
-                IconButton(
-                    onClick = onSignOut,
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .testTag("sign_out_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Logout,
-                        contentDescription = stringResource(R.string.sign_out),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                FilledTonalButton(
-                    onClick = onSignInClick,
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .testTag("account_guest_sign_in_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Login,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = stringResource(R.string.guest_sign_in_cta),
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = resolvedName,
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.testTag("account_display_name")
+                        )
+                        if (!email.isNullOrBlank()) {
+                            Text(
+                                text = email,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.White.copy(alpha = 0.88f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (bio.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = bio,
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                color = Color.White.copy(alpha = 0.96f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.testTag("account_poet_bio")
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.22f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                modifier = Modifier.testTag("account_stat_posts")
+                            ) {
+                                Text(
+                                    text = "मेरी पोस्ट: $postCount",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                )
+                            }
+                            if (showSocialStats || followerCount > 0L || followingCount > 0L) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.22f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                    modifier = Modifier.testTag("account_stat_followers")
+                                ) {
+                                    Text(
+                                        text = "फ़ॉलोअर्स: $followerCount",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White.copy(alpha = 0.22f),
+                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                                    modifier = Modifier.testTag("account_stat_following")
+                                ) {
+                                    Text(
+                                        text = "फ़ॉलोइंग: $followingCount",
+                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = Color.White,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isSignedIn) {
+                        IconButton(
+                            onClick = onSignOut,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("sign_out_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                contentDescription = stringResource(R.string.sign_out),
+                                tint = Color.White
+                            )
+                        }
+                    } else {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .clip(RoundedCornerShape(50))
+                                .clickable(onClick = onSignInClick)
+                                .testTag("account_guest_sign_in_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Login,
+                                    contentDescription = null,
+                                    tint = RoseVioletGradientStart,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    text = stringResource(R.string.guest_sign_in_cta),
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = RoseVioletGradientStart,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
 
         if (socialLinks.hasAny() || (isSignedIn && onEditProfile != null)) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             SocialLinksChipsRow(
                 socialLinks = socialLinks,
                 onOpenLink = onOpenSocialLink,
@@ -525,7 +556,7 @@ fun AccountProfileHeader(
         }
 
         if (onEditProfile != null || (isSignedIn && onOpenMyPoetProfile != null)) {
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)

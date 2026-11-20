@@ -323,12 +323,13 @@ fun MehfilScreen(
 
                         Surface(
                             shape = RoundedCornerShape(12.dp),
-                            color = if (isCategoryGridExpanded) {
-                                MaterialTheme.colorScheme.primary
+                            color = MaterialTheme.colorScheme.primary,
+                            border = if (isCategoryGridExpanded) {
+                                BorderStroke(2.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
                             } else {
-                                MaterialTheme.colorScheme.primaryContainer
+                                null
                             },
-                            shadowElevation = if (isCategoryGridExpanded) 3.dp else 0.dp,
+                            shadowElevation = if (isCategoryGridExpanded) 6.dp else 3.dp,
                             modifier = Modifier
                                 .padding(start = 4.dp, end = 4.dp)
                                 .minimumInteractiveComponentSize()
@@ -344,12 +345,8 @@ fun MehfilScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.GridView,
                                     contentDescription = stringResource(R.string.action_categories),
-                                    tint = if (isCategoryGridExpanded) {
-                                        MaterialTheme.colorScheme.onPrimary
-                                    } else {
-                                        MaterialTheme.colorScheme.primary
-                                    },
-                                    modifier = Modifier.size(21.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
                                 )
                             }
                         }
