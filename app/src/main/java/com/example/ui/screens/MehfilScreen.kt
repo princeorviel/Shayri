@@ -94,12 +94,14 @@ import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.shayariCommentKey
 import com.example.ui.components.CategoryChipStrip
+import com.example.ui.components.FeedCardStyleMode
 import com.example.ui.components.FloatingScrollButtons
 import com.example.ui.components.InlineCategoryPickerCard
 import com.example.ui.components.OptimizedDrawableImage
 import com.example.ui.components.ShayariCardItem
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.ui.viewmodel.ShayariUiState
+import com.example.ui.viewmodel.ShayariViewModel
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -133,6 +135,13 @@ fun MehfilScreen(
 ) {
     val listState = rememberLazyListState()
     var isCategoryGridExpanded by remember { mutableStateOf(false) }
+    var selectedCardStyleModeName by remember {
+        mutableStateOf(FeedCardStyleMode.MIX_YOURQUOTE.name)
+    }
+    val selectedCardStyleMode = remember(selectedCardStyleModeName) {
+        FeedCardStyleMode.entries.firstOrNull { it.name == selectedCardStyleModeName }
+            ?: FeedCardStyleMode.MIX_YOURQUOTE
+    }
     val popularPool = remember(uiState.popularShayari, uiState.featuredShayari) {
         uiState.popularShayari.ifEmpty { listOfNotNull(uiState.featuredShayari) }
     }
@@ -645,6 +654,55 @@ fun MehfilScreen(
                 }
             }
 
+            // 4.5 YourQuote-style Feed Card Look Selector Strip
+            item(key = "feed_card_style_strip") {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("feed_card_style_strip")
+                ) {
+                    items(FeedCardStyleMode.entries, key = { it.name }) { mode ->
+                        val isSelected = selectedCardStyleMode == mode
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (isSelected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerLow
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                }
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { selectedCardStyleModeName = mode.name }
+                                .testTag("feed_card_style_${mode.name}")
+                        ) {
+                            Text(
+                                text = "${mode.emoji} ${mode.labelHi}",
+                                style = MaterialTheme.typography.labelMedium.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
             // 5. Shayari Feed or Empty Search State
             if (uiState.filteredShayari.isEmpty() && !uiState.isLoading) {
                 item(key = "empty_search") {
@@ -693,6 +751,8 @@ fun MehfilScreen(
                     ShayariCardItem(
                         shayari = shayari,
                         commentCount = commentCounts[shayariCommentKey(shayari.id)] ?: 0,
+                        cardStyleMode = selectedCardStyleMode,
+                        isOnlinePost = shayari.id >= ShayariViewModel.ONLINE_COMMUNITY_ID_BASE,
                         onOpenReader = { onOpenReader(shayari, uiState.filteredShayari) },
                         onToggleFavorite = { onToggleFavorite(shayari) },
                         onComment = { onComment(shayari) },

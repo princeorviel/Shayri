@@ -73,6 +73,7 @@ import com.example.data.model.CommunityShayari
 import com.example.data.model.LocalShayarAccount
 import com.example.data.model.PersonalShayari
 import com.example.data.model.ShayariEntity
+import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.SocialLinkPlatform
 import com.example.data.model.SocialLinks
 import com.example.data.model.openSocialProfileUrl
@@ -321,6 +322,44 @@ fun AccountScreen(
                     )
                 },
                 onPersonalPostDeleted = onPersonalPostDeleted,
+                onRequestOnlineSync = if (!isFirebaseSignedIn) {
+                    {
+                        if (onOpenAuthSheet != null) {
+                            onOpenAuthSheet()
+                        } else {
+                            googleSignIn.launch()
+                        }
+                    }
+                } else {
+                    null
+                },
+                onPublishPersonalOnline = if (isFirebaseSignedIn && communityViewModel != null) {
+                    { item ->
+                        val primaryCatId = ShayariTagMatcher.resolvePrimaryCategory(
+                            rawTag = item.themeTag
+                        ).id
+                        val hashTagsStr = ShayariTagMatcher.parseTags(item.themeTag)
+                            .take(5)
+                            .joinToString(" ") { "#$it" }
+                        val promptTitle = listOf(item.title.trim(), hashTagsStr)
+                            .filter { it.isNotBlank() }
+                            .joinToString(" • ")
+                            .take(120)
+                        communityViewModel.publishOrUpdateShayari(
+                            editingId = null,
+                            penName = displayName.ifBlank { "शायर दोस्त" },
+                            couplet = item.couplet.trim(),
+                            categoryId = primaryCatId,
+                            promptTitle = promptTitle,
+                            onSuccess = {
+                                onFeedback("आपकी शायरी अब सभी ऑनलाइन यूज़र्स के लिए लाइव है 🌐✨")
+                            },
+                            onError = onFeedback
+                        )
+                    }
+                } else {
+                    null
+                },
                 onOpenWriteStudio = onOpenWriteStudio,
                 authorPenName = displayName,
                 showHeader = false

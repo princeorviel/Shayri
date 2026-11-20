@@ -100,7 +100,7 @@ class PersonalShayariRepository(
         try {
             val uid = requireUserId()
             val cleanTitle = title.trim().take(80)
-            val rawThemeTag = themeTag.trim().take(40)
+            val rawThemeTag = com.example.data.model.ShayariTagMatcher.trimTagsForCloudPersonal(themeTag, 40)
             val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
                 DEFAULT_THEME_TAG
             } else {
@@ -153,7 +153,7 @@ class PersonalShayariRepository(
                 )
             }
             val cleanTitle = title.trim().take(80)
-            val rawThemeTag = themeTag.trim().take(40)
+            val rawThemeTag = com.example.data.model.ShayariTagMatcher.trimTagsForCloudPersonal(themeTag, 40)
             val effectiveThemeTag = if (cleanTitle.isEmpty() && rawThemeTag.isEmpty()) {
                 DEFAULT_THEME_TAG
             } else {

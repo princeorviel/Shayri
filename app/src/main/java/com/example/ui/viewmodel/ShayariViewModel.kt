@@ -7,10 +7,12 @@ import com.example.data.local.ShayariRepository
 import com.example.data.local.UserPreferences
 import com.example.data.local.UserPreferencesRepository
 import com.example.data.model.CardStyle
+import com.example.data.model.CommunityShayari
 import com.example.data.model.FontScaleOption
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.ShayariFontStyle
+import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.ThemeModeOption
 import com.example.util.HinglishTransliterator
 import java.util.Calendar
@@ -47,6 +49,7 @@ class ShayariViewModel(
     private val searchQueryFlow = MutableStateFlow("")
     private val selectedCategoryFlow = MutableStateFlow<String?>(null)
     private val refreshSeedFlow = MutableStateFlow(0L)
+    private val onlineCommunityPostsFlow = MutableStateFlow<List<ShayariEntity>>(emptyList())
 
     init {
         if (autoSeed) {
@@ -58,11 +61,37 @@ class ShayariViewModel(
 
     private val initialPreferences: UserPreferences = preferencesRepository.readCachedPreferencesSync()
 
-    private val allShayariSharedFlow = repository.allShayari.shareIn(
-        scope = viewModelScope,
-        started = SharingStarted.Eagerly,
-        replay = 1
-    )
+    private val allShayariSharedFlow = combine(
+        repository.allShayari,
+        onlineCommunityPostsFlow
+    ) { localCatalog, onlinePosts ->
+        if (onlinePosts.isEmpty()) {
+            localCatalog
+        } else {
+            val onlineKeys = HashSet<String>(onlinePosts.size * 2)
+            for (post in onlinePosts) {
+                onlineKeys.add(dedupeKey(post.couplet, post.poet))
+            }
+            val merged = ArrayList<ShayariEntity>(onlinePosts.size + localCatalog.size)
+            merged.addAll(onlinePosts)
+            for (item in localCatalog) {
+                // Skip local user-post copy if the exact same post is already live from Firestore
+                if (item.id >= ShayariRepository.USER_POST_ID_BASE &&
+                    dedupeKey(item.couplet, item.poet) in onlineKeys
+                ) {
+                    continue
+                }
+                merged.add(item)
+            }
+            merged
+        }
+    }
+        .flowOn(Dispatchers.Default)
+        .shareIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            replay = 1
+        )
 
     private data class CatalogDerivedState(
         val isLoaded: Boolean = false,
@@ -87,7 +116,14 @@ class ShayariViewModel(
         val renownedPoetPool = ArrayList<ShayariEntity>(256)
 
         for (item in all) {
-            counts[item.categoryId] = (counts[item.categoryId] ?: 0) + 1
+            if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
+                val matchedCats = ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
+                for (catId in matchedCats) {
+                    counts[catId] = (counts[catId] ?: 0) + 1
+                }
+            } else {
+                counts[item.categoryId] = (counts[item.categoryId] ?: 0) + 1
+            }
             if (item.isFeatured) {
                 featuredPool.add(item)
             } else if (item.poet in POPULAR_POETS) {
@@ -142,7 +178,15 @@ class ShayariViewModel(
         val trimmed = query.trim()
         val baseFiltered = when {
             trimmed.isEmpty() && selectedCat == null -> all
-            trimmed.isEmpty() -> all.filter { it.categoryId == selectedCat }
+            trimmed.isEmpty() -> all.filter { item ->
+                if (item.categoryId == selectedCat) {
+                    true
+                } else if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
+                    selectedCat in ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
+                } else {
+                    false
+                }
+            }
             else -> {
                 val hindiQuery = if (HinglishTransliterator.hasConvertibleHinglish(trimmed)) {
                     HinglishTransliterator.transliterateText(trimmed).trim()
@@ -158,8 +202,19 @@ class ShayariViewModel(
                     .mapTo(HashSet()) { it.id }
 
                 all.filter { item ->
-                    if (selectedCat != null && item.categoryId != selectedCat) return@filter false
+                    if (selectedCat != null) {
+                        val inSelectedCat = item.categoryId == selectedCat ||
+                            (ShayariTagMatcher.hasMultiTagMetadata(item) &&
+                                selectedCat in ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag))
+                        if (!inSelectedCat) return@filter false
+                    }
+                    val itemCats = if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
+                        ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
+                    } else {
+                        null
+                    }
                     val matchesRaw = item.categoryId in matchingCategoryIds ||
+                        (itemCats != null && itemCats.any { it in matchingCategoryIds }) ||
                         item.couplet.contains(trimmed, ignoreCase = true) ||
                         item.poet.contains(trimmed, ignoreCase = true) ||
                         item.moodTag.contains(trimmed, ignoreCase = true)
@@ -399,12 +454,32 @@ class ShayariViewModel(
         }
     }
 
+    fun updateOnlineCommunityPosts(posts: List<CommunityShayari>) {
+        val mapped = posts.mapNotNull { post ->
+            val cleanCouplet = post.couplet.trim()
+            if (cleanCouplet.isEmpty()) return@mapNotNull null
+            val cat = ShayariCategory.fromId(post.categoryId)
+            val displayMood = post.promptTitle.trim().ifBlank { cat.titleHi }
+            ShayariEntity(
+                id = onlineCommunityCatalogId(post.id),
+                couplet = cleanCouplet,
+                poet = post.penName.trim().ifBlank { "शायर दोस्त" },
+                categoryId = cat.id,
+                moodTag = displayMood,
+                isFavorite = false,
+                isFeatured = false
+            )
+        }
+        onlineCommunityPostsFlow.value = mapped
+    }
+
     fun upsertUserPostToCatalog(
         personalId: String,
         couplet: String,
         authorName: String,
         title: String = "",
-        themeTag: String = ""
+        themeTag: String = "",
+        primaryCategoryId: String? = null
     ) {
         viewModelScope.launch {
             repository.upsertUserPostToCatalog(
@@ -412,7 +487,8 @@ class ShayariViewModel(
                 couplet = couplet,
                 authorName = authorName,
                 title = title,
-                themeTag = themeTag
+                themeTag = themeTag,
+                primaryCategoryId = primaryCategoryId
             )
         }
     }
@@ -429,8 +505,19 @@ class ShayariViewModel(
         }
     }
 
-    private companion object {
-        val POPULAR_POETS = setOf(
+    companion object {
+        const val ONLINE_COMMUNITY_ID_BASE = 2_000_000
+
+        fun onlineCommunityCatalogId(communityDocId: String): Int {
+            val positiveHash = (communityDocId.hashCode() and 0x3FFFFFFF) % 900_000_000
+            return ONLINE_COMMUNITY_ID_BASE + positiveHash
+        }
+
+        private fun dedupeKey(couplet: String, poet: String): String {
+            return "${couplet.trim().replace(Regex("\\s+"), " ").lowercase()}|${poet.trim().lowercase()}"
+        }
+
+        private val POPULAR_POETS = setOf(
             "मिर्ज़ा ग़ालिब",
             "गुलज़ार",
             "अल्लामा इक़बाल",

@@ -87,6 +87,7 @@ import com.example.data.model.PostNotificationType
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariComment
 import com.example.data.model.ShayariEntity
+import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.ThemeModeOption
 import com.example.data.model.shayariCommentKey
 import com.example.data.model.toShayariEntity
@@ -337,6 +338,17 @@ private fun ShayariAppRoot(
                     notificationsRepository = notificationsRepository
                 )
             )
+        }
+    }
+    val sharedCommunityUiState = sharedCommunityViewModel?.uiState?.collectAsStateWithLifecycle()?.value
+    val liveOnlineCommunityPosts = remember(sharedCommunityUiState?.feedState) {
+        (sharedCommunityUiState?.feedState as? CommunityFeedState.Success)?.posts.orEmpty()
+    }
+    LaunchedEffect(liveOnlineCommunityPosts, currentUser?.uid) {
+        if (currentUser != null) {
+            viewModel.updateOnlineCommunityPosts(liveOnlineCommunityPosts)
+        } else {
+            viewModel.updateOnlineCommunityPosts(emptyList())
         }
     }
     var commentingTarget by remember { mutableStateOf<CommentTarget?>(null) }
@@ -1834,9 +1846,16 @@ private fun ShayariAppRoot(
                             com.example.ui.studio.ShayariWriteStudioScreen(
                                 viewModel = activePersonalViewModel,
                                 authorName = resolvedAuthorName,
+                                isOnlineAccount = currentUser != null,
+                                onRequestGoogleSignIn = {
+                                    authScreenError = null
+                                    navController.navigate(ROUTE_AUTH) {
+                                        launchSingleTop = true
+                                    }
+                                },
                                 onAuthorNameChanged = viewModel::setAuthorPenName,
                                 onClose = { navController.popBackStack() },
-                                onPostSavedToCatalog = { personalId, couplet, authorFromStudio, title, themeTag, wasUpdate ->
+                                onPostPublishedWithCategory = { personalId, couplet, authorFromStudio, title, primaryCategoryId, tagsCsv, wasUpdate ->
                                     val effectiveAuthor = authorFromStudio.trim().ifBlank {
                                         resolvedAuthorName.ifBlank { "शायर दोस्त" }
                                     }
@@ -1848,32 +1867,35 @@ private fun ShayariAppRoot(
                                         couplet = couplet,
                                         authorName = effectiveAuthor,
                                         title = title,
-                                        themeTag = themeTag
+                                        themeTag = tagsCsv,
+                                        primaryCategoryId = primaryCategoryId
                                     )
                                     val activeCommunityVm = sharedCommunityViewModel
                                     if (!wasUpdate && currentUser != null && activeCommunityVm != null && couplet.trim().length >= 10) {
-                                        val matchedCategory = ShayariCategory.entries.firstOrNull { cat ->
-                                            cat.titleHi.equals(themeTag.trim(), ignoreCase = true) ||
-                                                cat.id.equals(themeTag.trim(), ignoreCase = true) ||
-                                                cat.labelEn.equals(themeTag.trim(), ignoreCase = true)
-                                        } ?: ShayariCategory.ZINDAGI
+                                        val hashTagsStr = ShayariTagMatcher.parseTags(tagsCsv)
+                                            .take(5)
+                                            .joinToString(" ") { "#$it" }
+                                        val communityPromptTitle = listOf(title.trim(), hashTagsStr)
+                                            .filter { it.isNotBlank() }
+                                            .joinToString(" • ")
+                                            .take(120)
                                         activeCommunityVm.publishOrUpdateShayari(
                                             editingId = null,
                                             penName = effectiveAuthor,
                                             couplet = couplet.trim(),
-                                            categoryId = matchedCategory.id,
-                                            promptTitle = title.trim(),
+                                            categoryId = primaryCategoryId,
+                                            promptTitle = communityPromptTitle,
                                             onSuccess = {},
-                                            onError = {}
+                                            onError = ::showFeedback
                                         )
                                     }
                                 },
                                 onSaved = { wasUpdate ->
                                     showFeedback(
-                                        if (wasUpdate) {
-                                            "शायरी अपडेट हो गई ✨"
-                                        } else {
-                                            "आपकी शायरी ऐप की कुल पोस्ट में जुड़ गई ✨"
+                                        when {
+                                            wasUpdate -> "शायरी अपडेट हो गई ✨"
+                                            currentUser != null -> "आपकी शायरी ऑनलाइन पब्लिश होकर कुल पोस्ट में जुड़ गई 🌐✨"
+                                            else -> "शायरी फ़ोन में सेव हो गई • सभी को ऑनलाइन दिखाने के लिए Google से जुड़ें"
                                         }
                                     )
                                     navController.popBackStack()

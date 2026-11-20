@@ -27,6 +27,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Edit
@@ -91,6 +93,8 @@ fun PersonalShayariScreen(
     onShareCommunity: (CommunityShayari) -> Unit = {},
     onDeleteCommunityPost: (String) -> Unit = {},
     onPersonalPostDeleted: ((String) -> Unit)? = null,
+    onRequestOnlineSync: (() -> Unit)? = null,
+    onPublishPersonalOnline: ((PersonalShayari) -> Unit)? = null,
     onOpenWriteStudio: () -> Unit = {},
     authorPenName: String = "",
     showHeader: Boolean = true,
@@ -379,10 +383,21 @@ fun PersonalShayariScreen(
                     } else {
                         items(uiState.visibleItems, key = { "personal_${it.id}" }) { item ->
                             val entity = item.toShayariEntity(effectiveAuthorName)
+                            val alreadyOnline = myCommunityPosts.any {
+                                it.couplet.trim().equals(item.couplet.trim(), ignoreCase = true)
+                            }
                             PersonalShayariCard(
                                 item = item,
                                 authorSignature = effectiveAuthorName,
                                 isSignedIn = isSignedIn,
+                                isOnlinePublished = alreadyOnline,
+                                onRequestOnlineSync = when {
+                                    !isSignedIn -> onRequestOnlineSync
+                                    !alreadyOnline && item.couplet.trim().length >= 10 && onPublishPersonalOnline != null -> {
+                                        { onPublishPersonalOnline(item) }
+                                    }
+                                    else -> null
+                                },
                                 onEdit = {
                                     viewModel.startEditing(item)
                                     onOpenWriteStudio()
@@ -409,6 +424,8 @@ fun PersonalShayariScreen(
                                 item = mapped,
                                 authorSignature = post.penName.ifBlank { effectiveAuthorName },
                                 isSignedIn = isSignedIn,
+                                isOnlinePublished = true,
+                                onRequestOnlineSync = null,
                                 onEdit = null,
                                 onDelete = { deleteCommunityId = post.id },
                                 onCopy = { onCopy(mapped) },
@@ -649,6 +666,8 @@ private fun PersonalShayariCard(
     item: PersonalShayari,
     authorSignature: String,
     isSignedIn: Boolean,
+    isOnlinePublished: Boolean = false,
+    onRequestOnlineSync: (() -> Unit)? = null,
     onEdit: (() -> Unit)?,
     onDelete: () -> Unit,
     onCopy: () -> Unit,
@@ -791,19 +810,66 @@ private fun PersonalShayariCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Rounded.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isSignedIn) "मेरी पोस्ट" else "फ़ोन में सेव",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isOnlinePublished) Icons.Rounded.CloudDone else Icons.Rounded.Lock,
+                            contentDescription = null,
+                            tint = if (isOnlinePublished) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = when {
+                                isOnlinePublished -> "ऑनलाइन लाइव"
+                                isSignedIn -> "मेरी पोस्ट"
+                                else -> "फ़ोन में सेव"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (isOnlinePublished) {
+                                MaterialTheme.colorScheme.secondary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+
+                    if (!isOnlinePublished && onRequestOnlineSync != null) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable(onClick = onRequestOnlineSync)
+                                .testTag("personal_go_online_chip_${item.id}")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.CloudUpload,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = if (isSignedIn) "ऑनलाइन पब्लिश करें" else "ऑनलाइन करें",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {

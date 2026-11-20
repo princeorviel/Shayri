@@ -97,7 +97,9 @@ fun ShayariCardItem(
     onComment: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
-    commentCount: Int = 0
+    commentCount: Int = 0,
+    cardStyleMode: FeedCardStyleMode = FeedCardStyleMode.MIX_YOURQUOTE,
+    isOnlinePost: Boolean = false
 ) {
     val category = ShayariCategory.fromId(shayari.categoryId)
     val isDarkTheme = MaterialTheme.colorScheme.background.luminance() < 0.4f
@@ -200,99 +202,12 @@ fun ShayariCardItem(
                     }
                 }
             } else {
-                // Photo-backed Shayari canvas with clearer top scenery & crisp centered couplet
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 8.dp, end = 8.dp, top = 8.dp)
-                        .heightIn(min = 232.dp)
-                        .clip(CARD_IMAGE_SHAPE),
-                    contentAlignment = Alignment.Center
-                ) {
-                    OptimizedDrawableImage(
-                        resId = artworkResId,
-                        contentDescription = null,
-                        widthPx = 720,
-                        heightPx = 480,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .matchParentSize()
-                            .testTag("shayari_bg_image_${shayari.id}")
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(SHAYARI_CARD_SCRIM)
-                    )
-
-                    // Subtle hairline inner border matching poetic photo card aesthetic
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .padding(7.dp)
-                            .border(
-                                width = 0.9.dp,
-                                color = Color.White.copy(alpha = 0.26f),
-                                shape = CARD_INNER_BORDER_SHAPE
-                            )
-                    )
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 22.dp, vertical = 26.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        val trimmedMood = shayari.moodTag.trim()
-                        if (trimmedMood.isNotEmpty() && !trimmedMood.equals(category.titleHi, ignoreCase = true)) {
-                            Surface(
-                                shape = PILL_SHAPE,
-                                color = Color.Black.copy(alpha = 0.34f),
-                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.26f))
-                            ) {
-                                Text(
-                                    text = "✦ $trimmedMood",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    color = Color(0xFFF5DEB0),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(12.dp))
-                        }
-
-                        Text(
-                            text = shayari.couplet,
-                            style = readingStyle.cardCoupletTextStyle(MaterialTheme.typography.bodyLarge).copy(
-                                fontSize = (readingStyle.fontScale.cardSp + 1f).sp,
-                                lineHeight = ((readingStyle.fontScale.cardSp + 1f) * readingStyle.fontStyle.lineHeightFactor).sp,
-                                fontWeight = FontWeight.Medium,
-                                shadow = COUPLET_SHADOW
-                            ),
-                            color = Color(0xFFFDF8F2),
-                            textAlign = TextAlign.Center
-                        )
-
-                        if (shayari.poet.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            Text(
-                                text = "— ${shayari.poet}",
-                                style = MaterialTheme.typography.labelMedium.copy(
-                                    fontFamily = readingStyle.fontStyle.fontFamily,
-                                    shadow = POET_SHADOW
-                                ),
-                                color = Color(0xFFF3D59B),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                }
+                YourQuoteCardCanvas(
+                    shayari = shayari,
+                    category = category,
+                    styleMode = cardStyleMode,
+                    isOnlinePost = isOnlinePost
+                )
             }
 
             // Compact footer: Category + Emoji on left, Like / Comment / Share on right

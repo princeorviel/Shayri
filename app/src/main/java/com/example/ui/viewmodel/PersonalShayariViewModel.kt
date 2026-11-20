@@ -179,13 +179,25 @@ class PersonalShayariViewModel(
     }
 
     fun onThemeTagChanged(value: String) {
-        if (value.length <= 40) {
+        if (value.length <= 100) {
             themeTagInputFlow.value = value
         }
     }
 
     fun togglePresetThemeTag(tag: String) {
-        themeTagInputFlow.value = if (themeTagInputFlow.value.trim() == tag) "" else tag
+        themeTagInputFlow.value = com.example.data.model.ShayariTagMatcher.toggleTagInString(
+            currentRaw = themeTagInputFlow.value,
+            tagToToggle = tag,
+            maxLen = 100
+        )
+    }
+
+    fun addCustomThemeTag(tag: String) {
+        themeTagInputFlow.value = com.example.data.model.ShayariTagMatcher.addTagToString(
+            currentRaw = themeTagInputFlow.value,
+            tagToAdd = tag,
+            maxLen = 100
+        )
     }
 
     fun onCoupletChanged(value: String) {

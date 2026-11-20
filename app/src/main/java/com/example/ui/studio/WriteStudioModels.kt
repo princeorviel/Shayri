@@ -13,8 +13,23 @@ enum class StudioStep {
 }
 
 enum class DesignTab {
+    TEMPLATES,
     WALLPAPER,
     TEXT
+}
+
+enum class StudioCardTemplate(
+    val id: String,
+    val labelHi: String,
+    val emoji: String
+) {
+    CLASSIC_CLEAN("classic", "क्लासिक", "✨"),
+    EDITORIAL_NOTEBOOK("notebook", "डायरी पेपर", "📓"),
+    POLAROID_FRAME("polaroid", "पोलरॉइड", "🖼️"),
+    ROYAL_GOLD_FRAME("royal_gold", "शाही गोल्ड", "👑"),
+    MAGAZINE_STRIPE("magazine", "मैगज़ीन", "📰"),
+    GLASS_QUOTE("glass", "ग्लास कार्ड", "💎"),
+    VINTAGE_CORNERS("vintage", "विंटेज ख़त", "📜")
 }
 
 enum class StudioTextAlign(
@@ -65,6 +80,7 @@ sealed interface StudioWallpaper {
 
 data class ShayariDesignState(
     val wallpaper: StudioWallpaper = StudioWallpapers.defaultWallpaper,
+    val cardTemplate: StudioCardTemplate = StudioCardTemplate.CLASSIC_CLEAN,
     val scrimDimness: Float = 0.35f,
     val fontStyle: ShayariFontStyle = ShayariFontStyle.CLASSIC_SERIF,
     val fontSizeSp: Float = 21f,
@@ -72,6 +88,17 @@ data class ShayariDesignState(
     val accentColor: Color = Color(0xFFE6BE78),
     val textAlign: StudioTextAlign = StudioTextAlign.CENTER,
     val verticalAlign: StudioVerticalAlign = StudioVerticalAlign.CENTER
+)
+
+data class StudioCardPreset(
+    val id: String,
+    val labelHi: String,
+    val subtitleHi: String,
+    val previewStart: Color,
+    val previewEnd: Color,
+    val previewAccent: Color,
+    val previewInk: Color,
+    val design: ShayariDesignState
 )
 
 object StudioTextColors {
@@ -347,4 +374,249 @@ object StudioWallpapers {
     val all: List<StudioWallpaper> = minimalPapers + artBackdrops
 
     val defaultWallpaper: StudioWallpaper = artBackdrops.first()
+}
+
+object StudioCardPresets {
+    val all: List<StudioCardPreset> = listOf(
+        StudioCardPreset(
+            id = "yq_diary",
+            labelHi = "डायरी पन्ना",
+            subtitleHi = "YourQuote स्टाइल",
+            previewStart = Color(0xFFFFFCF6),
+            previewEnd = Color(0xFFF4ECDC),
+            previewAccent = Color(0xFFB81D4D),
+            previewInk = Color(0xFF1F1916),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[0],
+                cardTemplate = StudioCardTemplate.EDITORIAL_NOTEBOOK,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 21f,
+                textColor = Color(0xFF1F1916),
+                accentColor = Color(0xFFB81D4D),
+                textAlign = StudioTextAlign.START,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_polaroid_love",
+            labelHi = "पोलरॉइड यादें",
+            subtitleHi = "गैलरी फ़्रेम",
+            previewStart = Color(0xFFFFFDF9),
+            previewEnd = Color(0xFFF3ECE2),
+            previewAccent = Color(0xFF9E2A43),
+            previewInk = Color(0xFF2B2220),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.artBackdrops[0],
+                cardTemplate = StudioCardTemplate.POLAROID_FRAME,
+                scrimDimness = 0.35f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 20f,
+                textColor = Color.White,
+                accentColor = Color(0xFFF5DEB0),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_royal_ghazal",
+            labelHi = "शाही ग़ज़ल",
+            subtitleHi = "गोल्ड बॉर्डर",
+            previewStart = Color(0xFF1E132B),
+            previewEnd = Color(0xFF0E0816),
+            previewAccent = Color(0xFFEAC784),
+            previewInk = Color(0xFFFFF8EE),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[5],
+                cardTemplate = StudioCardTemplate.ROYAL_GOLD_FRAME,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 21f,
+                textColor = Color(0xFFFFF8EE),
+                accentColor = Color(0xFFEAC784),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_magazine_rose",
+            labelHi = "मैगज़ीन पोस्टर",
+            subtitleHi = "मॉडर्न कोट",
+            previewStart = Color(0xFFFCFBFA),
+            previewEnd = Color(0xFFF6F1F4),
+            previewAccent = Color(0xFFE11D48),
+            previewInk = Color(0xFF18181F),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[1],
+                cardTemplate = StudioCardTemplate.MAGAZINE_STRIPE,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.MODERN_SANS,
+                fontSizeSp = 21f,
+                textColor = Color(0xFF18181F),
+                accentColor = Color(0xFFE11D48),
+                textAlign = StudioTextAlign.START,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_vintage_letter",
+            labelHi = "विंटेज ख़त",
+            subtitleHi = "पुरानी डायरी",
+            previewStart = Color(0xFFF6EBD7),
+            previewEnd = Color(0xFFEAD7B7),
+            previewAccent = Color(0xFF8A562C),
+            previewInk = Color(0xFF3A271B),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[2],
+                cardTemplate = StudioCardTemplate.VINTAGE_CORNERS,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 21f,
+                textColor = Color(0xFF3A271B),
+                accentColor = Color(0xFF8A562C),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_glass_rain",
+            labelHi = "बारिश ग्लास",
+            subtitleHi = "फ़्रॉस्टेड कार्ड",
+            previewStart = Color(0xFF1D2951),
+            previewEnd = Color(0xFF0F172A),
+            previewAccent = Color(0xFF93C5FD),
+            previewInk = Color.White,
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.artBackdrops[4],
+                cardTemplate = StudioCardTemplate.GLASS_QUOTE,
+                scrimDimness = 0.25f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 20f,
+                textColor = Color.White,
+                accentColor = Color(0xFFFDE68A),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_velvet_ishq",
+            labelHi = "मख़मली इश्क़",
+            subtitleHi = "शाही लाल",
+            previewStart = Color(0xFF6B2031),
+            previewEnd = Color(0xFF2B0A13),
+            previewAccent = Color(0xFFF0C782),
+            previewInk = Color(0xFFFFF5EE),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[6],
+                cardTemplate = StudioCardTemplate.ROYAL_GOLD_FRAME,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 21f,
+                textColor = Color(0xFFFFF5EE),
+                accentColor = Color(0xFFF0C782),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_sky_morning",
+            labelHi = "सुबह का सुकून",
+            subtitleHi = "पेस्टल ब्लू",
+            previewStart = Color(0xFFEEF5FA),
+            previewEnd = Color(0xFFDCEAF4),
+            previewAccent = Color(0xFF2B5B84),
+            previewInk = Color(0xFF162636),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[3],
+                cardTemplate = StudioCardTemplate.MAGAZINE_STRIPE,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.MODERN_SANS,
+                fontSizeSp = 21f,
+                textColor = Color(0xFF162636),
+                accentColor = Color(0xFF2B5B84),
+                textAlign = StudioTextAlign.START,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_emerald_night",
+            labelHi = "चाँदनी रात",
+            subtitleHi = "सुकून डार्क",
+            previewStart = Color(0xFF143536),
+            previewEnd = Color(0xFF09191B),
+            previewAccent = Color(0xFF9BE0D8),
+            previewInk = Color(0xFFF1FAF8),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[7],
+                cardTemplate = StudioCardTemplate.VINTAGE_CORNERS,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 21f,
+                textColor = Color(0xFFF1FAF8),
+                accentColor = Color(0xFF9BE0D8),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_midnight_charcoal",
+            labelHi = "ब्लैक मिनिमल",
+            subtitleHi = "बोल्ड टेक्स्ट",
+            previewStart = Color(0xFF181820),
+            previewEnd = Color(0xFF0D0D12),
+            previewAccent = Color(0xFFE6BE78),
+            previewInk = Color(0xFFFAF8F5),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.minimalPapers[4],
+                cardTemplate = StudioCardTemplate.MAGAZINE_STRIPE,
+                scrimDimness = 0f,
+                fontStyle = ShayariFontStyle.MODERN_SANS,
+                fontSizeSp = 22f,
+                textColor = Color(0xFFFAF8F5),
+                accentColor = Color(0xFFE6BE78),
+                textAlign = StudioTextAlign.START,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_polaroid_lake",
+            labelHi = "शमा और झील",
+            subtitleHi = "पोलरॉइड आर्ट",
+            previewStart = Color(0xFFFFFDF9),
+            previewEnd = Color(0xFFEFE6D9),
+            previewAccent = Color(0xFF8C5A1B),
+            previewInk = Color(0xFF2B2220),
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.artBackdrops[1],
+                cardTemplate = StudioCardTemplate.POLAROID_FRAME,
+                scrimDimness = 0.35f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 20f,
+                textColor = Color.White,
+                accentColor = Color(0xFFF5DEB0),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        ),
+        StudioCardPreset(
+            id = "yq_glass_musafir",
+            labelHi = "सफ़र और मुसाफ़िर",
+            subtitleHi = "सिनेमा ग्लास",
+            previewStart = Color(0xFF0F2928),
+            previewEnd = Color(0xFF1E293B),
+            previewAccent = Color(0xFF5EEAD4),
+            previewInk = Color.White,
+            design = ShayariDesignState(
+                wallpaper = StudioWallpapers.artBackdrops[6],
+                cardTemplate = StudioCardTemplate.GLASS_QUOTE,
+                scrimDimness = 0.25f,
+                fontStyle = ShayariFontStyle.CLASSIC_SERIF,
+                fontSizeSp = 20f,
+                textColor = Color.White,
+                accentColor = Color(0xFF5EEAD4),
+                textAlign = StudioTextAlign.CENTER,
+                verticalAlign = StudioVerticalAlign.CENTER
+            )
+        )
+    )
 }

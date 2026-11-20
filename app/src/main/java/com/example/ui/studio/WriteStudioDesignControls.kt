@@ -69,6 +69,148 @@ import com.example.data.model.ShayariFontStyle
 import com.example.ui.components.OptimizedDrawableImage
 
 @Composable
+fun StudioTemplatesPickerPanel(
+    selectedTemplate: StudioCardTemplate,
+    selectedWallpaperId: String,
+    onSelectTemplateFrame: (StudioCardTemplate) -> Unit,
+    onApplyPreset: (StudioCardPreset) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        // 1. Quick Frame Style Pills (apply onto any wallpaper or gallery photo)
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("studio_template_frames_row")
+        ) {
+            items(StudioCardTemplate.entries, key = { it.id }) { tpl ->
+                val isSelected = selectedTemplate == tpl
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    },
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onSelectTemplateFrame(tpl) }
+                        .testTag("studio_frame_${tpl.id}")
+                ) {
+                    Text(
+                        text = "${tpl.emoji} ${tpl.labelHi}",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        ),
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                    )
+                }
+            }
+        }
+
+        // 2. 12 Curated 1-Tap YourQuote-Style Card Presets Grid
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 104.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 2.dp, bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("studio_presets_grid")
+        ) {
+            items(StudioCardPresets.all, key = { it.id }) { preset ->
+                val isSelected = selectedTemplate == preset.design.cardTemplate &&
+                    selectedWallpaperId == preset.design.wallpaper.id
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(
+                        width = if (isSelected) 2.5.dp else 1.dp,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outlineVariant
+                        }
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.95f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onApplyPreset(preset) }
+                        .testTag("studio_preset_${preset.id}")
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.verticalGradient(listOf(preset.previewStart, preset.previewEnd)))
+                            .padding(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = preset.design.cardTemplate.emoji + " ❝",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = preset.previewAccent
+                            )
+                            Column {
+                                Text(
+                                    text = preset.labelHi,
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    ),
+                                    color = preset.previewInk,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = preset.subtitleHi,
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                    color = preset.previewInk.copy(alpha = 0.72f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        if (isSelected) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(20.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun StudioWallpaperPickerGrid(
     selectedWallpaper: StudioWallpaper,
     scrimDimness: Float,

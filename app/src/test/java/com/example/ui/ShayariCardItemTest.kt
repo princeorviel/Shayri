@@ -947,9 +947,12 @@ class ShayariCardItemTest {
         composeRule.onNodeWithTag("studio_next_design_button").assertIsEnabled().performClick()
         composeRule.waitForIdle()
 
-        // Design step (YourQuote-style): live preview, Wallpaper & Text tabs
+        // Design step (YourQuote-style): live preview, Card Templates, Wallpaper & Text tabs
         composeRule.onNodeWithTag("studio_live_card_preview").assertIsDisplayed()
-        composeRule.onNodeWithTag("studio_tab_wallpaper").assertIsDisplayed()
+        composeRule.onNodeWithTag("studio_tab_templates").assertIsDisplayed()
+        composeRule.onNodeWithTag("studio_template_frames_row").assertIsDisplayed()
+        composeRule.onNodeWithTag("studio_tab_wallpaper").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("studio_wallpaper_search").assertIsDisplayed()
         composeRule.onNodeWithTag("studio_pick_gallery_button").assertIsDisplayed()
         composeRule.onNodeWithTag("studio_wallpaper_paper_ivory").performClick()

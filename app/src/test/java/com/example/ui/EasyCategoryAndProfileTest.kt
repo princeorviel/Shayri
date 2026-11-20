@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToKey
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.room.Room
@@ -15,17 +16,21 @@ import com.example.data.local.LocalPersonalShayariRepository
 import com.example.data.local.ShayariDatabase
 import com.example.data.local.ShayariRepository
 import com.example.data.local.UserPreferencesRepository
+import com.example.data.model.CommunityShayari
 import com.example.data.model.LocalShayarAccount
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
+import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.SocialLinks
 import com.example.ui.screens.AccountScreen
 import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.EasyProfileEditorScreen
 import com.example.ui.screens.MehfilScreen
+import com.example.ui.studio.ShayariWriteStudioScreen
 import com.example.ui.theme.ShayariTheme
 import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.ui.viewmodel.ShayariUiState
+import com.example.ui.viewmodel.ShayariViewModel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -36,6 +41,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowLooper
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36], qualifiers = "w411dp-h891dp")
@@ -346,6 +352,211 @@ class EasyCategoryAndProfileTest {
             val afterDelete = repo.allShayari.first()
             assertEquals(2, afterDelete.size)
             assertFalse(afterDelete.any { it.id >= ShayariRepository.USER_POST_ID_BASE })
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `ShayariTagMatcher maps multiple tags to all related categories and safely trims cloud tags`() {
+        val rawTags = "दर्द, बेवफ़ाई, जख्मी दिल"
+        val parsed = ShayariTagMatcher.parseTags(rawTags)
+        assertEquals(listOf("दर्द", "बेवफ़ाई", "जख्मी दिल"), parsed)
+
+        val matchedCats = ShayariTagMatcher.matchingCategoryIds(
+            primaryCategoryId = ShayariCategory.DARD.id,
+            moodTag = rawTags
+        )
+        assertTrue(matchedCats.contains(ShayariCategory.DARD.id))
+        assertTrue(matchedCats.contains(ShayariCategory.BEWAFAI.id))
+        assertTrue(matchedCats.contains(ShayariCategory.AANSU.id))
+
+        val trimmed = ShayariTagMatcher.trimTagsForCloudPersonal(
+            "दर्द, बेवफ़ाई, जख्मी दिल, तन्हाई, अधूरा प्यार, मोहब्बत, यादें",
+            maxLen = 40
+        )
+        assertTrue("Trimmed cloud tag length must satisfy Firestore <= 40 rule", trimmed.length <= 40)
+        assertTrue(trimmed.contains("दर्द"))
+    }
+
+    @Test
+    fun `ShayariViewModel merges live online community posts into Home feed, total counts, and multi-tag categories`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val dao = db.shayariDao()
+            val repo = ShayariRepository(dao)
+            runBlocking {
+                dao.insertAll(
+                    listOf(
+                        ShayariEntity(
+                            id = 1,
+                            couplet = "पहली सीड शायरी मोहब्बत पर",
+                            poet = "कवि एक",
+                            categoryId = ShayariCategory.MOHABBAT.id,
+                            moodTag = "मोहब्बत"
+                        )
+                    )
+                )
+                // Also insert local copy of same couplet to verify deduplication against online version
+                repo.upsertUserPostToCatalog(
+                    personalId = "local-1",
+                    couplet = "खंजर से करो बात न तलवार से पूछो,\nमैं क़त्ल हुआ कैसे मेरे यार से पूछो।",
+                    authorName = "Prince Orviel",
+                    title = "",
+                    themeTag = "दर्द, बेवफ़ाई, जख्मी दिल",
+                    primaryCategoryId = ShayariCategory.DARD.id
+                )
+            }
+            val prefs = UserPreferencesRepository(context)
+            val vm = ShayariViewModel(repo, prefs, autoSeed = false)
+
+            // Push live online Firestore posts from multiple online users
+            vm.updateOnlineCommunityPosts(
+                listOf(
+                    CommunityShayari(
+                        id = "cloud_post_1",
+                        userId = "user_prince",
+                        penName = "Prince Orviel",
+                        couplet = "खंजर से करो बात न तलवार से पूछो,\nमैं क़त्ल हुआ कैसे मेरे यार से पूछो।",
+                        categoryId = ShayariCategory.DARD.id,
+                        promptTitle = "#दर्द #बेवफ़ाई #जख्मी दिल"
+                    ),
+                    CommunityShayari(
+                        id = "cloud_post_2",
+                        userId = "user_other",
+                        penName = "अमन शायर",
+                        couplet = "दोस्ती की मिठास हर दर्द को कम कर देती है,\nसच्चा दोस्त ज़िंदगी को जन्नत बना देता है।",
+                        categoryId = ShayariCategory.DOSTI.id,
+                        promptTitle = "#दोस्ती #यारी"
+                    )
+                )
+            )
+
+            composeRule.waitUntil(timeoutMillis = 5_000L) {
+                ShadowLooper.idleMainLooper()
+                val s = vm.uiState.value
+                !s.isLoading && s.allShayari.size == 3
+            }
+            val stateAll = vm.uiState.value
+            // 1 seed + 2 online posts (local duplicate deduplicated!)
+            assertEquals(3, stateAll.allShayari.size)
+            assertTrue(stateAll.allShayari.first().id >= ShayariViewModel.ONLINE_COMMUNITY_ID_BASE)
+
+            // Multi-tagged post appears in BOTH Dard AND Bewafai categories
+            vm.onCategorySelected(ShayariCategory.BEWAFAI.id)
+            composeRule.waitUntil(timeoutMillis = 5_000L) {
+                ShadowLooper.idleMainLooper()
+                val s = vm.uiState.value
+                s.selectedCategoryId == ShayariCategory.BEWAFAI.id &&
+                    s.filteredShayari.any { it.couplet.contains("खंजर से करो बात") }
+            }
+            val stateBewafai = vm.uiState.value
+            assertTrue(stateBewafai.filteredShayari.any { it.couplet.contains("खंजर से करो बात") })
+            assertTrue((stateBewafai.categoryCounts[ShayariCategory.DARD.id] ?: 0) >= 1)
+            assertTrue((stateBewafai.categoryCounts[ShayariCategory.BEWAFAI.id] ?: 0) >= 1)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `MehfilScreen shows YourQuote feed card style switcher and switches card style cleanly`() {
+        composeRule.setContent {
+            ShayariTheme {
+                MehfilScreen(
+                    uiState = ShayariUiState(
+                        isLoading = false,
+                        allShayari = listOf(sampleShayari),
+                        filteredShayari = listOf(sampleShayari),
+                        featuredShayari = sampleShayari
+                    ),
+                    isDarkTheme = false,
+                    onToggleTheme = {},
+                    onSearchQueryChanged = {},
+                    onCategorySelected = {},
+                    onOpenReader = { _, _ -> },
+                    onToggleFavorite = {},
+                    onComment = {},
+                    onShare = {}
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("feed_card_style_strip").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_card_style_PAPER_DIARY").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("feed_card_style_POLAROID").assertIsDisplayed().performClick()
+        composeRule.waitForIdle()
+    }
+
+    @Test
+    fun `ShayariWriteStudioScreen supports 1 primary category, multiple tags, online CTA, and YourQuote templates`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val personalVm = PersonalShayariViewModel(
+                repository = LocalPersonalShayariRepository(db.localPersonalShayariDao()),
+                currentUserId = "local_guest"
+            )
+            var googleSignInRequested = false
+            var publishedPrimaryCat = ""
+            var publishedTags = ""
+
+            composeRule.setContent {
+                ShayariTheme {
+                    ShayariWriteStudioScreen(
+                        viewModel = personalVm,
+                        authorName = "Prince",
+                        isOnlineAccount = false,
+                        onRequestGoogleSignIn = { googleSignInRequested = true },
+                        onClose = {},
+                        onSaved = {},
+                        onFeedback = {},
+                        onPostPublishedWithCategory = { _, _, _, _, primaryCat, tagsCsv, _ ->
+                            publishedPrimaryCat = primaryCat
+                            publishedTags = tagsCsv
+                        }
+                    )
+                }
+            }
+
+            composeRule.waitForIdle()
+            // Local account sees clickable Google sync CTA
+            composeRule.onNodeWithTag("studio_google_sync_cta").assertIsDisplayed().performClick()
+            assertTrue(googleSignInRequested)
+
+            // Type couplet + select 1 primary category + add multiple tags
+            composeRule.onNodeWithTag("personal_couplet_input")
+                .performTextInput("खंजर से करो बात न तलवार से पूछो,\nमैं क़त्ल हुआ कैसे मेरे यार से पूछो।")
+            composeRule.onNodeWithTag("studio_category_and_tags_card").performScrollTo()
+            composeRule.onNodeWithTag("studio_primary_category_row").performScrollToKey(ShayariCategory.DARD.id)
+            composeRule.onNodeWithTag("studio_primary_cat_dard").performClick()
+            composeRule.onNodeWithTag("studio_suggested_tags_row").performScrollToKey("बेवफ़ाई")
+            composeRule.onNodeWithTag("studio_multi_tag_बेवफ़ाई").performClick()
+            composeRule.onNodeWithTag("studio_custom_tag_input").performScrollTo().performTextInput("जख्मी दिल")
+            composeRule.onNodeWithTag("studio_add_custom_tag_button").performScrollTo().performClick()
+            composeRule.waitForIdle()
+
+            composeRule.onNodeWithTag("studio_matching_categories_hint").performScrollTo().assertIsDisplayed()
+
+            // Go to Design step -> YourQuote templates tab is default
+            composeRule.onNodeWithTag("studio_next_design_button").performClick()
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("studio_tab_templates").assertIsDisplayed()
+            composeRule.onNodeWithTag("studio_template_frames_row").performScrollToKey("polaroid")
+            composeRule.onNodeWithTag("studio_frame_polaroid").assertIsDisplayed().performClick()
+            composeRule.onNodeWithTag("studio_save_post_button").performClick()
+            composeRule.waitForIdle()
+
+            assertEquals(ShayariCategory.DARD.id, publishedPrimaryCat)
+            assertTrue(publishedTags.contains("बेवफ़ाई"))
+            assertTrue(publishedTags.contains("जख्मी दिल"))
         } finally {
             db.close()
         }

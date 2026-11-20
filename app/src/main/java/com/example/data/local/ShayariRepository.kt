@@ -49,23 +49,30 @@ class ShayariRepository(private val dao: ShayariDao) {
         couplet: String,
         authorName: String,
         title: String = "",
-        themeTag: String = ""
+        themeTag: String = "",
+        primaryCategoryId: String? = null
     ): ShayariEntity = withContext(Dispatchers.IO) {
         val cleanCouplet = couplet.trim().take(600)
         val cleanAuthor = authorName.trim().ifBlank { "शायर दोस्त" }.take(40)
         val cleanTag = themeTag.trim()
         val cleanTitle = title.trim()
 
-        val matchedCategory = ShayariCategory.entries.firstOrNull { cat ->
-            cat.titleHi.equals(cleanTag, ignoreCase = true) ||
-                cat.id.equals(cleanTag, ignoreCase = true) ||
-                cat.labelEn.equals(cleanTag, ignoreCase = true)
-        } ?: ShayariCategory.ZINDAGI
+        val matchedCategory = com.example.data.model.ShayariTagMatcher.resolvePrimaryCategory(
+            rawTag = cleanTag,
+            explicitCategoryId = primaryCategoryId,
+            fallback = ShayariCategory.ZINDAGI
+        )
+
+        val parsedTags = com.example.data.model.ShayariTagMatcher.parseTags(cleanTag)
+        val formattedTags = com.example.data.model.ShayariTagMatcher.formatTagsStorage(
+            tags = if (parsedTags.isEmpty()) listOf(matchedCategory.titleHi) else parsedTags,
+            maxLen = 110
+        )
 
         val displayTag = when {
-            cleanTitle.isNotBlank() && cleanTag.isNotBlank() -> "$cleanTitle • $cleanTag"
+            cleanTitle.isNotBlank() && formattedTags.isNotBlank() -> "$cleanTitle • $formattedTags"
+            formattedTags.isNotBlank() -> formattedTags
             cleanTitle.isNotBlank() -> cleanTitle
-            cleanTag.isNotBlank() -> cleanTag
             else -> matchedCategory.titleHi
         }
 

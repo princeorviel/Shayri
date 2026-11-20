@@ -32,7 +32,9 @@ import com.example.data.model.PersonalShayari
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.ShayariFontStyle
+import com.example.data.model.ShayariTagMatcher
 import com.example.ui.studio.ShayariDesignState
+import com.example.ui.studio.StudioCardTemplate
 import com.example.ui.studio.StudioTextAlign
 import com.example.ui.studio.StudioVerticalAlign
 import com.example.ui.studio.StudioWallpaper
@@ -731,6 +733,90 @@ object ShayariShareHelper {
             }
         }
 
+        val accentArgb = design.accentColor.toArgb()
+        when (design.cardTemplate) {
+            StudioCardTemplate.CLASSIC_CLEAN -> Unit
+            StudioCardTemplate.ROYAL_GOLD_FRAME -> {
+                val outerBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = accentArgb
+                    alpha = 185
+                    strokeWidth = 5f
+                }
+                val innerBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = accentArgb
+                    alpha = 95
+                    strokeWidth = 2.5f
+                }
+                canvas.drawRoundRect(34f, 34f, width - 34f, height - 34f, 28f, 28f, outerBorder)
+                canvas.drawRoundRect(52f, 52f, width - 52f, height - 52f, 20f, 20f, innerBorder)
+            }
+            StudioCardTemplate.EDITORIAL_NOTEBOOK -> {
+                val rulePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = accentArgb
+                    alpha = 42
+                    strokeWidth = 2.5f
+                }
+                var y = 140f
+                while (y < height - 110f) {
+                    canvas.drawLine(0f, y, width.toFloat(), y, rulePaint)
+                    y += 82f
+                }
+                val marginPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = android.graphics.Color.argb(85, 224, 96, 114)
+                    strokeWidth = 4f
+                }
+                canvas.drawLine(96f, 0f, 96f, height.toFloat(), marginPaint)
+            }
+            StudioCardTemplate.MAGAZINE_STRIPE -> {
+                val stripePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = accentArgb
+                    alpha = 230
+                }
+                canvas.drawRoundRect(36f, 96f, 54f, height - 96f, 9f, 9f, stripePaint)
+            }
+            StudioCardTemplate.GLASS_QUOTE -> {
+                val glassBg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = android.graphics.Color.argb(120, 12, 16, 28)
+                }
+                val glassStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = accentArgb
+                    alpha = 140
+                    strokeWidth = 3f
+                }
+                canvas.drawRoundRect(54f, 84f, width - 54f, height - 96f, 36f, 36f, glassBg)
+                canvas.drawRoundRect(54f, 84f, width - 54f, height - 96f, 36f, 36f, glassStroke)
+            }
+            StudioCardTemplate.POLAROID_FRAME -> {
+                val mattePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = android.graphics.Color.rgb(253, 250, 245)
+                    strokeWidth = 56f
+                }
+                canvas.drawRect(28f, 28f, width - 28f, height - 28f, mattePaint)
+            }
+            StudioCardTemplate.VINTAGE_CORNERS -> {
+                val cornerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                    color = accentArgb
+                    alpha = 195
+                    strokeWidth = 5f
+                }
+                val m = 48f
+                val l = 74f
+                canvas.drawLine(m, m, m + l, m, cornerPaint)
+                canvas.drawLine(m, m, m, m + l, cornerPaint)
+                canvas.drawLine(width - m, m, width - m - l, m, cornerPaint)
+                canvas.drawLine(width - m, m, width - m, m + l, cornerPaint)
+                canvas.drawLine(m, height - m, m + l, height - m, cornerPaint)
+                canvas.drawLine(m, height - m, m, height - m - l, cornerPaint)
+                canvas.drawLine(width - m, height - m, width - m - l, height - m, cornerPaint)
+                canvas.drawLine(width - m, height - m, width - m, height - m - l, cornerPaint)
+            }
+        }
+
         val textArgb = design.textColor.toArgb()
         val typeface = ResourcesCompat.getFont(context, design.fontStyle.fontRes)
             ?: ResourcesCompat.getFont(context, R.font.noto_serif_devanagari)
@@ -751,9 +837,12 @@ object ShayariShareHelper {
             textSize = (design.fontSizeSp * 0.72f).coerceIn(13f, 18f) * scaleFactor
             this.typeface = typeface
         }
+        val formattedTags = ShayariTagMatcher.parseTags(tag)
+            .take(3)
+            .joinToString("  ") { "#$it" }
         val topLabel = listOfNotNull(
             title.trim().takeIf { it.isNotEmpty() },
-            tag.trim().takeIf { it.isNotEmpty() }?.let { "#$it" }
+            formattedTags.takeIf { it.isNotEmpty() }
         ).joinToString(" • ")
         val topLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = textArgb

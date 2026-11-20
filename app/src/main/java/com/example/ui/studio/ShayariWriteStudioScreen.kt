@@ -40,8 +40,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.BookmarkAdded
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EditNote
@@ -97,6 +101,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.example.R
 import com.example.ai.ShayariAssistMode
 import com.example.data.model.ShayariCategory
+import com.example.data.model.ShayariTagMatcher
 import com.example.ui.components.ShayariAiAssistPanel
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.ui.viewmodel.PersonalShayariEvent
@@ -111,11 +116,14 @@ fun ShayariWriteStudioScreen(
     viewModel: PersonalShayariViewModel,
     authorName: String,
     initialStep: StudioStep = StudioStep.WRITE,
+    isOnlineAccount: Boolean = false,
+    onRequestGoogleSignIn: (() -> Unit)? = null,
     onAuthorNameChanged: (String) -> Unit = {},
     onClose: () -> Unit,
     onSaved: (wasUpdate: Boolean) -> Unit,
     onFeedback: (String) -> Unit,
     onPostSavedToCatalog: ((personalId: String, couplet: String, authorName: String, title: String, themeTag: String, wasUpdate: Boolean) -> Unit)? = null,
+    onPostPublishedWithCategory: ((personalId: String, couplet: String, authorName: String, title: String, primaryCategoryId: String, tagsCsv: String, wasUpdate: Boolean) -> Unit)? = null,
     onRequestShareDesignedCard: ((couplet: String, authorName: String, title: String, tag: String, design: ShayariDesignState) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -130,14 +138,44 @@ fun ShayariWriteStudioScreen(
     val latestOnFeedback by rememberUpdatedState(onFeedback)
     val latestOnClose by rememberUpdatedState(onClose)
     val latestOnPostSavedToCatalog by rememberUpdatedState(onPostSavedToCatalog)
+    val latestOnPostPublishedWithCategory by rememberUpdatedState(onPostPublishedWithCategory)
     var localAuthorName by remember(authorName) { mutableStateOf(authorName.trim()) }
     val latestAuthorName by rememberUpdatedState(localAuthorName.trim())
+
+    var selectedPrimaryCategoryId by rememberSaveable {
+        mutableStateOf(
+            ShayariTagMatcher.resolvePrimaryCategory(rawTag = uiState.themeTagInput).id
+        )
+    }
+    var hasManualPrimaryCategory by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.externalDraftVersion) {
+        if (uiState.themeTagInput.isNotBlank()) {
+            selectedPrimaryCategoryId = ShayariTagMatcher.resolvePrimaryCategory(
+                rawTag = uiState.themeTagInput
+            ).id
+            hasManualPrimaryCategory = false
+        }
+    }
+
+    val effectivePrimaryCategoryId = remember(
+        hasManualPrimaryCategory,
+        selectedPrimaryCategoryId,
+        uiState.themeTagInput
+    ) {
+        if (hasManualPrimaryCategory) {
+            selectedPrimaryCategoryId
+        } else {
+            ShayariTagMatcher.resolvePrimaryCategory(rawTag = uiState.themeTagInput).id
+        }
+    }
+    val latestEffectivePrimaryCategoryId by rememberUpdatedState(effectivePrimaryCategoryId)
 
     var activeSubmissionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var hasDispatchedSaveNavigation by remember { mutableStateOf(false) }
 
     var currentStep by remember { mutableStateOf(initialStep) }
-    var activeDesignTab by remember { mutableStateOf(DesignTab.WALLPAPER) }
+    var activeDesignTab by remember { mutableStateOf(DesignTab.TEMPLATES) }
     val initialFontStyle = LocalShayariReadingStyle.current.fontStyle
     var designState by remember {
         mutableStateOf(
@@ -159,14 +197,27 @@ fun ShayariWriteStudioScreen(
                             focusManager.clearFocus(force = true)
                             keyboardController?.hide()
                             if (event.savedId.isNotBlank() && event.couplet.isNotBlank()) {
-                                latestOnPostSavedToCatalog?.invoke(
-                                    event.savedId,
-                                    event.couplet,
-                                    latestAuthorName,
-                                    event.title,
-                                    event.themeTag,
-                                    event.wasUpdate
-                                )
+                                val withCatCallback = latestOnPostPublishedWithCategory
+                                if (withCatCallback != null) {
+                                    withCatCallback.invoke(
+                                        event.savedId,
+                                        event.couplet,
+                                        latestAuthorName,
+                                        event.title,
+                                        latestEffectivePrimaryCategoryId,
+                                        event.themeTag,
+                                        event.wasUpdate
+                                    )
+                                } else {
+                                    latestOnPostSavedToCatalog?.invoke(
+                                        event.savedId,
+                                        event.couplet,
+                                        latestAuthorName,
+                                        event.title,
+                                        event.themeTag,
+                                        event.wasUpdate
+                                    )
+                                }
                             }
                             latestOnSaved(event.wasUpdate)
                         }
@@ -337,6 +388,13 @@ fun ShayariWriteStudioScreen(
                         StudioWriteStepContent(
                             uiState = uiState,
                             signature = signature,
+                            isOnlineAccount = isOnlineAccount,
+                            onRequestGoogleSignIn = onRequestGoogleSignIn,
+                            selectedPrimaryCategoryId = effectivePrimaryCategoryId,
+                            onSelectPrimaryCategory = { catId ->
+                                selectedPrimaryCategoryId = catId
+                                hasManualPrimaryCategory = true
+                            },
                             onAuthorNameChanged = { updated ->
                                 val clipped = updated.take(50)
                                 localAuthorName = clipped
@@ -346,6 +404,7 @@ fun ShayariWriteStudioScreen(
                             onTitleChanged = viewModel::onTitleChanged,
                             onThemeTagChanged = viewModel::onThemeTagChanged,
                             onTogglePresetTag = viewModel::togglePresetThemeTag,
+                            onAddCustomTag = viewModel::addCustomThemeTag,
                             onRequestAiAssist = viewModel::requestAiAssist,
                             onInsertRhymingWord = viewModel::insertRhymingWord,
                             onApplyLineCompletion = viewModel::applyLineCompletion,
@@ -462,11 +521,16 @@ fun ShayariWriteStudioScreen(
 private fun StudioWriteStepContent(
     uiState: PersonalShayariUiState,
     signature: String,
+    isOnlineAccount: Boolean,
+    onRequestGoogleSignIn: (() -> Unit)?,
+    selectedPrimaryCategoryId: String,
+    onSelectPrimaryCategory: (String) -> Unit,
     onAuthorNameChanged: (String) -> Unit,
     onCoupletChanged: (String) -> Unit,
     onTitleChanged: (String) -> Unit,
     onThemeTagChanged: (String) -> Unit,
     onTogglePresetTag: (String) -> Unit,
+    onAddCustomTag: (String) -> Unit,
     onRequestAiAssist: (ShayariAssistMode) -> Unit,
     onInsertRhymingWord: (String) -> Unit,
     onApplyLineCompletion: (String, Boolean) -> Unit,
@@ -476,6 +540,7 @@ private fun StudioWriteStepContent(
     var showOptionalDetails by remember {
         mutableStateOf(uiState.titleInput.isNotBlank() || uiState.themeTagInput.isNotBlank())
     }
+    var customTagDraft by remember { mutableStateOf("") }
     var showAuthorEditor by remember { mutableStateOf(signature.isBlank()) }
     var showAiHelper by remember { mutableStateOf(false) }
     var coupletFieldValue by remember {
@@ -496,6 +561,18 @@ private fun StudioWriteStepContent(
     }
     val readingStyle = LocalShayariReadingStyle.current
     val trimmedLength = coupletFieldValue.text.trim().length
+    val selectedTags = remember(uiState.themeTagInput) {
+        ShayariTagMatcher.parseTags(uiState.themeTagInput)
+    }
+    val matchingCategories = remember(selectedPrimaryCategoryId, uiState.themeTagInput) {
+        ShayariTagMatcher.matchingCategoryIds(
+            primaryCategoryId = selectedPrimaryCategoryId,
+            moodTag = uiState.themeTagInput
+        ).map { ShayariCategory.fromId(it) }
+    }
+    val selectedPrimaryCategory = remember(selectedPrimaryCategoryId) {
+        ShayariCategory.fromId(selectedPrimaryCategoryId)
+    }
 
     Column(
         modifier = Modifier
@@ -507,10 +584,73 @@ private fun StudioWriteStepContent(
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Optional Details Row (Title + Category Tag) — unobtrusive pills
+            // Online / Offline Publish Visibility Banner
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (isOnlineAccount) {
+                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f)
+                } else {
+                    MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.65f)
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (isOnlineAccount) {
+                        MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+                    } else {
+                        MaterialTheme.colorScheme.tertiary.copy(alpha = 0.45f)
+                    }
+                ),
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .then(
+                        if (!isOnlineAccount && onRequestGoogleSignIn != null) {
+                            Modifier.clickable(onClick = onRequestGoogleSignIn)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .testTag(if (isOnlineAccount) "studio_online_status_pill" else "studio_google_sync_cta")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isOnlineAccount) Icons.Rounded.CloudDone else Icons.Rounded.CloudUpload,
+                        contentDescription = null,
+                        tint = if (isOnlineAccount) {
+                            MaterialTheme.colorScheme.secondary
+                        } else {
+                            MaterialTheme.colorScheme.tertiary
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (isOnlineAccount) {
+                            "ऑनलाइन पब्लिश होगी • सभी यूज़र्स व कुल पोस्ट में दिखेगी"
+                        } else {
+                            "अभी फ़ोन में सेव होगी • सभी ऑनलाइन यूज़र्स को दिखाने के लिए Google से जुड़ें →"
+                        },
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                        color = if (isOnlineAccount) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onTertiaryContainer
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Primary Category + Multi-Tags Summary Pill (toggles extra title/raw tag editor)
             Row(
                 modifier = Modifier
                     .widthIn(max = 680.dp)
@@ -543,7 +683,11 @@ private fun StudioWriteStepContent(
                             tint = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = uiState.themeTagInput.trim().ifBlank { "टॉपिक / शीर्षक (वैकल्पिक)" },
+                            text = if (selectedTags.isNotEmpty()) {
+                                "${selectedPrimaryCategory.titleHi} • ${selectedTags.size} टैग्स"
+                            } else {
+                                "${selectedPrimaryCategory.titleHi} • शीर्षक / टैग्स"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -552,75 +696,37 @@ private fun StudioWriteStepContent(
             }
 
             AnimatedVisibility(visible = showOptionalDetails) {
-                Column(
+                Row(
                     modifier = Modifier
                         .widthIn(max = 680.dp)
                         .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(ShayariCategory.entries, key = { it.id }) { category ->
-                            val selected = uiState.themeTagInput.trim() == category.titleHi
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = if (selected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surfaceContainerLow
-                                },
-                                border = BorderStroke(
-                                    1.dp,
-                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable { onTogglePresetTag(category.titleHi) }
-                                    .testTag("personal_preset_tag_${category.id}")
-                            ) {
-                                Text(
-                                    text = "${category.titleHi} ${category.emoji}",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (selected) {
-                                        MaterialTheme.colorScheme.onPrimaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = uiState.titleInput,
-                            onValueChange = onTitleChanged,
-                            label = { Text("शीर्षक (वैकल्पिक)") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("personal_title_input")
-                        )
-                        OutlinedTextField(
-                            value = uiState.themeTagInput,
-                            onValueChange = onThemeTagChanged,
-                            label = { Text("टैग (वैकल्पिक)") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("personal_theme_tag_input")
-                        )
-                    }
+                    OutlinedTextField(
+                        value = uiState.titleInput,
+                        onValueChange = onTitleChanged,
+                        label = { Text("शीर्षक (वैकल्पिक)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("personal_title_input")
+                    )
+                    OutlinedTextField(
+                        value = uiState.themeTagInput,
+                        onValueChange = onThemeTagChanged,
+                        label = { Text("टैग्स (कॉमा से)") },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("personal_theme_tag_input")
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Clean distraction-free paper canvas (YourQuote-style)
             Surface(
@@ -764,6 +870,198 @@ private fun StudioWriteStepContent(
                                 .testTag("studio_author_name_input")
                         )
                     }
+                }
+            }
+
+            // 1 Primary Category + Multiple Tags Picker Card (always visible & effortless)
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                modifier = Modifier
+                    .widthIn(max = 680.dp)
+                    .fillMaxWidth()
+                    .padding(top = 14.dp)
+                    .testTag("studio_category_and_tags_card")
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "मुख्य कैटेगरी (1 चुनें)",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("studio_primary_category_row")
+                    ) {
+                        items(ShayariCategory.entries, key = { it.id }) { category ->
+                            val isSelected = selectedPrimaryCategoryId == category.id
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable {
+                                        onSelectPrimaryCategory(category.id)
+                                        if (selectedTags.isEmpty()) {
+                                            onAddCustomTag(category.titleHi)
+                                        }
+                                    }
+                                    .testTag("studio_primary_cat_${category.id}")
+                            ) {
+                                Text(
+                                    text = "${category.emoji} ${category.titleHi}",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    ),
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onPrimaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text(
+                        text = "टैग्स जोड़ें (कई चुन सकते हैं — जैसे दर्द, बेवफ़ाई, जख्मी दिल)",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    if (selectedTags.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.testTag("studio_selected_tags_row")
+                        ) {
+                            items(selectedTags, key = { "sel_$it" }) { activeTag ->
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { onTogglePresetTag(activeTag) }
+                                        .testTag("studio_active_tag_$activeTag")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "#$activeTag",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = "टैग हटाएँ",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.testTag("studio_suggested_tags_row")
+                    ) {
+                        items(ShayariTagMatcher.POPULAR_POST_TAGS, key = { it }) { tag ->
+                            val isSelected = selectedTags.any { it.equals(tag, ignoreCase = true) }
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onTogglePresetTag(tag) }
+                                    .testTag("studio_multi_tag_$tag")
+                            ) {
+                                Text(
+                                    text = if (isSelected) "✓ #$tag" else "+ #$tag",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurface
+                                    },
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = customTagDraft,
+                            onValueChange = { customTagDraft = it.take(28) },
+                            placeholder = { Text("नया टैग लिखें (जैसे जख्मी दिल)") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("studio_custom_tag_input")
+                        )
+                        FilledTonalButton(
+                            onClick = {
+                                val cleaned = customTagDraft.trim()
+                                if (cleaned.isNotEmpty()) {
+                                    onAddCustomTag(cleaned)
+                                    customTagDraft = ""
+                                }
+                            },
+                            enabled = customTagDraft.trim().isNotEmpty(),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .defaultMinSize(minHeight = 48.dp)
+                                .testTag("studio_add_custom_tag_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("जोड़ें")
+                        }
+                    }
+
+                    Text(
+                        text = "✨ इन कैटेगरी में भी दिखेगी: ${matchingCategories.joinToString(" • ") { it.titleHi }}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("studio_matching_categories_hint")
+                    )
                 }
             }
 
@@ -944,12 +1242,29 @@ private fun StudioDesignStepContent(
             )
         }
 
-        // 2. YourQuote-style WALLPAPER | TEXT TabRow
+        // 2. YourQuote-style CARD TEMPLATES | WALLPAPER | TEXT TabRow
         TabRow(
-            selectedTabIndex = if (activeTab == DesignTab.WALLPAPER) 0 else 1,
+            selectedTabIndex = when (activeTab) {
+                DesignTab.TEMPLATES -> 0
+                DesignTab.WALLPAPER -> 1
+                DesignTab.TEXT -> 2
+            },
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary
         ) {
+            Tab(
+                selected = activeTab == DesignTab.TEMPLATES,
+                onClick = { onTabSelected(DesignTab.TEMPLATES) },
+                modifier = Modifier.testTag("studio_tab_templates"),
+                text = {
+                    Text(
+                        text = "कार्ड स्टाइल",
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            )
             Tab(
                 selected = activeTab == DesignTab.WALLPAPER,
                 onClick = { onTabSelected(DesignTab.WALLPAPER) },
@@ -957,7 +1272,9 @@ private fun StudioDesignStepContent(
                 text = {
                     Text(
                         text = stringResource(R.string.studio_tab_wallpaper),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             )
@@ -968,19 +1285,38 @@ private fun StudioDesignStepContent(
                 text = {
                     Text(
                         text = stringResource(R.string.studio_tab_text),
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             )
         }
 
-        // 3. Controls area (Wallpaper grid OR Text controls)
+        // 3. Controls area (Templates OR Wallpaper grid OR Text controls)
         Box(
             modifier = Modifier
                 .weight(0.54f)
                 .fillMaxWidth()
         ) {
             when (activeTab) {
+                DesignTab.TEMPLATES -> {
+                    StudioTemplatesPickerPanel(
+                        selectedTemplate = design.cardTemplate,
+                        selectedWallpaperId = when (val wp = design.wallpaper) {
+                            is StudioWallpaper.SolidOrGradient -> wp.id
+                            is StudioWallpaper.DrawableArt -> wp.id
+                            is StudioWallpaper.GalleryPhoto -> "gallery"
+                        },
+                        onSelectTemplateFrame = { tpl ->
+                            onDesignUpdated(design.copy(cardTemplate = tpl))
+                        },
+                        onApplyPreset = { preset ->
+                            onDesignUpdated(preset.design)
+                        }
+                    )
+                }
+
                 DesignTab.WALLPAPER -> {
                     StudioWallpaperPickerGrid(
                         selectedWallpaper = design.wallpaper,
