@@ -60,24 +60,24 @@ jobs:
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK for download
-        run: cp app/build/outputs/apk/debug/app-debug.apk Shayari-App.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App-v1.1-b${{ github.run_number }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Shayari-App-APK
-          path: Shayari-App.apk
+          name: Shayari-App-APK-b${{ github.run_number }}
+          path: Shayari-App-v1.1-b${{ github.run_number }}.apk
 
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: "शायरी (Shayari) Android App — Latest APK"
+          tag_name: v1.1-b${{ github.run_number }}
+          name: "शायरी (Shayari) App v1.1 — Build #${{ github.run_number }}"
           body: |
-            ### 📱 अपने Android फ़ोन में इंस्टॉल करें
-            1. नीचे **Shayari-App.apk** पर टैप करके डाउनलोड करें।
-            2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Install** पर टैप करें।
+            ### 📱 नया अपडेट अपने Android फ़ोन में इंस्टॉल करें
+            1. नीचे **Shayari-App-v1.1-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
+            2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Update / Install** पर टैप करें।
             3. यदि *Install unknown apps* की अनुमति मांगे, तो **Allow** करें।
-          files: Shayari-App.apk
+          files: Shayari-App-v1.1-b${{ github.run_number }}.apk
           overwrite_files: true
           make_latest: true
