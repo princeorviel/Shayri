@@ -119,6 +119,11 @@ class LocalPersonalShayariRepository(
         }
 
     suspend fun migrateAllToCloud(cloudStore: PersonalShayariStore): Int =
+        migrateAllToCloudReturningItems(cloudStore).size
+
+    suspend fun migrateAllToCloudReturningItems(
+        cloudStore: PersonalShayariStore
+    ): List<LocalPersonalShayariEntity> =
         withContext(ioDispatcher) {
             val localItems = try {
                 dao.getAllOnce()
@@ -127,7 +132,7 @@ class LocalPersonalShayariRepository(
             } catch (_: Exception) {
                 emptyList()
             }
-            var migrated = 0
+            val migrated = mutableListOf<LocalPersonalShayariEntity>()
             for (item in localItems) {
                 val result = try {
                     cloudStore.savePersonalShayari(
@@ -148,7 +153,7 @@ class LocalPersonalShayariRepository(
                     } catch (_: Exception) {
                         // Keep going if local cleanup fails
                     }
-                    migrated++
+                    migrated.add(item)
                 }
             }
             migrated

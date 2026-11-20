@@ -70,6 +70,7 @@ import com.example.auth.attemptAutoSignIn
 import com.example.auth.isAppOwner
 import com.example.auth.isFirebaseAvailable
 import com.example.auth.isLocalOwnerAccount
+import com.example.auth.onGoogleSignInClicked
 import com.example.auth.safeAuthStateFlow
 import com.example.auth.safeCurrentUser
 import com.example.auth.signOutFromGoogle
@@ -362,6 +363,8 @@ private fun ShayariAppRoot(
     var notificationsError by remember { mutableStateOf<String?>(null) }
     var shareTarget by remember { mutableStateOf<ShareTarget?>(null) }
     var isPreparingShareImage by remember { mutableStateOf(false) }
+    var skippedGooglePostPrompt by rememberSaveable { mutableStateOf(false) }
+    var isInstantPublishing by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         DailyShayariScheduler.cancelDailyNotification(context)
@@ -383,7 +386,47 @@ private fun ShayariAppRoot(
             launch {
                 runCatching {
                     val cloudRepo = PersonalShayariRepository(context.applicationContext)
-                    localPersonalRepository.migrateAllToCloud(cloudRepo)
+                    val migratedItems = localPersonalRepository.migrateAllToCloudReturningItems(cloudRepo)
+                    if (migratedItems.isNotEmpty()) {
+                        val communityRepo = CommunityShayariRepository(context.applicationContext)
+                        val migrationAuthor = uiState.preferences.authorPenName.trim().ifBlank {
+                            uiState.preferences.localAccount.fullName.trim()
+                                .takeIf { uiState.preferences.localAccount.isLoggedIn && it.isNotBlank() }
+                                ?: currentUser?.displayName?.trim()?.takeIf { it.isNotBlank() }
+                                ?: "शायर दोस्त"
+                        }
+                        var syncedOnlineCount = 0
+                        migratedItems.forEach { item ->
+                            val cleanCouplet = item.couplet.trim()
+                            if (cleanCouplet.length >= 10) {
+                                val primaryCatId = ShayariTagMatcher.resolvePrimaryCategory(
+                                    rawTag = item.themeTag
+                                ).id
+                                val hashTagsStr = ShayariTagMatcher.parseTags(item.themeTag)
+                                    .take(5)
+                                    .joinToString(" ") { "#$it" }
+                                val promptTitle = listOf(item.title.trim(), hashTagsStr)
+                                    .filter { it.isNotBlank() }
+                                    .joinToString(" • ")
+                                    .take(120)
+                                val res = communityRepo.publishShayari(
+                                    penName = migrationAuthor,
+                                    couplet = cleanCouplet,
+                                    categoryId = primaryCatId,
+                                    promptTitle = promptTitle
+                                )
+                                if (res.isSuccess) {
+                                    syncedOnlineCount++
+                                }
+                            }
+                        }
+                        if (syncedOnlineCount > 0) {
+                            snackbarHostState.currentSnackbarData?.dismiss()
+                            snackbarHostState.showSnackbar(
+                                "आपकी $syncedOnlineCount शायरी ऑनलाइन कुल पोस्ट में जुड़ गईं 🌐✨"
+                            )
+                        }
+                    }
                 }
             }
             if (commentsRepository != null) {
@@ -1847,10 +1890,104 @@ private fun ShayariAppRoot(
                                 viewModel = activePersonalViewModel,
                                 authorName = resolvedAuthorName,
                                 isOnlineAccount = currentUser != null,
+                                isConnectingGoogle = isInstantPublishing,
                                 onRequestGoogleSignIn = {
-                                    authScreenError = null
-                                    navController.navigate(ROUTE_AUTH) {
-                                        launchSingleTop = true
+                                    if (!isInstantPublishing) {
+                                        isInstantPublishing = true
+                                        onGoogleSignInClicked(
+                                            context = context,
+                                            credentialManager = credentialManager,
+                                            scope = scope,
+                                            onAuthSuccess = {
+                                                isInstantPublishing = false
+                                                skippedGooglePostPrompt = false
+                                                showFeedback("Google से जुड़ गए! अब आपकी शायरी ऑनलाइन पब्लिश होगी 🌐✨")
+                                            },
+                                            onAuthError = { err ->
+                                                isInstantPublishing = false
+                                                showFeedback(err)
+                                            },
+                                            onAuthCancelled = {
+                                                isInstantPublishing = false
+                                            }
+                                        )
+                                    }
+                                },
+                                onInstantOnlinePublish = { couplet, authorFromStudio, title, primaryCategoryId, tagsCsv, onFallbackLocal ->
+                                    if (!firebaseReady || skippedGooglePostPrompt) {
+                                        onFallbackLocal()
+                                    } else if (!isInstantPublishing) {
+                                        isInstantPublishing = true
+                                        onGoogleSignInClicked(
+                                            context = context,
+                                            credentialManager = credentialManager,
+                                            scope = scope,
+                                            onAuthSuccess = {
+                                                skippedGooglePostPrompt = false
+                                                scope.launch {
+                                                    try {
+                                                        val signedInUser = safeCurrentUser(context)
+                                                        val effectiveAuthor = authorFromStudio.trim().ifBlank {
+                                                            resolvedAuthorName.ifBlank {
+                                                                signedInUser?.displayName?.trim()?.takeIf { it.isNotBlank() }
+                                                                    ?: "शायर दोस्त"
+                                                            }
+                                                        }
+                                                        if (authorFromStudio.trim().length >= 2) {
+                                                            viewModel.setAuthorPenName(authorFromStudio.trim())
+                                                        }
+                                                        val cloudPersonalRepo = PersonalShayariRepository(context.applicationContext)
+                                                        val savedPersonalId = cloudPersonalRepo.savePersonalShayari(
+                                                            title = title.trim(),
+                                                            themeTag = ShayariTagMatcher.trimTagsForCloudPersonal(tagsCsv),
+                                                            couplet = couplet.trim()
+                                                        ).getOrDefault("instant_${System.currentTimeMillis()}")
+
+                                                        val hashTagsStr = ShayariTagMatcher.parseTags(tagsCsv)
+                                                            .take(5)
+                                                            .joinToString(" ") { "#$it" }
+                                                        val communityPromptTitle = listOf(title.trim(), hashTagsStr)
+                                                            .filter { it.isNotBlank() }
+                                                            .joinToString(" • ")
+                                                            .take(120)
+                                                        val communityRepo = CommunityShayariRepository(context.applicationContext)
+                                                        val publishRes = communityRepo.publishShayari(
+                                                            penName = effectiveAuthor,
+                                                            couplet = couplet.trim(),
+                                                            categoryId = primaryCategoryId,
+                                                            promptTitle = communityPromptTitle
+                                                        )
+                                                        viewModel.upsertUserPostToCatalog(
+                                                            personalId = savedPersonalId,
+                                                            couplet = couplet.trim(),
+                                                            authorName = effectiveAuthor,
+                                                            title = title.trim(),
+                                                            themeTag = tagsCsv,
+                                                            primaryCategoryId = primaryCategoryId
+                                                        )
+                                                        showFeedback(
+                                                            if (publishRes.isSuccess) {
+                                                                "आपकी शायरी ऑनलाइन पब्लिश होकर कुल पोस्ट में जुड़ गई 🌐✨"
+                                                            } else {
+                                                                "शायरी सेव हो गई ✨"
+                                                            }
+                                                        )
+                                                        navController.popBackStack()
+                                                    } finally {
+                                                        isInstantPublishing = false
+                                                    }
+                                                }
+                                            },
+                                            onAuthCancelled = {
+                                                isInstantPublishing = false
+                                                skippedGooglePostPrompt = true
+                                                onFallbackLocal()
+                                            },
+                                            onAuthError = {
+                                                isInstantPublishing = false
+                                                onFallbackLocal()
+                                            }
+                                        )
                                     }
                                 },
                                 onAuthorNameChanged = viewModel::setAuthorPenName,
@@ -1895,7 +2032,7 @@ private fun ShayariAppRoot(
                                         when {
                                             wasUpdate -> "शायरी अपडेट हो गई ✨"
                                             currentUser != null -> "आपकी शायरी ऑनलाइन पब्लिश होकर कुल पोस्ट में जुड़ गई 🌐✨"
-                                            else -> "शायरी फ़ोन में सेव हो गई • सभी को ऑनलाइन दिखाने के लिए Google से जुड़ें"
+                                            else -> "शायरी फ़ोन में सेव हो गई ✨"
                                         }
                                     )
                                     navController.popBackStack()

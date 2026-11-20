@@ -117,7 +117,16 @@ fun ShayariWriteStudioScreen(
     authorName: String,
     initialStep: StudioStep = StudioStep.WRITE,
     isOnlineAccount: Boolean = false,
+    isConnectingGoogle: Boolean = false,
     onRequestGoogleSignIn: (() -> Unit)? = null,
+    onInstantOnlinePublish: ((
+        couplet: String,
+        authorName: String,
+        title: String,
+        primaryCategoryId: String,
+        tagsCsv: String,
+        onFallbackLocal: () -> Unit
+    ) -> Unit)? = null,
     onAuthorNameChanged: (String) -> Unit = {},
     onClose: () -> Unit,
     onSaved: (wasUpdate: Boolean) -> Unit,
@@ -170,6 +179,29 @@ fun ShayariWriteStudioScreen(
         }
     }
     val latestEffectivePrimaryCategoryId by rememberUpdatedState(effectivePrimaryCategoryId)
+
+    val latestOnInstantOnlinePublish by rememberUpdatedState(onInstantOnlinePublish)
+    var preservedCouplet by rememberSaveable { mutableStateOf("") }
+    var preservedTitle by rememberSaveable { mutableStateOf("") }
+    var preservedThemeTag by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(uiState.coupletInput, uiState.titleInput, uiState.themeTagInput) {
+        if (uiState.coupletInput.isNotBlank()) preservedCouplet = uiState.coupletInput
+        if (uiState.titleInput.isNotBlank()) preservedTitle = uiState.titleInput
+        if (uiState.themeTagInput.isNotBlank()) preservedThemeTag = uiState.themeTagInput
+    }
+
+    LaunchedEffect(viewModel) {
+        if (uiState.coupletInput.isBlank() && preservedCouplet.isNotBlank()) {
+            viewModel.onCoupletChanged(preservedCouplet)
+        }
+        if (uiState.titleInput.isBlank() && preservedTitle.isNotBlank()) {
+            viewModel.onTitleChanged(preservedTitle)
+        }
+        if (uiState.themeTagInput.isBlank() && preservedThemeTag.isNotBlank()) {
+            viewModel.onThemeTagChanged(preservedThemeTag)
+        }
+    }
 
     var activeSubmissionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var hasDispatchedSaveNavigation by remember { mutableStateOf(false) }
@@ -234,7 +266,7 @@ fun ShayariWriteStudioScreen(
         }
     }
 
-    val submitPost: () -> Unit = {
+    val submitViaViewModel: () -> Unit = {
         if (!hasDispatchedSaveNavigation && !uiState.isSaving && activeSubmissionId == null) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
@@ -243,6 +275,28 @@ fun ShayariWriteStudioScreen(
             val accepted = viewModel.submitShayari(submissionId)
             if (!accepted) {
                 activeSubmissionId = null
+            }
+        }
+    }
+
+    val submitPost: () -> Unit = {
+        if (!hasDispatchedSaveNavigation && !uiState.isSaving && !isConnectingGoogle && activeSubmissionId == null) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            val cleanCouplet = uiState.coupletInput.trim()
+            val instantPublish = latestOnInstantOnlinePublish
+            val isEditingNow = uiState.editingItem != null
+            if (!isOnlineAccount && !isEditingNow && cleanCouplet.length >= 10 && instantPublish != null) {
+                instantPublish(
+                    cleanCouplet,
+                    latestAuthorName,
+                    uiState.titleInput,
+                    latestEffectivePrimaryCategoryId,
+                    uiState.themeTagInput,
+                    submitViaViewModel
+                )
+            } else {
+                submitViaViewModel()
             }
         }
     }
@@ -271,8 +325,9 @@ fun ShayariWriteStudioScreen(
     BackHandler(onBack = handleBack)
 
     val isEditing = uiState.editingItem != null
+    val isBusySaving = uiState.isSaving || isConnectingGoogle
     val trimmedCouplet = uiState.coupletInput.trim()
-    val canProceed = trimmedCouplet.length >= 4 && !uiState.isSaving && !hasDispatchedSaveNavigation
+    val canProceed = trimmedCouplet.length >= 4 && !isBusySaving && !hasDispatchedSaveNavigation
     val signature = localAuthorName.trim()
 
     Surface(
@@ -353,7 +408,7 @@ fun ShayariWriteStudioScreen(
                             .defaultMinSize(minHeight = 40.dp)
                             .testTag("studio_publish_button")
                     ) {
-                        if (uiState.isSaving) {
+                        if (isBusySaving) {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(16.dp),
                                 strokeWidth = 2.dp,
@@ -422,7 +477,7 @@ fun ShayariWriteStudioScreen(
                             design = designState,
                             activeTab = activeDesignTab,
                             canSavePost = canProceed,
-                            isSaving = uiState.isSaving,
+                            isSaving = isBusySaving,
                             isSharingImage = isSharingImage,
                             onTabSelected = { activeDesignTab = it },
                             onSelectWallpaper = { wp ->
@@ -635,7 +690,7 @@ private fun StudioWriteStepContent(
                         text = if (isOnlineAccount) {
                             "ऑनलाइन पब्लिश होगी • सभी यूज़र्स व कुल पोस्ट में दिखेगी"
                         } else {
-                            "अभी फ़ोन में सेव होगी • सभी ऑनलाइन यूज़र्स को दिखाने के लिए Google से जुड़ें →"
+                            "⚡ 1-टैप में Google से जुड़ें — आपकी शायरी सभी को ऑनलाइन दिखेगी →"
                         },
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
                         color = if (isOnlineAccount) {

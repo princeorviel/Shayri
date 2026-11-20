@@ -269,6 +269,12 @@ fun AccountScreen(
             postCount = totalPostCount,
             onSignOut = onSignOut,
             isSignedIn = isSignedIn,
+            isOnlineGoogleAccount = isFirebaseSignedIn,
+            onQuickGoogleConnect = if (!isFirebaseSignedIn) {
+                { googleSignIn.launch() }
+            } else {
+                null
+            },
             onSignInClick = {
                 if (onOpenAuthSheet != null) {
                     onOpenAuthSheet()
@@ -323,13 +329,7 @@ fun AccountScreen(
                 },
                 onPersonalPostDeleted = onPersonalPostDeleted,
                 onRequestOnlineSync = if (!isFirebaseSignedIn) {
-                    {
-                        if (onOpenAuthSheet != null) {
-                            onOpenAuthSheet()
-                        } else {
-                            googleSignIn.launch()
-                        }
-                    }
+                    { googleSignIn.launch() }
                 } else {
                     null
                 },
@@ -376,6 +376,8 @@ fun AccountProfileHeader(
     postCount: Int,
     onSignOut: () -> Unit,
     isSignedIn: Boolean = true,
+    isOnlineGoogleAccount: Boolean = isSignedIn,
+    onQuickGoogleConnect: (() -> Unit)? = null,
     onSignInClick: () -> Unit = {},
     onShareApp: () -> Unit = {},
     onRateApp: (() -> Unit)? = null,
@@ -563,17 +565,52 @@ fun AccountProfileHeader(
                     }
 
                     if (isSignedIn) {
-                        IconButton(
-                            onClick = onSignOut,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("sign_out_button")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.Logout,
-                                contentDescription = stringResource(R.string.sign_out),
-                                tint = Color.White
-                            )
+                            if (!isOnlineGoogleAccount && onQuickGoogleConnect != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = Color.White,
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = 40.dp)
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable(onClick = onQuickGoogleConnect)
+                                        .testTag("account_go_online_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.Login,
+                                            contentDescription = null,
+                                            tint = RoseVioletGradientStart,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Text(
+                                            text = "ऑनलाइन जुड़ें",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = RoseVioletGradientStart,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                onClick = onSignOut,
+                                modifier = Modifier
+                                    .minimumInteractiveComponentSize()
+                                    .testTag("sign_out_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                    contentDescription = stringResource(R.string.sign_out),
+                                    tint = Color.White
+                                )
+                            }
                         }
                     } else {
                         Surface(
