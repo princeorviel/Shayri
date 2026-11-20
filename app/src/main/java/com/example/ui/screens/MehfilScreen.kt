@@ -671,14 +671,14 @@ fun MehfilScreen(
                             color = if (isSelected) {
                                 MaterialTheme.colorScheme.primaryContainer
                             } else {
-                                MaterialTheme.colorScheme.surfaceContainerLow
+                                MaterialTheme.colorScheme.surfaceContainerHigh
                             },
                             border = BorderStroke(
-                                1.dp,
-                                if (isSelected) {
+                                width = if (isSelected) 1.4.dp else 1.dp,
+                                color = if (isSelected) {
                                     MaterialTheme.colorScheme.primary
                                 } else {
-                                    MaterialTheme.colorScheme.outlineVariant
+                                    MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)
                                 }
                             ),
                             modifier = Modifier
@@ -689,14 +689,14 @@ fun MehfilScreen(
                             Text(
                                 text = "${mode.emoji} ${mode.labelHi}",
                                 style = MaterialTheme.typography.labelMedium.copy(
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
                                 ),
                                 color = if (isSelected) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
                                 } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                    MaterialTheme.colorScheme.onSurface
                                 },
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
+                                modifier = Modifier.padding(horizontal = 13.dp, vertical = 7.dp)
                             )
                         }
                     }
@@ -767,8 +767,8 @@ fun MehfilScreen(
             FloatingScrollButtons(
                 listState = listState,
                 modifier = Modifier
-                    .align(BiasAlignment(horizontalBias = 1f, verticalBias = 0.36f))
-                    .padding(end = 12.dp)
+                    .align(BiasAlignment(horizontalBias = 1f, verticalBias = 0.86f))
+                    .padding(end = 10.dp)
             )
         }
     }

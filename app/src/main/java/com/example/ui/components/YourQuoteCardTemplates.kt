@@ -221,6 +221,9 @@ fun resolveDiversePhotoForCard(shayari: ShayariEntity, category: ShayariCategory
     }
 }
 
+private fun cleanPoetSignature(raw: String): String =
+    raw.trim().trimStart('_', '-', '—', '–', '•', ' ').trim()
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun YourQuoteCardCanvas(
@@ -230,24 +233,28 @@ fun YourQuoteCardCanvas(
     isOnlinePost: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val cleanShayari = remember(shayari) {
+        val cleaned = cleanPoetSignature(shayari.poet)
+        if (cleaned == shayari.poet) shayari else shayari.copy(poet = cleaned)
+    }
     val readingStyle = LocalShayariReadingStyle.current
-    val look = remember(shayari.id, styleMode) {
-        resolveYourQuoteFeedLook(shayari.id, styleMode)
+    val look = remember(cleanShayari.id, styleMode) {
+        resolveYourQuoteFeedLook(cleanShayari.id, styleMode)
     }
-    val hashSeed = remember(shayari.id) {
-        kotlin.math.abs((shayari.id * 37) xor (shayari.couplet.hashCode() and 0xFFFF))
+    val hashSeed = remember(cleanShayari.id) {
+        kotlin.math.abs((cleanShayari.id * 37) xor (cleanShayari.couplet.hashCode() and 0xFFFF))
     }
-    val artworkResId = remember(shayari.id, shayari.categoryId, shayari.moodTag) {
-        resolveDiversePhotoForCard(shayari, category)
+    val artworkResId = remember(cleanShayari.id, cleanShayari.categoryId, cleanShayari.moodTag) {
+        resolveDiversePhotoForCard(cleanShayari, category)
     }
-    val hashTags = remember(shayari.moodTag, shayari.categoryId) {
-        ShayariTagMatcher.displayHashTags(shayari.moodTag, shayari.categoryId, maxTags = 3)
+    val hashTags = remember(cleanShayari.moodTag, cleanShayari.categoryId) {
+        ShayariTagMatcher.displayHashTags(cleanShayari.moodTag, cleanShayari.categoryId, maxTags = 3)
     }
 
     when (look) {
         YourQuoteFeedLook.EDITORIAL_PAPER -> {
             EditorialPaperCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
                 accentColor = MAGAZINE_ACCENTS[hashSeed % MAGAZINE_ACCENTS.size],
@@ -257,7 +264,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.POLAROID_GALLERY -> {
             PolaroidGalleryCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 artworkResId = artworkResId,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
@@ -267,7 +274,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.VELVET_GOLD -> {
             VelvetGoldCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 gradient = ROYAL_DARK_GRADIENTS[hashSeed % ROYAL_DARK_GRADIENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
@@ -277,7 +284,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.PASTEL_WATERCOLOR -> {
             PastelWatercolorCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 palette = PASTEL_PALETTES[hashSeed % PASTEL_PALETTES.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
@@ -287,7 +294,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.MODERN_MAGAZINE -> {
             ModernMagazineCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 accent = MAGAZINE_ACCENTS[hashSeed % MAGAZINE_ACCENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
@@ -297,7 +304,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.VINTAGE_DIARY -> {
             VintageDiaryCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
                 modifier = modifier
@@ -306,7 +313,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.AURORA_GLASS -> {
             AuroraGlassCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 gradient = AURORA_GRADIENTS[hashSeed % AURORA_GRADIENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
@@ -316,7 +323,7 @@ fun YourQuoteCardCanvas(
 
         YourQuoteFeedLook.CINEMATIC_PHOTO -> {
             CinematicPhotoCardCanvas(
-                shayari = shayari,
+                shayari = cleanShayari,
                 artworkResId = artworkResId,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
