@@ -36,7 +36,14 @@ sealed interface PersonalCollectionState {
 }
 
 sealed interface PersonalShayariEvent {
-    data class SaveSucceeded(val wasUpdate: Boolean, val submissionId: Long) : PersonalShayariEvent
+    data class SaveSucceeded(
+        val wasUpdate: Boolean,
+        val submissionId: Long,
+        val savedId: String = "",
+        val title: String = "",
+        val themeTag: String = "",
+        val couplet: String = ""
+    ) : PersonalShayariEvent
     data class SaveFailed(val message: String, val submissionId: Long) : PersonalShayariEvent
 }
 
@@ -367,13 +374,16 @@ class PersonalShayariViewModel(
 
         viewModelScope.launch {
             var saveOutcome: Result<Unit>? = null
+            var resolvedSavedId = editing?.id.orEmpty()
             try {
                 saveOutcome = if (editing == null) {
-                    repository.savePersonalShayari(
+                    val createdResult = repository.savePersonalShayari(
                         title = cleanTitle,
                         themeTag = effectiveTag,
                         couplet = cleanCouplet
-                    ).map { Unit }
+                    )
+                    resolvedSavedId = createdResult.getOrNull().orEmpty()
+                    createdResult.map { Unit }
                 } else {
                     repository.updatePersonalShayari(
                         shayariId = editing.id,
@@ -406,7 +416,11 @@ class PersonalShayariViewModel(
                 eventChannel.send(
                     PersonalShayariEvent.SaveSucceeded(
                         wasUpdate = wasUpdate,
-                        submissionId = submissionId
+                        submissionId = submissionId,
+                        savedId = resolvedSavedId,
+                        title = cleanTitle,
+                        themeTag = effectiveTag,
+                        couplet = cleanCouplet
                     )
                 )
                 onSuccess?.invoke(wasUpdate)

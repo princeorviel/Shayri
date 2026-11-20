@@ -10,7 +10,13 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ShayariDao {
-    @Query("SELECT * FROM shayari ORDER BY id ASC")
+    @Query(
+        """
+        SELECT * FROM shayari
+        ORDER BY CASE WHEN id >= 1000000 THEN 0 ELSE 1 END ASC,
+                 CASE WHEN id >= 1000000 THEN -id ELSE id END ASC
+        """
+    )
     fun observeAllShayari(): Flow<List<ShayariEntity>>
 
     @Query("SELECT * FROM shayari WHERE isFavorite = 1 ORDER BY id ASC")
@@ -18,6 +24,15 @@ interface ShayariDao {
 
     @Query("SELECT COUNT(*) FROM shayari")
     suspend fun getCount(): Int
+
+    @Query("SELECT COUNT(*) FROM shayari WHERE id < 1000000")
+    suspend fun getSeedCount(): Int
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertUserPost(item: ShayariEntity)
+
+    @Query("DELETE FROM shayari WHERE id = :id")
+    suspend fun deleteById(id: Int)
 
     @Query("SELECT COUNT(*) FROM shayari WHERE id = :id AND couplet = :couplet")
     suspend fun countMatchingCouplet(id: Int, couplet: String): Int

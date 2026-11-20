@@ -9,17 +9,27 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.example.data.local.LocalPersonalShayariRepository
+import com.example.data.local.ShayariDatabase
+import com.example.data.local.ShayariRepository
 import com.example.data.local.UserPreferencesRepository
+import com.example.data.model.LocalShayarAccount
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.SocialLinks
+import com.example.ui.screens.AccountScreen
+import com.example.ui.screens.AuthScreen
 import com.example.ui.screens.EasyProfileEditorScreen
 import com.example.ui.screens.MehfilScreen
 import com.example.ui.theme.ShayariTheme
+import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.ui.viewmodel.ShayariUiState
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -171,5 +181,173 @@ class EasyCategoryAndProfileTest {
         assertEquals("Prince", cached.localAccount.fullName)
         assertEquals("Sensitive", cached.localAccount.bio)
         assertEquals("file:///data/user/0/com.example/files/profile_avatar_1.jpg", cached.localAccount.profilePhotoUri)
+        assertTrue(cached.localAccount.isRegistered)
+        assertTrue(cached.localAccount.isLoggedIn)
+    }
+
+    @Test
+    fun `UserPreferencesRepository quickCreateNameAccount creates permanent logged-in account with name only`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo1 = UserPreferencesRepository(context)
+
+        runBlocking {
+            repo1.quickCreateNameAccount("अमन शायर")
+        }
+
+        // Fresh repository simulates reopening app
+        val repo2 = UserPreferencesRepository(context)
+        val cached = repo2.readCachedPreferencesSync()
+        assertEquals("अमन शायर", cached.authorPenName)
+        assertEquals("अमन शायर", cached.localAccount.fullName)
+        assertTrue(cached.localAccount.isRegistered)
+        assertTrue(cached.localAccount.isLoggedIn)
+        assertTrue(cached.localAccount.username.isNotBlank())
+    }
+
+    @Test
+    fun `AccountScreen displays 1-step name account box for guests and submits name directly`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val personalVm = PersonalShayariViewModel(
+                repository = LocalPersonalShayariRepository(db.localPersonalShayariDao()),
+                currentUserId = "local_guest"
+            )
+            var createdName = ""
+
+            composeRule.setContent {
+                ShayariTheme {
+                    AccountScreen(
+                        currentUser = null,
+                        personalViewModel = personalVm,
+                        communityViewModel = null,
+                        onSignOut = {},
+                        onOpenPersonalCard = {},
+                        onCopyPersonal = {},
+                        onSharePersonal = {},
+                        onFeedback = {},
+                        localAccount = LocalShayarAccount(),
+                        onQuickCreateNameAccount = { createdName = it }
+                    )
+                }
+            }
+
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("account_version_badge").assertIsDisplayed()
+            composeRule.onNodeWithTag("account_quick_name_card").assertIsDisplayed()
+            composeRule.onNodeWithTag("account_quick_name_input").performTextInput("रवि शायर")
+            composeRule.onNodeWithTag("account_quick_create_button").performClick()
+            composeRule.waitForIdle()
+
+            assertEquals("रवि शायर", createdName)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `AuthScreen register tab accepts name only without requiring password`() {
+        var submittedName = ""
+        var submittedPassword = "unset"
+
+        composeRule.setContent {
+            ShayariTheme {
+                AuthScreen(
+                    localAccount = LocalShayarAccount(),
+                    onRegisterSubmit = { fullName, _, _, password, _, _ ->
+                        submittedName = fullName
+                        submittedPassword = password
+                    },
+                    onLoginSubmit = { _, _ -> },
+                    onGoogleAuthSuccess = {},
+                    onGoogleAuthError = {},
+                    onBack = {}
+                )
+            }
+        }
+
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag("auth_register_name_input").performScrollTo().performTextInput("राहुल शायर")
+        composeRule.onNodeWithTag("auth_register_submit_button").performScrollTo().performClick()
+        composeRule.waitForIdle()
+
+        assertEquals("राहुल शायर", submittedName)
+        assertEquals("", submittedPassword)
+    }
+
+    @Test
+    fun `ShayariRepository upsertUserPostToCatalog adds post to top of total posts and updates or deletes cleanly`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val dao = db.shayariDao()
+            val repo = ShayariRepository(dao)
+
+            // Seed 2 normal catalog items (ids < 1_000_000)
+            dao.insertAll(
+                listOf(
+                    ShayariEntity(
+                        id = 1,
+                        couplet = "पहली सीड शायरी",
+                        poet = "कवि एक",
+                        categoryId = ShayariCategory.MOHABBAT.id,
+                        moodTag = "मोहब्बत"
+                    ),
+                    ShayariEntity(
+                        id = 2,
+                        couplet = "दूसरी सीड शायरी",
+                        poet = "कवि दो",
+                        categoryId = ShayariCategory.DOSTI.id,
+                        moodTag = "दोस्ती"
+                    )
+                )
+            )
+            assertEquals(2, dao.getSeedCount())
+            assertEquals(2, repo.allShayari.first().size)
+
+            // User posts a new shayari -> added to total posts at the top & matched to category
+            val inserted = repo.upsertUserPostToCatalog(
+                personalId = "post-abc-123",
+                couplet = "दिल की हर धड़कन में तेरा नाम लिखा है,\nचाँदनी रातों में तेरा पैग़ाम लिखा है।",
+                authorName = "अमन",
+                title = "दिल की बात",
+                themeTag = "मोहब्बत"
+            )
+            assertTrue(inserted.id >= ShayariRepository.USER_POST_ID_BASE)
+            assertEquals(ShayariCategory.MOHABBAT.id, inserted.categoryId)
+
+            val afterInsert = repo.allShayari.first()
+            assertEquals(3, afterInsert.size)
+            assertEquals(2, dao.getSeedCount())
+            // User post appears FIRST ahead of seed items
+            assertEquals(inserted.id, afterInsert.first().id)
+            assertEquals("अमन", afterInsert.first().poet)
+            assertEquals(2, afterInsert.count { it.categoryId == ShayariCategory.MOHABBAT.id })
+
+            // Re-upserting same personalId updates in place without duplicating
+            repo.upsertUserPostToCatalog(
+                personalId = "post-abc-123",
+                couplet = "संपादित शायरी की दो पंक्तियाँ।",
+                authorName = "अमन",
+                title = "नया शीर्षक",
+                themeTag = "दोस्ती"
+            )
+            val afterUpdate = repo.allShayari.first()
+            assertEquals(3, afterUpdate.size)
+            assertEquals("संपादित शायरी की दो पंक्तियाँ।", afterUpdate.first().couplet)
+            assertEquals(ShayariCategory.DOSTI.id, afterUpdate.first().categoryId)
+
+            // Removing user post deletes only the user post and restores total count
+            repo.removeUserPostFromCatalog("post-abc-123")
+            val afterDelete = repo.allShayari.first()
+            assertEquals(2, afterDelete.size)
+            assertFalse(afterDelete.any { it.id >= ShayariRepository.USER_POST_ID_BASE })
+        } finally {
+            db.close()
+        }
     }
 }

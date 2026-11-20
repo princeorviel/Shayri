@@ -29,9 +29,19 @@ jobs:
           SDKMANAGER="${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager"
           yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
 
+      - name: Restore cached CI debug keystore
+        uses: actions/cache@v4
+        with:
+          path: debug.keystore
+          key: shayari-ci-debug-keystore-v1
+
       - name: Prepare debug keystore
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -s debug.keystore.base64 ]; then
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_BASE64" | tr -d '\r\n' | base64 -d > debug.keystore
+          elif [ -s debug.keystore.base64 ]; then
             tr -d '\r\n' < debug.keystore.base64 | base64 -d > debug.keystore
           fi
           if [ ! -s debug.keystore ]; then
@@ -60,24 +70,24 @@ jobs:
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK for download
-        run: cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App-v1.1-b${{ github.run_number }}.apk"
+        run: cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App-v1.2-b${{ github.run_number }}.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: Shayari-App-APK-b${{ github.run_number }}
-          path: Shayari-App-v1.1-b${{ github.run_number }}.apk
+          path: Shayari-App-v1.2-b${{ github.run_number }}.apk
 
       - name: Publish APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1-b${{ github.run_number }}
-          name: "शायरी (Shayari) App v1.1 — Build #${{ github.run_number }}"
+          tag_name: v1.2-b${{ github.run_number }}
+          name: "शायरी (Shayari) App v1.2 — Build #${{ github.run_number }}"
           body: |
-            ### 📱 नया अपडेट अपने Android फ़ोन में इंस्टॉल करें
-            1. नीचे **Shayari-App-v1.1-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
-            2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Update / Install** पर टैप करें।
-            3. यदि *Install unknown apps* की अनुमति मांगे, तो **Allow** करें।
-          files: Shayari-App-v1.1-b${{ github.run_number }}.apk
+            ### 📱 नया अपडेट (v1.2) अपने Android फ़ोन में इंस्टॉल करें
+            1. अगर फ़ोन में पहले से पुराना ऐप है और Update न हो, तो **एक बार पुराना ऐप Uninstall करें**।
+            2. नीचे **Shayari-App-v1.2-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
+            3. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Install** पर टैप करें।
+          files: Shayari-App-v1.2-b${{ github.run_number }}.apk
           overwrite_files: true
           make_latest: true

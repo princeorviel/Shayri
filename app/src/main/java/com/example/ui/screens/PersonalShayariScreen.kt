@@ -90,6 +90,7 @@ fun PersonalShayariScreen(
     onOpenCommunityCard: (CommunityShayari) -> Unit = {},
     onShareCommunity: (CommunityShayari) -> Unit = {},
     onDeleteCommunityPost: (String) -> Unit = {},
+    onPersonalPostDeleted: ((String) -> Unit)? = null,
     onOpenWriteStudio: () -> Unit = {},
     authorPenName: String = "",
     showHeader: Boolean = true,
@@ -435,7 +436,10 @@ fun PersonalShayariScreen(
                         deleteCandidate = null
                         viewModel.deleteShayari(
                             shayariId = id,
-                            onSuccess = { onFeedback("शायरी हटा दी गई") },
+                            onSuccess = {
+                                onPersonalPostDeleted?.invoke(id)
+                                onFeedback("शायरी हटा दी गई")
+                            },
                             onError = onFeedback
                         )
                     }

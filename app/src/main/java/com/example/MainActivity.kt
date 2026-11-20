@@ -877,6 +877,26 @@ private fun ShayariAppRoot(
         }
     }
 
+    val activePersonalUiState by activePersonalViewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(activePersonalUiState.allItems, resolvedAuthorName) {
+        val items = activePersonalUiState.allItems
+        if (items.isNotEmpty()) {
+            val author = resolvedAuthorName.ifBlank { "शायर दोस्त" }
+            items.forEach { item ->
+                if (item.id.isNotBlank() && item.couplet.isNotBlank()) {
+                    viewModel.upsertUserPostToCatalog(
+                        personalId = item.id,
+                        couplet = item.couplet,
+                        authorName = author,
+                        title = item.title,
+                        themeTag = item.themeTag
+                    )
+                }
+            }
+        }
+    }
+
     LaunchedEffect(currentUser?.uid, uiState.isLoading) {
         val activeUser = currentUser ?: return@LaunchedEffect
         val communityVm = sharedCommunityViewModel ?: return@LaunchedEffect
@@ -1183,6 +1203,12 @@ private fun ShayariAppRoot(
                                                 socialLinks = newSocials
                                             )
                                         },
+                                        onQuickCreateNameAccount = { newName ->
+                                            viewModel.quickCreateNameAccount(newName) {
+                                                showFeedback("स्वागत है, $newName! आपका अकाउंट बन गया ✨")
+                                            }
+                                        },
+                                        onPersonalPostDeleted = viewModel::removeUserPostFromCatalog,
                                         isOwner = isOwner,
                                         totalCatalogShayariCount = uiState.allShayari.size,
                                         categoryCount = ShayariCategory.entries.size,
@@ -1261,6 +1287,7 @@ private fun ShayariAppRoot(
                                                 socialLinks = newSocials
                                             )
                                         },
+                                        onPersonalPostDeleted = viewModel::removeUserPostFromCatalog,
                                         isOwner = isOwner,
                                         totalCatalogShayariCount = uiState.allShayari.size,
                                         categoryCount = ShayariCategory.entries.size,
@@ -1809,12 +1836,44 @@ private fun ShayariAppRoot(
                                 authorName = resolvedAuthorName,
                                 onAuthorNameChanged = viewModel::setAuthorPenName,
                                 onClose = { navController.popBackStack() },
+                                onPostSavedToCatalog = { personalId, couplet, authorFromStudio, title, themeTag, wasUpdate ->
+                                    val effectiveAuthor = authorFromStudio.trim().ifBlank {
+                                        resolvedAuthorName.ifBlank { "शायर दोस्त" }
+                                    }
+                                    if (!isAnySignedIn && authorFromStudio.trim().length >= 2) {
+                                        viewModel.quickCreateNameAccount(authorFromStudio.trim())
+                                    }
+                                    viewModel.upsertUserPostToCatalog(
+                                        personalId = personalId,
+                                        couplet = couplet,
+                                        authorName = effectiveAuthor,
+                                        title = title,
+                                        themeTag = themeTag
+                                    )
+                                    val activeCommunityVm = sharedCommunityViewModel
+                                    if (!wasUpdate && currentUser != null && activeCommunityVm != null && couplet.trim().length >= 10) {
+                                        val matchedCategory = ShayariCategory.entries.firstOrNull { cat ->
+                                            cat.titleHi.equals(themeTag.trim(), ignoreCase = true) ||
+                                                cat.id.equals(themeTag.trim(), ignoreCase = true) ||
+                                                cat.labelEn.equals(themeTag.trim(), ignoreCase = true)
+                                        } ?: ShayariCategory.ZINDAGI
+                                        activeCommunityVm.publishOrUpdateShayari(
+                                            editingId = null,
+                                            penName = effectiveAuthor,
+                                            couplet = couplet.trim(),
+                                            categoryId = matchedCategory.id,
+                                            promptTitle = title.trim(),
+                                            onSuccess = {},
+                                            onError = {}
+                                        )
+                                    }
+                                },
                                 onSaved = { wasUpdate ->
                                     showFeedback(
                                         if (wasUpdate) {
                                             "शायरी अपडेट हो गई ✨"
                                         } else {
-                                            "आपकी शायरी सेव हो गई ✨"
+                                            "आपकी शायरी ऐप की कुल पोस्ट में जुड़ गई ✨"
                                         }
                                     )
                                     navController.popBackStack()

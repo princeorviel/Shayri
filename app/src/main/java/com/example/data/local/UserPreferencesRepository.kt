@@ -496,6 +496,40 @@ class UserPreferencesRepository(context: Context) {
         }
     }
 
+    suspend fun quickCreateNameAccount(fullName: String) {
+        val cleanName = fullName.trim().take(40)
+        if (cleanName.isBlank()) return
+        val existing = readCachedPreferencesSync().localAccount
+        val derivedUsername = existing.username.trim().ifBlank {
+            cleanName.lowercase()
+                .replace("[^a-z0-9_]".toRegex(), "")
+                .ifBlank { "shayar" }
+        }.take(30)
+
+        val account = existing.copy(
+            isRegistered = true,
+            isLoggedIn = true,
+            fullName = cleanName,
+            username = derivedUsername
+        )
+
+        withContext(Dispatchers.IO) {
+            mirrorAccountToSyncPrefs(
+                account = account,
+                authorPenName = cleanName,
+                commitImmediately = true
+            )
+        }
+
+        appContext.shayariDataStore.edit { prefs ->
+            prefs[Keys.LOCAL_ACCOUNT_REGISTERED] = true
+            prefs[Keys.LOCAL_ACCOUNT_LOGGED_IN] = true
+            prefs[Keys.LOCAL_ACCOUNT_FULL_NAME] = cleanName
+            prefs[Keys.LOCAL_ACCOUNT_USERNAME] = derivedUsername
+            prefs[Keys.AUTHOR_PEN_NAME] = cleanName
+        }
+    }
+
     suspend fun updateEasyProfile(
         penName: String,
         bio: String,
@@ -506,6 +540,12 @@ class UserPreferencesRepository(context: Context) {
         val cleanBio = bio.trim().take(160)
         val cleanPhoto = profilePhotoUri.trim().take(512)
         val normalizedLinks = socialLinks?.normalized()
+        val existing = readCachedPreferencesSync().localAccount
+        val derivedUsername = existing.username.trim().ifBlank {
+            cleanName.lowercase()
+                .replace("[^a-z0-9_]".toRegex(), "")
+                .ifBlank { "shayar" }
+        }.take(30)
 
         withContext(Dispatchers.IO) {
             val editor = syncPrefs.edit()
@@ -513,7 +553,12 @@ class UserPreferencesRepository(context: Context) {
                 .putString(SYNC_LOCAL_PROFILE_PHOTO_URI, cleanPhoto)
             if (cleanName.isNotBlank()) {
                 editor.putString(SYNC_AUTHOR_PEN_NAME, cleanName)
-                editor.putString(SYNC_LOCAL_FULL_NAME, cleanName)
+                    .putString(SYNC_LOCAL_FULL_NAME, cleanName)
+                    .putBoolean(SYNC_LOCAL_REGISTERED, true)
+                    .putBoolean(SYNC_LOCAL_LOGGED_IN, true)
+                if (existing.username.isBlank()) {
+                    editor.putString(SYNC_LOCAL_USERNAME, derivedUsername)
+                }
             }
             if (normalizedLinks != null) {
                 editor.putString(SYNC_SOCIAL_FACEBOOK, normalizedLinks.facebookUrl)
@@ -530,6 +575,11 @@ class UserPreferencesRepository(context: Context) {
             if (cleanName.isNotBlank()) {
                 prefs[Keys.AUTHOR_PEN_NAME] = cleanName
                 prefs[Keys.LOCAL_ACCOUNT_FULL_NAME] = cleanName
+                prefs[Keys.LOCAL_ACCOUNT_REGISTERED] = true
+                prefs[Keys.LOCAL_ACCOUNT_LOGGED_IN] = true
+                if (existing.username.isBlank()) {
+                    prefs[Keys.LOCAL_ACCOUNT_USERNAME] = derivedUsername
+                }
             }
             prefs[Keys.LOCAL_ACCOUNT_BIO] = cleanBio
             prefs[Keys.LOCAL_PROFILE_PHOTO_URI] = cleanPhoto

@@ -1,5 +1,6 @@
 package com.example.data.local
 
+import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -20,10 +21,10 @@ class ShayariRepository(private val dao: ShayariDao) {
         seedMutex.withLock {
             if (isCatalogVerified) return
             withContext(Dispatchers.IO) {
-                val existingCount = dao.getCount()
-                if (existingCount < ShayariSeedData.EXPECTED_CATALOG_SIZE) {
+                val existingSeedCount = dao.getSeedCount()
+                if (existingSeedCount < ShayariSeedData.EXPECTED_CATALOG_SIZE) {
                     val fullCatalog = ShayariSeedData.allShayari
-                    if (existingCount < fullCatalog.size) {
+                    if (existingSeedCount < fullCatalog.size) {
                         dao.insertAllChunked(fullCatalog)
                     }
                 }
@@ -41,5 +42,57 @@ class ShayariRepository(private val dao: ShayariDao) {
 
     suspend fun toggleFavorite(id: Int, currentlyFavorite: Boolean) {
         dao.updateFavorite(id = id, isFavorite = !currentlyFavorite)
+    }
+
+    suspend fun upsertUserPostToCatalog(
+        personalId: String,
+        couplet: String,
+        authorName: String,
+        title: String = "",
+        themeTag: String = ""
+    ): ShayariEntity = withContext(Dispatchers.IO) {
+        val cleanCouplet = couplet.trim().take(600)
+        val cleanAuthor = authorName.trim().ifBlank { "शायर दोस्त" }.take(40)
+        val cleanTag = themeTag.trim()
+        val cleanTitle = title.trim()
+
+        val matchedCategory = ShayariCategory.entries.firstOrNull { cat ->
+            cat.titleHi.equals(cleanTag, ignoreCase = true) ||
+                cat.id.equals(cleanTag, ignoreCase = true) ||
+                cat.labelEn.equals(cleanTag, ignoreCase = true)
+        } ?: ShayariCategory.ZINDAGI
+
+        val displayTag = when {
+            cleanTitle.isNotBlank() && cleanTag.isNotBlank() -> "$cleanTitle • $cleanTag"
+            cleanTitle.isNotBlank() -> cleanTitle
+            cleanTag.isNotBlank() -> cleanTag
+            else -> matchedCategory.titleHi
+        }
+
+        val entity = ShayariEntity(
+            id = userPostCatalogId(personalId),
+            couplet = cleanCouplet,
+            poet = cleanAuthor,
+            categoryId = matchedCategory.id,
+            moodTag = displayTag,
+            isFavorite = false,
+            isFeatured = false
+        )
+        dao.upsertUserPost(entity)
+        entity
+    }
+
+    suspend fun removeUserPostFromCatalog(personalId: String) = withContext(Dispatchers.IO) {
+        if (personalId.isBlank()) return@withContext
+        dao.deleteById(userPostCatalogId(personalId))
+    }
+
+    companion object {
+        const val USER_POST_ID_BASE = 1_000_000
+
+        fun userPostCatalogId(personalId: String): Int {
+            val positiveHash = (personalId.hashCode() and 0x3FFFFFFF) % 900_000_000
+            return USER_POST_ID_BASE + positiveHash
+        }
     }
 }

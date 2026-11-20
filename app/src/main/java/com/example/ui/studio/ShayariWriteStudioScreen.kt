@@ -115,6 +115,7 @@ fun ShayariWriteStudioScreen(
     onClose: () -> Unit,
     onSaved: (wasUpdate: Boolean) -> Unit,
     onFeedback: (String) -> Unit,
+    onPostSavedToCatalog: ((personalId: String, couplet: String, authorName: String, title: String, themeTag: String, wasUpdate: Boolean) -> Unit)? = null,
     onRequestShareDesignedCard: ((couplet: String, authorName: String, title: String, tag: String, design: ShayariDesignState) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -128,6 +129,9 @@ fun ShayariWriteStudioScreen(
     val latestOnSaved by rememberUpdatedState(onSaved)
     val latestOnFeedback by rememberUpdatedState(onFeedback)
     val latestOnClose by rememberUpdatedState(onClose)
+    val latestOnPostSavedToCatalog by rememberUpdatedState(onPostSavedToCatalog)
+    var localAuthorName by remember(authorName) { mutableStateOf(authorName.trim()) }
+    val latestAuthorName by rememberUpdatedState(localAuthorName.trim())
 
     var activeSubmissionId by rememberSaveable { mutableStateOf<Long?>(null) }
     var hasDispatchedSaveNavigation by remember { mutableStateOf(false) }
@@ -154,6 +158,16 @@ fun ShayariWriteStudioScreen(
                             hasDispatchedSaveNavigation = true
                             focusManager.clearFocus(force = true)
                             keyboardController?.hide()
+                            if (event.savedId.isNotBlank() && event.couplet.isNotBlank()) {
+                                latestOnPostSavedToCatalog?.invoke(
+                                    event.savedId,
+                                    event.couplet,
+                                    latestAuthorName,
+                                    event.title,
+                                    event.themeTag,
+                                    event.wasUpdate
+                                )
+                            }
                             latestOnSaved(event.wasUpdate)
                         }
                     }
@@ -208,7 +222,6 @@ fun ShayariWriteStudioScreen(
     val isEditing = uiState.editingItem != null
     val trimmedCouplet = uiState.coupletInput.trim()
     val canProceed = trimmedCouplet.length >= 4 && !uiState.isSaving && !hasDispatchedSaveNavigation
-    var localAuthorName by remember(authorName) { mutableStateOf(authorName.trim()) }
     val signature = localAuthorName.trim()
 
     Surface(
@@ -463,7 +476,7 @@ private fun StudioWriteStepContent(
     var showOptionalDetails by remember {
         mutableStateOf(uiState.titleInput.isNotBlank() || uiState.themeTagInput.isNotBlank())
     }
-    var showAuthorEditor by remember { mutableStateOf(false) }
+    var showAuthorEditor by remember { mutableStateOf(signature.isBlank()) }
     var showAiHelper by remember { mutableStateOf(false) }
     var coupletFieldValue by remember {
         mutableStateOf(

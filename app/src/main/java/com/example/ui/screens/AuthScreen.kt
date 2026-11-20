@@ -452,8 +452,8 @@ fun ShayarAuthFormContent(
             trimmedName.length < 2 -> {
                 localValidationError = "कृपया अपना नाम लिखें (कम से कम 2 अक्षर)।"
             }
-            trimmedPass.length < 4 -> {
-                localValidationError = "कृपया कम से कम 4 अक्षरों का आसान पासवर्ड चुनें।"
+            trimmedPass.isNotEmpty() && trimmedPass.length < 4 -> {
+                localValidationError = "पासवर्ड या तो खाली छोड़ें या कम से कम 4 अक्षर लिखें।"
             }
             else -> {
                 focusManager.clearFocus()
@@ -630,7 +630,7 @@ fun ShayarAuthFormContent(
                             localValidationError = null
                             onClearError()
                         },
-                        label = { Text("आसान पासवर्ड बनाएँ (4+ अक्षर) *") },
+                        label = { Text("पासवर्ड (वैकल्पिक — बिना पासवर्ड भी बनेगा)") },
                         leadingIcon = { Icon(Icons.Rounded.Lock, contentDescription = null) },
                         trailingIcon = {
                             IconButton(onClick = { showRegisterPassword = !showRegisterPassword }) {
@@ -641,13 +641,22 @@ fun ShayarAuthFormContent(
                             }
                         },
                         supportingText = {
-                            if (registerPassword.trim().length >= 4) {
-                                Text(
-                                    text = "✓ पासवर्ड तैयार है",
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                Text("कम से कम 4 अक्षर या नंबर (जैसे: 1234)")
+                            when {
+                                registerPassword.trim().isEmpty() -> {
+                                    Text(
+                                        text = "✓ बस नाम लिखकर तुरंत अकाउंट बना सकते हैं",
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                registerPassword.trim().length >= 4 -> {
+                                    Text(
+                                        text = "✓ पासवर्ड तैयार है",
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                else -> {
+                                    Text("पासवर्ड रखें तो 4+ अक्षर लिखें, या खाली छोड़ दें")
+                                }
                             }
                         },
                         visualTransformation = if (showRegisterPassword) {

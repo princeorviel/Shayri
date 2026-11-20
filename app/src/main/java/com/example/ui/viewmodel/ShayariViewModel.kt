@@ -389,6 +389,40 @@ class ShayariViewModel(
         }
     }
 
+    fun quickCreateNameAccount(
+        fullName: String,
+        onComplete: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            preferencesRepository.quickCreateNameAccount(fullName)
+            onComplete()
+        }
+    }
+
+    fun upsertUserPostToCatalog(
+        personalId: String,
+        couplet: String,
+        authorName: String,
+        title: String = "",
+        themeTag: String = ""
+    ) {
+        viewModelScope.launch {
+            repository.upsertUserPostToCatalog(
+                personalId = personalId,
+                couplet = couplet,
+                authorName = authorName,
+                title = title,
+                themeTag = themeTag
+            )
+        }
+    }
+
+    fun removeUserPostFromCatalog(personalId: String) {
+        viewModelScope.launch {
+            repository.removeUserPostFromCatalog(personalId)
+        }
+    }
+
     fun setDailyNotificationSettings(enabled: Boolean, hour: Int, minute: Int) {
         viewModelScope.launch {
             preferencesRepository.setDailyNotificationSettings(enabled, hour, minute)

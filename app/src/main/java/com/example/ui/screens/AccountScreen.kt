@@ -33,12 +33,16 @@ import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.StarRate
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
@@ -48,6 +52,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import com.example.BuildConfig
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,6 +114,8 @@ fun AccountScreen(
     onUpdateLocalProfile: ((penName: String, bio: String, socialLinks: SocialLinks) -> Unit)? = null,
     onOpenEasyProfile: (() -> Unit)? = null,
     onSaveEasyProfile: ((penName: String, bio: String, storedPhotoUri: String, socialLinks: SocialLinks) -> Unit)? = null,
+    onQuickCreateNameAccount: ((String) -> Unit)? = null,
+    onPersonalPostDeleted: ((String) -> Unit)? = null,
     isOwner: Boolean = false,
     totalCatalogShayariCount: Int = 0,
     categoryCount: Int = 0,
@@ -280,6 +289,7 @@ fun AccountScreen(
             followingCount = followingCount,
             showSocialStats = isSignedIn,
             onEditProfile = triggerOpenEasyProfile,
+            onQuickCreateNameAccount = if (!isSignedIn) onQuickCreateNameAccount else null,
             onOpenMyPoetProfile = if (isSignedIn) onOpenMyPoetProfile else null,
             onOpenKaviManch = onOpenKaviManch,
             isOwner = isOwner,
@@ -310,6 +320,7 @@ fun AccountScreen(
                         onError = onFeedback
                     )
                 },
+                onPersonalPostDeleted = onPersonalPostDeleted,
                 onOpenWriteStudio = onOpenWriteStudio,
                 authorPenName = displayName,
                 showHeader = false
@@ -336,6 +347,7 @@ fun AccountProfileHeader(
     followingCount: Long = 0L,
     showSocialStats: Boolean = false,
     onEditProfile: (() -> Unit)? = null,
+    onQuickCreateNameAccount: ((String) -> Unit)? = null,
     onOpenMyPoetProfile: (() -> Unit)? = null,
     onOpenKaviManch: (() -> Unit)? = null,
     isOwner: Boolean = false,
@@ -495,6 +507,19 @@ fun AccountProfileHeader(
                                     )
                                 }
                             }
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = Color.White.copy(alpha = 0.16f),
+                                modifier = Modifier.testTag("account_version_badge")
+                            ) {
+                                Text(
+                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = Color.White.copy(alpha = 0.92f),
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
                     }
 
@@ -540,6 +565,97 @@ fun AccountProfileHeader(
                                 )
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        if (!isSignedIn && onQuickCreateNameAccount != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            var quickName by remember { mutableStateOf("") }
+            val trimmedQuickName = quickName.trim()
+            val canQuickCreate = trimmedQuickName.length >= 2
+
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLowest,
+                border = BorderStroke(1.dp, RoseVioletGradientStart.copy(alpha = 0.35f)),
+                tonalElevation = 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("account_quick_name_card")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = quickName,
+                        onValueChange = { if (it.length <= 40) quickName = it },
+                        placeholder = {
+                            Text(
+                                text = "बस अपना नाम लिखें…",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            capitalization = KeyboardCapitalization.Words,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                if (canQuickCreate) {
+                                    onQuickCreateNameAccount(trimmedQuickName)
+                                    quickName = ""
+                                }
+                            }
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = RoseVioletGradientStart,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("account_quick_name_input")
+                    )
+
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                brush = if (canQuickCreate) {
+                                    headerGradient
+                                } else {
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            RoseVioletGradientStart.copy(alpha = 0.45f),
+                                            RoseVioletGradientEnd.copy(alpha = 0.45f)
+                                        )
+                                    )
+                                }
+                            )
+                            .clickable(enabled = canQuickCreate) {
+                                onQuickCreateNameAccount(trimmedQuickName)
+                                quickName = ""
+                            }
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                            .testTag("account_quick_create_button")
+                    ) {
+                        Text(
+                            text = "अकाउंट बनाएँ",
+                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                            color = Color.White,
+                            maxLines = 1
+                        )
                     }
                 }
             }
