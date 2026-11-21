@@ -747,7 +747,13 @@ private fun ShayariAppRoot(
                 imageUri = imageUri
             )
             when (result) {
-                SocialShareResult.LAUNCHED_NATIVE_APP,
+                SocialShareResult.LAUNCHED_NATIVE_APP -> {
+                    if (platform == SocialSharePlatform.INSTAGRAM) {
+                        ShayariShareHelper.copyPlainText(context, ShayariShareHelper.appDownloadUrl())
+                        showFeedback("डाउनलोड लिंक कॉपी हो गया — Instagram Story के Link Sticker में पेस्ट करें 🔗")
+                    }
+                    if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
+                }
                 SocialShareResult.LAUNCHED_WEB_FALLBACK -> {
                     if (target is ShareTarget.Community) notifyCommunityShareIfNeeded(target.post)
                 }
@@ -828,12 +834,16 @@ private fun ShayariAppRoot(
     }
 
     fun executeCopyShareTarget(target: ShareTarget) {
-        val textToCopy = target.toShareText(context)
+        val textToCopy = if (target is ShareTarget.App) {
+            ShayariShareHelper.appDownloadUrl()
+        } else {
+            target.toShareText(context)
+        }
         ShayariShareHelper.copyPlainText(context, textToCopy)
         shareTarget = null
         showFeedback(
             if (target is ShareTarget.App) {
-                context.getString(R.string.share_copy_app_snackbar)
+                "सीधा डाउनलोड लिंक कॉपी हो गया (कहीं भी पेस्ट करें) 🔗"
             } else {
                 context.getString(R.string.copied_snackbar)
             }

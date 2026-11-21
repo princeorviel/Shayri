@@ -498,15 +498,15 @@ object ShayariShareHelper {
             canvas.drawText("— ${shayari.poet}", width / 2f, dividerY + 64f, poetPaint)
         }
 
-        // 7. Subtle watermark footer
+        // 7. Subtle watermark footer with clean website link
         val footerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = textArgb
-            alpha = 135
-            textSize = 28f
-            typeface = displayTypeface
+            alpha = 155
+            textSize = 26f
+            typeface = uiTypeface
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("शायरी • दिल की बात", width / 2f, height - 108f, footerPaint)
+        canvas.drawText("शायरी ऐप • princeorviel.github.io/Shayri", width / 2f, height - 104f, footerPaint)
 
         return bitmap
     }
@@ -914,12 +914,17 @@ object ShayariShareHelper {
 
         val watermarkPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = textArgb
-            alpha = 145
-            textSize = 13f * scaleFactor
+            alpha = 155
+            textSize = 12.5f * scaleFactor
             this.typeface = uiTypeface
             textAlign = Paint.Align.LEFT
         }
-        canvas.drawText(context.getString(R.string.app_name), 48f, height - 40f, watermarkPaint)
+        canvas.drawText(
+            "${context.getString(R.string.app_name)} • princeorviel.github.io/Shayri",
+            48f,
+            height - 40f,
+            watermarkPaint
+        )
 
         return bitmap
     }
