@@ -49,15 +49,21 @@ jobs:
           fi
 
       - name: Restore optional Firebase google-services.json
+        id: firebase_cfg
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON" ] && [ ! -f app/google-services.json ]; then
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             if printf '%s' "$GOOGLE_SERVICES_JSON" | grep -q '^[[:space:]]*{'; then
               printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
             else
               printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r\n' | base64 -d > app/google-services.json
             fi
+          fi
+          if [ -s app/google-services.json ] && ! grep -q 'remixed-project-id' app/google-services.json; then
+            echo "status=🌐 ऑनलाइन क्लाउड व Google लॉगिन: चालू ✅" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=⚠️ क्लाउड लॉगिन बंद — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़कर फिर चलाएँ" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Setup Gradle
@@ -93,6 +99,8 @@ jobs:
           name: "शायरी (Shayari) App v1.3 — Build #${{ github.run_number }}"
           body: |
             ### 📱 नया अपडेट (v1.3) अपने Android फ़ोन में इंस्टॉल करें
+            **क्लाउड स्टेटस:** ${{ steps.firebase_cfg.outputs.status }}
+
             1. नीचे **Shayari-App-v1.3-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
             2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Update / Install** पर टैप करें।
           files: Shayari-App-v1.3-b${{ github.run_number }}.apk

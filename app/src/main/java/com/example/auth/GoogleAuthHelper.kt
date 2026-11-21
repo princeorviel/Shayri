@@ -155,7 +155,7 @@ fun onGoogleSignInClicked(
     onAuthCancelled: () -> Unit = {}
 ) {
     if (!isFirebaseAvailable(context)) {
-        onAuthError("इस APK बिल्ड में क्लाउड लॉगिन कॉन्फ़िगर नहीं है — आप ऑफलाइन शायरी, रील्स और कार्ड मेकर इस्तेमाल कर सकते हैं।")
+        onAuthError("क्लाउड लॉगिन के लिए AI Studio से APK डाउनलोड करें या GitHub Secrets में GOOGLE_SERVICES_JSON जोड़ें।")
         return
     }
     val clientId = resolveDefaultWebClientId(context)

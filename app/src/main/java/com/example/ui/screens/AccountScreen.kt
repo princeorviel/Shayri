@@ -483,7 +483,7 @@ fun AccountProfileHeader(
                                 text = email,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.White.copy(alpha = 0.88f),
-                                maxLines = 2,
+                                maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
@@ -498,119 +498,20 @@ fun AccountProfileHeader(
                                 modifier = Modifier.testTag("account_poet_bio")
                             )
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.22f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                                modifier = Modifier.testTag("account_stat_posts")
-                            ) {
-                                Text(
-                                    text = "मेरी पोस्ट: $postCount",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White,
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                )
-                            }
-                            if (showSocialStats || followerCount > 0L || followingCount > 0L) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.22f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                                    modifier = Modifier.testTag("account_stat_followers")
-                                ) {
-                                    Text(
-                                        text = "फ़ॉलोअर्स: $followerCount",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White.copy(alpha = 0.22f),
-                                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
-                                    modifier = Modifier.testTag("account_stat_following")
-                                ) {
-                                    Text(
-                                        text = "फ़ॉलोइंग: $followingCount",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.16f),
-                                modifier = Modifier.testTag("account_version_badge")
-                            ) {
-                                Text(
-                                    text = "v${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = Color.White.copy(alpha = 0.92f),
-                                    maxLines = 1,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
                     }
 
                     if (isSignedIn) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        IconButton(
+                            onClick = onSignOut,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .testTag("sign_out_button")
                         ) {
-                            if (!isOnlineGoogleAccount && onQuickGoogleConnect != null) {
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = Color.White,
-                                    modifier = Modifier
-                                        .defaultMinSize(minHeight = 40.dp)
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable(onClick = onQuickGoogleConnect)
-                                        .testTag("account_go_online_button")
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Rounded.Login,
-                                            contentDescription = null,
-                                            tint = RoseVioletGradientStart,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Text(
-                                            text = "ऑनलाइन जुड़ें",
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                            color = RoseVioletGradientStart,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
-                            }
-                            IconButton(
-                                onClick = onSignOut,
-                                modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("sign_out_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Rounded.Logout,
-                                    contentDescription = stringResource(R.string.sign_out),
-                                    tint = Color.White
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                contentDescription = stringResource(R.string.sign_out),
+                                tint = Color.White
+                            )
                         }
                     } else {
                         Surface(
@@ -640,6 +541,110 @@ fun AccountProfileHeader(
                                     maxLines = 1
                                 )
                             }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.22f),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                        modifier = Modifier.testTag("account_stat_posts")
+                    ) {
+                        Text(
+                            text = "मेरी पोस्ट: $postCount",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White,
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        )
+                    }
+                    if (showSocialStats || followerCount > 0L || followingCount > 0L) {
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.22f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                            modifier = Modifier.testTag("account_stat_followers")
+                        ) {
+                            Text(
+                                text = "फ़ॉलोअर्स: $followerCount",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.22f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                            modifier = Modifier.testTag("account_stat_following")
+                        ) {
+                            Text(
+                                text = "फ़ॉलोइंग: $followingCount",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White,
+                                maxLines = 1,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White.copy(alpha = 0.16f),
+                        modifier = Modifier.testTag("account_version_badge")
+                    ) {
+                        Text(
+                            text = "v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = Color.White.copy(alpha = 0.92f),
+                            maxLines = 1,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                        )
+                    }
+                }
+
+                if (isSignedIn && !isOnlineGoogleAccount && onQuickGoogleConnect != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.White,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 42.dp)
+                            .clip(RoundedCornerShape(50))
+                            .clickable(onClick = onQuickGoogleConnect)
+                            .testTag("account_go_online_button")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Login,
+                                contentDescription = null,
+                                tint = RoseVioletGradientStart,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "1-टैप में Google से ऑनलाइन जुड़ें",
+                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                color = RoseVioletGradientStart,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
