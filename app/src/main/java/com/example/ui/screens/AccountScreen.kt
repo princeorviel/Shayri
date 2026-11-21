@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Insights
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.StarRate
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -198,11 +200,18 @@ fun AccountScreen(
     }
 
     var showInlineEasyProfile by remember { mutableStateOf(false) }
+    var googleAuthError by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val googleSignIn = rememberGoogleSignInLauncher(
-        onAuthSuccess = onAuthSuccess,
-        onAuthError = onAuthError,
+        onAuthSuccess = {
+            googleAuthError = null
+            onAuthSuccess()
+        },
+        onAuthError = { message ->
+            googleAuthError = message
+            onAuthError(message)
+        },
         onClickOverride = signInClickOverride
     )
 
@@ -270,8 +279,14 @@ fun AccountScreen(
             onSignOut = onSignOut,
             isSignedIn = isSignedIn,
             isOnlineGoogleAccount = isFirebaseSignedIn,
+            isGoogleSignInLoading = googleSignIn.isLoading,
+            googleSignInError = googleAuthError,
+            onDismissGoogleSignInError = { googleAuthError = null },
             onQuickGoogleConnect = if (!isFirebaseSignedIn) {
-                { googleSignIn.launch() }
+                {
+                    googleAuthError = null
+                    googleSignIn.launch()
+                }
             } else {
                 null
             },
@@ -377,6 +392,9 @@ fun AccountProfileHeader(
     onSignOut: () -> Unit,
     isSignedIn: Boolean = true,
     isOnlineGoogleAccount: Boolean = isSignedIn,
+    isGoogleSignInLoading: Boolean = false,
+    googleSignInError: String? = null,
+    onDismissGoogleSignInError: () -> Unit = {},
     onQuickGoogleConnect: (() -> Unit)? = null,
     onSignInClick: () -> Unit = {},
     onShareApp: () -> Unit = {},
@@ -619,9 +637,9 @@ fun AccountProfileHeader(
                         color = Color.White,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .defaultMinSize(minHeight = 42.dp)
+                            .defaultMinSize(minHeight = 44.dp)
                             .clip(RoundedCornerShape(50))
-                            .clickable(onClick = onQuickGoogleConnect)
+                            .clickable(enabled = !isGoogleSignInLoading, onClick = onQuickGoogleConnect)
                             .testTag("account_go_online_button")
                     ) {
                         Row(
@@ -631,20 +649,69 @@ fun AccountProfileHeader(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.Login,
-                                contentDescription = null,
-                                tint = RoseVioletGradientStart,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            if (isGoogleSignInLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = RoseVioletGradientStart
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Login,
+                                    contentDescription = null,
+                                    tint = RoseVioletGradientStart,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "1-टैप में Google से ऑनलाइन जुड़ें",
+                                text = if (isGoogleSignInLoading) {
+                                    "Google से जुड़ रहे हैं..."
+                                } else {
+                                    "1-टैप में Google से ऑनलाइन जुड़ें"
+                                },
                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                 color = RoseVioletGradientStart,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    }
+                    if (!googleSignInError.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.Black.copy(alpha = 0.28f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.35f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("account_google_error_banner")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = googleSignInError,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = onDismissGoogleSignInError,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Close,
+                                        contentDescription = "बंद करें",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

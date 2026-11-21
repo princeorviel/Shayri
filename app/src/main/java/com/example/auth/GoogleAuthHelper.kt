@@ -2,12 +2,14 @@ package com.example.auth
 
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -146,6 +148,25 @@ fun attemptAutoSignIn(
     }
 }
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+private fun isPlayServicesConfigCancellation(message: String?): Boolean {
+    if (message.isNullOrBlank()) return false
+    val lower = message.lowercase()
+    return lower.contains("28444") ||
+        lower.contains("developer") ||
+        lower.contains("not set up") ||
+        lower.contains("caller") ||
+        lower.contains("reauth") ||
+        lower.contains("signature") ||
+        lower.contains("10:") ||
+        lower.contains("16:")
+}
+
 fun onGoogleSignInClicked(
     context: Context,
     credentialManager: CredentialManager,
@@ -155,12 +176,12 @@ fun onGoogleSignInClicked(
     onAuthCancelled: () -> Unit = {}
 ) {
     if (!isFirebaseAvailable(context)) {
-        onAuthError("क्लाउड लॉगिन के लिए AI Studio से APK डाउनलोड करें या GitHub Secrets में GOOGLE_SERVICES_JSON जोड़ें।")
+        onAuthError("क्लाउड लॉगिन कॉन्फ़िगर नहीं है — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़कर नई APK बनाएँ।")
         return
     }
     val clientId = resolveDefaultWebClientId(context)
     if (clientId == null) {
-        onAuthError("Google Sign-In configuration missing: default_web_client_id not found")
+        onAuthError("Google Sign-In कॉन्फ़िग अधूरा है (default_web_client_id नहीं मिला)।")
         return
     }
 
@@ -171,9 +192,20 @@ fun onGoogleSignInClicked(
 
     scope.launch {
         try {
-            val activity = context as? Activity
+            val activity = context.findActivity()
                 ?: throw IllegalStateException("Activity context required for Google Sign-In")
-            val result = credentialManager.getCredential(activity, request)
+            val result = try {
+                credentialManager.getCredential(activity, request)
+            } catch (_: NoCredentialException) {
+                val fallbackOption = GetGoogleIdOption.Builder()
+                    .setFilterByAuthorizedAccounts(false)
+                    .setServerClientId(clientId)
+                    .build()
+                val fallbackRequest = GetCredentialRequest.Builder()
+                    .addCredentialOption(fallbackOption)
+                    .build()
+                credentialManager.getCredential(activity, fallbackRequest)
+            }
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
                 val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
@@ -181,14 +213,23 @@ fun onGoogleSignInClicked(
                 Firebase.auth.signInWithCredential(authCredential).await()
                 onAuthSuccess()
             } else {
-                onAuthError("Unexpected credential type")
+                onAuthError("अमान्य Google क्रेडेंशियल मिला (${credential.type})।")
             }
         } catch (e: GetCredentialCancellationException) {
-            Log.w("Auth", "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
-            onAuthCancelled()
+            val rawMessage = e.errorMessage?.toString() ?: e.message
+            Log.w("Auth", "Google Sign-In flow cancelled or dismissed: $rawMessage", e)
+            if (isPlayServicesConfigCancellation(rawMessage)) {
+                onAuthError("Google लॉगिन सेटअप एरर: $rawMessage")
+            } else {
+                onAuthCancelled()
+            }
+        } catch (e: NoCredentialException) {
+            val rawMessage = e.errorMessage?.toString() ?: e.message
+            Log.e("Auth", "No Google credential available: $rawMessage", e)
+            onAuthError("फ़ोन में कोई Google अकाउंट नहीं मिला या सेटअप अधूरा है (${rawMessage ?: "NoCredential"})।")
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)
-            onAuthError(e.localizedMessage ?: "Sign in failed")
+            onAuthError(e.localizedMessage ?: e.javaClass.simpleName)
         }
     }
 }

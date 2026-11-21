@@ -36,6 +36,7 @@ jobs:
           key: shayari-ci-debug-keystore-v1
 
       - name: Prepare debug keystore
+        id: keystore_cfg
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
@@ -46,6 +47,12 @@ jobs:
           fi
           if [ ! -s debug.keystore ]; then
             keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          SHA1=$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -m1 'SHA1:' | awk '{print $2}')
+          if [ "$SHA1" = "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA" ]; then
+            echo "status=🔑 Keystore SHA-1: मैच ✅" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=⚠️ Keystore SHA-1 अलग है ($SHA1) — Google लॉगिन के लिए सही keystore चाहिए" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restore optional Firebase google-services.json
@@ -100,6 +107,7 @@ jobs:
           body: |
             ### 📱 नया अपडेट (v1.3) अपने Android फ़ोन में इंस्टॉल करें
             **क्लाउड स्टेटस:** ${{ steps.firebase_cfg.outputs.status }}
+            **साइनिंग स्टेटस:** ${{ steps.keystore_cfg.outputs.status }}
 
             1. नीचे **Shayari-App-v1.3-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
             2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Update / Install** पर टैप करें।

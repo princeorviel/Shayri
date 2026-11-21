@@ -1983,9 +1983,10 @@ private fun ShayariAppRoot(
                                                 skippedGooglePostPrompt = true
                                                 onFallbackLocal()
                                             },
-                                            onAuthError = {
+                                            onAuthError = { err ->
                                                 isInstantPublishing = false
                                                 onFallbackLocal()
+                                                showFeedback("फ़ोन में सेव हुई — Google लॉगिन त्रुटि: $err")
                                             }
                                         )
                                     }
