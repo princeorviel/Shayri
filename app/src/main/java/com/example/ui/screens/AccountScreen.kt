@@ -212,6 +212,9 @@ fun AccountScreen(
             googleAuthError = message
             onAuthError(message)
         },
+        onAuthCancelled = {
+            onFeedback("Google लॉगिन रद्द किया गया — दोबारा टैप करके जुड़ें")
+        },
         onClickOverride = signInClickOverride
     )
 

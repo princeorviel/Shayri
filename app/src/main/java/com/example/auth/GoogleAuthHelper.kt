@@ -3,6 +3,8 @@ package com.example.auth
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
@@ -10,6 +12,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
+import java.security.MessageDigest
 import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
@@ -148,10 +151,33 @@ fun attemptAutoSignIn(
     }
 }
 
+private const val EXPECTED_FIREBASE_SHA1 = "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA"
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+@Suppress("DEPRECATION")
+private fun getAppSigningSha1(context: Context): String? {
+    return runCatching {
+        val pm = context.packageManager
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val info = pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            val signingInfo = info.signingInfo ?: return null
+            if (signingInfo.hasMultipleSigners()) {
+                signingInfo.apkContentsSigners
+            } else {
+                signingInfo.signingCertificateHistory
+            }
+        } else {
+            pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES).signatures
+        }
+        val certBytes = signatures?.firstOrNull()?.toByteArray() ?: return null
+        val digest = MessageDigest.getInstance("SHA-1").digest(certBytes)
+        digest.joinToString(":") { byte -> "%02X".format(byte) }
+    }.getOrNull()
 }
 
 private fun isPlayServicesConfigCancellation(message: String?): Boolean {
@@ -191,20 +217,27 @@ fun onGoogleSignInClicked(
         .build()
 
     scope.launch {
+        val startedAtMs = System.currentTimeMillis()
         try {
             val activity = context.findActivity()
                 ?: throw IllegalStateException("Activity context required for Google Sign-In")
             val result = try {
                 credentialManager.getCredential(activity, request)
-            } catch (_: NoCredentialException) {
-                val fallbackOption = GetGoogleIdOption.Builder()
-                    .setFilterByAuthorizedAccounts(false)
-                    .setServerClientId(clientId)
-                    .build()
-                val fallbackRequest = GetCredentialRequest.Builder()
-                    .addCredentialOption(fallbackOption)
-                    .build()
-                credentialManager.getCredential(activity, fallbackRequest)
+            } catch (firstError: Exception) {
+                val fastAbort = firstError is GetCredentialCancellationException &&
+                    (System.currentTimeMillis() - startedAtMs) < 1500L
+                if (firstError is NoCredentialException || fastAbort) {
+                    val fallbackOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(clientId)
+                        .build()
+                    val fallbackRequest = GetCredentialRequest.Builder()
+                        .addCredentialOption(fallbackOption)
+                        .build()
+                    credentialManager.getCredential(activity, fallbackRequest)
+                } else {
+                    throw firstError
+                }
             }
             val credential = result.credential
             if (credential is CustomCredential && credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
@@ -216,17 +249,30 @@ fun onGoogleSignInClicked(
                 onAuthError("अमान्य Google क्रेडेंशियल मिला (${credential.type})।")
             }
         } catch (e: GetCredentialCancellationException) {
+            val elapsedMs = System.currentTimeMillis() - startedAtMs
             val rawMessage = e.errorMessage?.toString() ?: e.message
-            Log.w("Auth", "Google Sign-In flow cancelled or dismissed: $rawMessage", e)
-            if (isPlayServicesConfigCancellation(rawMessage)) {
-                onAuthError("Google लॉगिन सेटअप एरर: $rawMessage")
-            } else {
-                onAuthCancelled()
+            val actualSha1 = getAppSigningSha1(context)
+            Log.w("Auth", "Google Sign-In cancelled (${elapsedMs}ms): $rawMessage | SHA1=$actualSha1", e)
+            when {
+                actualSha1 != null && !actualSha1.equals(EXPECTED_FIREBASE_SHA1, ignoreCase = true) -> {
+                    onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — सही debug.keystore से बनी APK चाहिए।")
+                }
+                isPlayServicesConfigCancellation(rawMessage) || elapsedMs < 1500L -> {
+                    onAuthError("Google लॉगिन शीट खुल नहीं सकी (${rawMessage ?: "FastCancel"} | SHA1: ${actualSha1?.take(11) ?: "?"})")
+                }
+                else -> {
+                    onAuthCancelled()
+                }
             }
         } catch (e: NoCredentialException) {
             val rawMessage = e.errorMessage?.toString() ?: e.message
-            Log.e("Auth", "No Google credential available: $rawMessage", e)
-            onAuthError("फ़ोन में कोई Google अकाउंट नहीं मिला या सेटअप अधूरा है (${rawMessage ?: "NoCredential"})।")
+            val actualSha1 = getAppSigningSha1(context)
+            Log.e("Auth", "No Google credential available: $rawMessage | SHA1=$actualSha1", e)
+            if (actualSha1 != null && !actualSha1.equals(EXPECTED_FIREBASE_SHA1, ignoreCase = true)) {
+                onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — सही keystore से बनी APK चाहिए।")
+            } else {
+                onAuthError("फ़ोन में Google अकाउंट नहीं मिला या लॉगिन ब्लॉक है (${rawMessage ?: "NoCredential"})।")
+            }
         } catch (e: Exception) {
             Log.e("Auth", "Google Sign-In failed", e)
             onAuthError(e.localizedMessage ?: e.javaClass.simpleName)

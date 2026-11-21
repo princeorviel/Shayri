@@ -60,18 +60,60 @@ jobs:
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
-            if printf '%s' "$GOOGLE_SERVICES_JSON" | grep -q '^[[:space:]]*{'; then
-              printf '%s' "$GOOGLE_SERVICES_JSON" > app/google-services.json
-            else
-              printf '%s' "$GOOGLE_SERVICES_JSON" | tr -d '\r\n' | base64 -d > app/google-services.json
-            fi
-          fi
-          if [ -s app/google-services.json ] && ! grep -q 'remixed-project-id' app/google-services.json; then
-            echo "status=🌐 ऑनलाइन क्लाउड व Google लॉगिन: चालू ✅" >> "$GITHUB_OUTPUT"
-          else
-            echo "status=⚠️ क्लाउड लॉगिन बंद — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़कर फिर चलाएँ" >> "$GITHUB_OUTPUT"
-          fi
+          python3 - <<'PY'
+          import base64, json, os, pathlib
+
+          raw = os.environ.get("GOOGLE_SERVICES_JSON", "").strip()
+          out_path = pathlib.Path("app/google-services.json")
+          gh_out = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+
+          def set_status(msg: str):
+              with gh_out.open("a", encoding="utf-8") as f:
+                  f.write(f"status={msg}\n")
+
+          def is_valid_gs(data):
+              return (
+                  isinstance(data, dict)
+                  and isinstance(data.get("project_info"), dict)
+                  and data["project_info"].get("project_id") not in (None, "", "remixed-project-id")
+                  and isinstance(data.get("client"), list)
+                  and len(data["client"]) > 0
+              )
+
+          if raw:
+              parsed = None
+              candidates = [raw]
+              try:
+                  decoded = base64.b64decode("".join(raw.split())).decode("utf-8", errors="strict")
+                  candidates.append(decoded)
+              except Exception:
+                  pass
+              for cand in candidates:
+                  try:
+                      obj = json.loads(cand)
+                      if is_valid_gs(obj):
+                          parsed = obj
+                          break
+                  except Exception:
+                      pass
+              if parsed is not None:
+                  out_path.write_text(json.dumps(parsed, indent=2), encoding="utf-8")
+                  set_status("🌐 ऑनलाइन क्लाउड व Google लॉगिन: चालू ✅")
+              else:
+                  set_status("⚠️ GOOGLE_SERVICES_JSON गलत/अधूरा है — सही JSON दोबारा पेस्ट करें")
+          else:
+              if out_path.exists():
+                  try:
+                      obj = json.loads(out_path.read_text(encoding="utf-8"))
+                      if is_valid_gs(obj):
+                          set_status("🌐 ऑनलाइन क्लाउड व Google लॉगिन: चालू ✅")
+                      else:
+                          set_status("⚠️ क्लाउड लॉगिन बंद — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़ें")
+                  except Exception:
+                      set_status("⚠️ क्लाउड लॉगिन बंद — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़ें")
+              else:
+                  set_status("⚠️ क्लाउड लॉगिन बंद — GitHub Secrets में GOOGLE_SERVICES_JSON जोड़ें")
+          PY
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
