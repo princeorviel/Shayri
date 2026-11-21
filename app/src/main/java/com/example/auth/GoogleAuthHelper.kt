@@ -151,7 +151,14 @@ fun attemptAutoSignIn(
     }
 }
 
-private const val EXPECTED_FIREBASE_SHA1 = "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA"
+private val EXPECTED_FIREBASE_SHA1S = setOf(
+    "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA",
+    "0F:BA:D1:CF:A4:3F:AE:DF:03:CF:54:37:4D:E0:49:A8:B3:2A:AF:CF"
+)
+
+private fun isKnownFirebaseSha1(sha1: String?): Boolean {
+    return sha1 != null && EXPECTED_FIREBASE_SHA1S.any { it.equals(sha1, ignoreCase = true) }
+}
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -254,8 +261,8 @@ fun onGoogleSignInClicked(
             val actualSha1 = getAppSigningSha1(context)
             Log.w("Auth", "Google Sign-In cancelled (${elapsedMs}ms): $rawMessage | SHA1=$actualSha1", e)
             when {
-                actualSha1 != null && !actualSha1.equals(EXPECTED_FIREBASE_SHA1, ignoreCase = true) -> {
-                    onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — सही debug.keystore से बनी APK चाहिए।")
+                actualSha1 != null && !isKnownFirebaseSha1(actualSha1) -> {
+                    onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — Firebase में यह SHA-1 जोड़ें।")
                 }
                 isPlayServicesConfigCancellation(rawMessage) || elapsedMs < 1500L -> {
                     onAuthError("Google लॉगिन शीट खुल नहीं सकी (${rawMessage ?: "FastCancel"} | SHA1: ${actualSha1?.take(11) ?: "?"})")
@@ -268,8 +275,8 @@ fun onGoogleSignInClicked(
             val rawMessage = e.errorMessage?.toString() ?: e.message
             val actualSha1 = getAppSigningSha1(context)
             Log.e("Auth", "No Google credential available: $rawMessage | SHA1=$actualSha1", e)
-            if (actualSha1 != null && !actualSha1.equals(EXPECTED_FIREBASE_SHA1, ignoreCase = true)) {
-                onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — सही keystore से बनी APK चाहिए।")
+            if (actualSha1 != null && !isKnownFirebaseSha1(actualSha1)) {
+                onAuthError("APK का SHA-1 मैच नहीं हुआ ($actualSha1) — Firebase में यह SHA-1 जोड़ें।")
             } else {
                 onAuthError("फ़ोन में Google अकाउंट नहीं मिला या लॉगिन ब्लॉक है (${rawMessage ?: "NoCredential"})।")
             }

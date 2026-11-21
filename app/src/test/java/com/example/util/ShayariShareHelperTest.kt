@@ -154,7 +154,7 @@ class ShayariShareHelperTest {
         }
 
     @Test
-    fun `buildShareAppChooserIntent wraps ACTION_SEND text_plain with Play Store link`() {
+    fun `buildShareAppChooserIntent wraps ACTION_SEND text_plain with direct download link`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val chooserIntent = ShayariShareHelper.buildShareAppChooserIntent(context)
 
@@ -166,7 +166,8 @@ class ShayariShareHelperTest {
         assertEquals(Intent.ACTION_SEND, targetIntent?.action)
         assertEquals("text/plain", targetIntent?.type)
         val sharedText = targetIntent?.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-        assertTrue(sharedText.contains("https://play.google.com/store/apps/details?id=${context.packageName}"))
+        assertTrue(sharedText.contains(ShayariShareHelper.APP_DOWNLOAD_PAGE_URL))
+        org.junit.Assert.assertFalse(sharedText.contains("play.google.com"))
         org.junit.Assert.assertFalse(sharedText.contains("30,000"))
         org.junit.Assert.assertFalse(sharedText.contains("10,000"))
     }
@@ -193,11 +194,11 @@ class ShayariShareHelperTest {
     }
 
     @Test
-    fun `appendAppPromoFooter attaches Play Store download link once without duplicating`() {
+    fun `appendAppPromoFooter attaches direct download link once without duplicating`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val base = "इश्क़ की बारिश में भीगते रहे हम\n\n— मिर्ज़ा ग़ालिब\n#शायरी"
         val withPromo = ShayariShareHelper.appendAppPromoFooter(context, base)
-        val expectedUrl = "https://play.google.com/store/apps/details?id=${context.packageName}"
+        val expectedUrl = ShayariShareHelper.APP_DOWNLOAD_PAGE_URL
 
         assertTrue(withPromo.contains(base))
         assertTrue(withPromo.contains(expectedUrl))

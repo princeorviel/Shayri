@@ -121,22 +121,28 @@ object ShayariShareHelper {
         }.getOrElse { false }
     }
 
+    const val APP_DOWNLOAD_PAGE_URL = SocialShareLauncher.LIVE_WEBSITE_URL
+    const val DIRECT_APK_DOWNLOAD_URL =
+        "https://github.com/princeorviel/Shayri/releases/latest/download/Shayari-App.apk"
+
+    fun appDownloadUrl(): String = APP_DOWNLOAD_PAGE_URL
+
     fun playStoreUrl(context: Context): String =
         "https://play.google.com/store/apps/details?id=${context.packageName}"
 
     fun appendAppPromoFooter(context: Context, baseText: String): String {
         val clean = baseText.trimEnd()
-        val storeUrl = playStoreUrl(context)
-        if (clean.contains(storeUrl)) return clean
+        val downloadUrl = appDownloadUrl()
+        if (clean.contains(downloadUrl)) return clean
         val appName = context.getString(R.string.app_name)
-        val footer = context.getString(R.string.share_viral_footer, appName, storeUrl)
+        val footer = context.getString(R.string.share_viral_footer, appName, downloadUrl)
         return "$clean\n\n$footer"
     }
 
     fun formatAppShareText(context: Context): String {
         val appName = context.getString(R.string.app_name)
-        val storeUrl = playStoreUrl(context)
-        return context.getString(R.string.share_app_message, appName, storeUrl)
+        val downloadUrl = appDownloadUrl()
+        return context.getString(R.string.share_app_message, appName, downloadUrl)
     }
 
     fun buildShareAppChooserIntent(context: Context): Intent {
@@ -164,27 +170,16 @@ object ShayariShareHelper {
     }
 
     fun openPlayStoreForRating(context: Context): Boolean {
-        val marketIntent = Intent(
-            Intent.ACTION_VIEW,
-            Uri.parse("market://details?id=${context.packageName}")
-        ).apply {
-            if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
         val webIntent = Intent(
             Intent.ACTION_VIEW,
-            Uri.parse(playStoreUrl(context))
+            Uri.parse(appDownloadUrl())
         ).apply {
             if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         return runCatching {
-            context.startActivity(marketIntent)
+            context.startActivity(webIntent)
             true
-        }.getOrElse {
-            runCatching {
-                context.startActivity(webIntent)
-                true
-            }.getOrElse { false }
-        }
+        }.getOrElse { false }
     }
 
     sealed class DeepLinkTarget {

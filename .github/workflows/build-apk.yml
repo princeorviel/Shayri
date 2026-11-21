@@ -49,10 +49,10 @@ jobs:
             keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           SHA1=$(keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -m1 'SHA1:' | awk '{print $2}')
-          if [ "$SHA1" = "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA" ]; then
-            echo "status=🔑 Keystore SHA-1: मैच ✅" >> "$GITHUB_OUTPUT"
+          if [ "$SHA1" = "D6:68:6A:1E:B0:A6:49:D0:37:FD:58:CD:AE:88:A3:00:C2:AB:B1:DA" ] || [ "$SHA1" = "0F:BA:D1:CF:A4:3F:AE:DF:03:CF:54:37:4D:E0:49:A8:B3:2A:AF:CF" ]; then
+            echo "status=🔑 Keystore SHA-1: मैच ✅ ($SHA1)" >> "$GITHUB_OUTPUT"
           else
-            echo "status=⚠️ Keystore SHA-1 अलग है ($SHA1) — Google लॉगिन के लिए सही keystore चाहिए" >> "$GITHUB_OUTPUT"
+            echo "status=⚠️ Keystore SHA-1 अलग है ($SHA1) — Firebase में यह SHA-1 जोड़ें" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Restore optional Firebase google-services.json
@@ -131,7 +131,9 @@ jobs:
           --stacktrace
 
       - name: Rename APK for download
-        run: cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App-v1.3-b${{ github.run_number }}.apk"
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App-v1.3-b${{ github.run_number }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "Shayari-App.apk"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -151,8 +153,12 @@ jobs:
             **क्लाउड स्टेटस:** ${{ steps.firebase_cfg.outputs.status }}
             **साइनिंग स्टेटस:** ${{ steps.keystore_cfg.outputs.status }}
 
-            1. नीचे **Shayari-App-v1.3-b${{ github.run_number }}.apk** पर टैप करके डाउनलोड करें।
+            **डायरेक्ट डाउनलोड लिंक:** https://princeorviel.github.io/Shayri/
+
+            1. नीचे **Shayari-App.apk** पर टैप करके डाउनलोड करें।
             2. डाउनलोड पूरा होने पर फ़ाइल खोलें और **Update / Install** पर टैप करें।
-          files: Shayari-App-v1.3-b${{ github.run_number }}.apk
+          files: |
+            Shayari-App.apk
+            Shayari-App-v1.3-b${{ github.run_number }}.apk
           overwrite_files: true
           make_latest: true

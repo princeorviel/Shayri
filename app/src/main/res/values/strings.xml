@@ -102,9 +102,9 @@
     <string name="action_share_app">ऐप शेयर करें</string>
     <string name="share_app_chooser_title">शायरी ऐप शेयर करें</string>
     <string name="share_app_subject">%1$s — हिंदी शायरी ऐप</string>
-    <string name="share_app_message">%1$s ऐप पर दिल छू लेने वाली शायरियाँ पढ़ें और अपनी शायरी भी लिखें!\n\nअभी डाउनलोड करें:\n%2$s</string>
-    <string name="share_viral_footer">ऐसी ही और शायरी पढ़ने व लिखने के लिए %1$s ऐप डाउनलोड करें:\n%2$s</string>
-    <string name="action_rate_app">Play Store पर रेट करें</string>
+    <string name="share_app_message">%1$s ऐप पर दिल छू लेने वाली शायरियाँ पढ़ें और अपनी शायरी भी लिखें!\n\nसीधे Android APK डाउनलोड करें:\n%2$s</string>
+    <string name="share_viral_footer">ऐसी ही और शायरी पढ़ने व लिखने के लिए %1$s ऐप सीधे डाउनलोड करें:\n%2$s</string>
+    <string name="action_rate_app">नया अपडेट / वेबसाइट</string>
     <string name="share_card_error">कार्ड बनाने में दिक्कत आई, टेक्स्ट शेयर किया जा रहा है</string>
     <string name="share_error_snackbar">इस फ़ोन पर शेयर करने के लिए कोई ऐप नहीं मिला</string>
     <string name="action_download_image">इमेज डाउनलोड करें</string>
