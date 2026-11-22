@@ -18,12 +18,16 @@ import com.example.util.HinglishTransliterator
 import java.util.Calendar
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -204,58 +208,80 @@ class ShayariViewModel(
         Triple(query, selectedCat, refreshSeed)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private val filteredFlow: StateFlow<FilterResult> = combine(
         indexedShayariSharedFlow,
         filterInputsFlow
-    ) { indexedAll, (query, selectedCat, refreshSeed) ->
-        val trimmed = query.trim()
-        val baseFiltered = when {
-            trimmed.isEmpty() && selectedCat == null -> indexedAll.map { it.entity }
-            trimmed.isEmpty() -> indexedAll.mapNotNull { entry ->
-                val item = entry.entity
-                val matchesCat = item.categoryId == selectedCat ||
-                    (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
-                if (matchesCat) item else null
-            }
-            else -> {
-                val spec = ShayariTagMatcher.buildSearchSpec(trimmed)
-                val scored = ArrayList<Pair<Int, ShayariEntity>>()
-                for (entry in indexedAll) {
-                    val item = entry.entity
-                    if (selectedCat != null) {
-                        val inSelectedCat = item.categoryId == selectedCat ||
-                            (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
-                        if (!inSelectedCat) continue
-                    }
-                    val score = ShayariTagMatcher.scoreMatch(
-                        spec = spec,
-                        primaryCategoryId = item.categoryId,
-                        multiCategoryIds = entry.multiCategoryIds,
-                        normCouplet = entry.normCouplet,
-                        normPoet = entry.normPoet,
-                        normMoodTag = entry.normMoodTag
-                    )
-                    if (score > 0) {
-                        scored.add(score to item)
-                    }
-                }
-                if (scored.size > 1) {
-                    scored.sortByDescending { it.first }
-                }
-                scored.map { it.second }
-            }
-        }
-        val filtered = if (refreshSeed > 0L && trimmed.isEmpty()) {
-            baseFiltered.shuffled(Random(refreshSeed))
-        } else {
-            baseFiltered
-        }
-        FilterResult(
-            filtered = filtered,
-            selectedCategoryId = selectedCat,
-            searchQuery = query
-        )
+    ) { indexedAll, inputs ->
+        indexedAll to inputs
     }
+        .mapLatest { (indexedAll, inputs) ->
+            val (query, selectedCat, refreshSeed) = inputs
+            val trimmed = query.trim()
+            val baseFiltered = when {
+                trimmed.isEmpty() && selectedCat == null -> indexedAll.map { it.entity }
+                trimmed.isEmpty() -> indexedAll.mapNotNull { entry ->
+                    val item = entry.entity
+                    val matchesCat = item.categoryId == selectedCat ||
+                        (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
+                    if (matchesCat) item else null
+                }
+                else -> {
+                    val spec = ShayariTagMatcher.buildSearchSpec(trimmed)
+                    if (spec.matchAllFallback && selectedCat == null) {
+                        indexedAll.map { it.entity }
+                    } else {
+                        val scored = ArrayList<Pair<Int, ShayariEntity>>()
+                        var firstScore = -1
+                        var hasDistinctScores = false
+                        val ctx = currentCoroutineContext()
+                        for (idx in indexedAll.indices) {
+                            if ((idx and 511) == 0) {
+                                ctx.ensureActive()
+                            }
+                            val entry = indexedAll[idx]
+                            val item = entry.entity
+                            if (selectedCat != null) {
+                                val inSelectedCat = item.categoryId == selectedCat ||
+                                    (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
+                                if (!inSelectedCat) continue
+                            }
+                            val score = ShayariTagMatcher.scoreMatch(
+                                spec = spec,
+                                primaryCategoryId = item.categoryId,
+                                multiCategoryIds = entry.multiCategoryIds,
+                                normCouplet = entry.normCouplet,
+                                normPoet = entry.normPoet,
+                                normMoodTag = entry.normMoodTag
+                            )
+                            if (score > 0) {
+                                if (firstScore < 0) {
+                                    firstScore = score
+                                } else if (score != firstScore) {
+                                    hasDistinctScores = true
+                                }
+                                scored.add(score to item)
+                            }
+                        }
+                        if (hasDistinctScores && scored.size > 1) {
+                            ctx.ensureActive()
+                            scored.sortByDescending { it.first }
+                        }
+                        scored.map { it.second }
+                    }
+                }
+            }
+            val filtered = if (refreshSeed > 0L && trimmed.isEmpty()) {
+                baseFiltered.shuffled(Random(refreshSeed))
+            } else {
+                baseFiltered
+            }
+            FilterResult(
+                filtered = filtered,
+                selectedCategoryId = selectedCat,
+                searchQuery = query
+            )
+        }
         .flowOn(Dispatchers.Default)
         .stateIn(
             scope = viewModelScope,
@@ -279,8 +305,9 @@ class ShayariViewModel(
         catalogDerivedFlow,
         filteredFlow,
         favoritesFlow,
-        preferencesFlow
-    ) { catalog, filterResult, favorites, prefs ->
+        preferencesFlow,
+        searchQueryFlow
+    ) { catalog, filterResult, favorites, prefs, liveSearchQuery ->
         ShayariUiState(
             isLoading = !catalog.isLoaded,
             allShayari = catalog.allShayari,
@@ -290,7 +317,7 @@ class ShayariViewModel(
             popularShayari = catalog.popularShayari,
             categoryCounts = catalog.categoryCounts,
             selectedCategoryId = filterResult.selectedCategoryId,
-            searchQuery = filterResult.searchQuery,
+            searchQuery = liveSearchQuery,
             preferences = prefs
         )
     }.stateIn(

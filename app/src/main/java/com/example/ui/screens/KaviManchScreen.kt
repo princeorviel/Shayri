@@ -103,6 +103,7 @@ import com.example.data.model.CommunityShayari
 import com.example.data.model.PoetProfile
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
+import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.WritingPrompt
 import com.example.ui.components.AccountAvatar
 import com.example.ui.components.CategoryChipStrip
@@ -1439,10 +1440,16 @@ private fun ComposeShayariSheet(
                 onDismiss = onDismissAi
             )
 
-            // Category picker
+            // Category picker + automatic related bilingual tags
+            var selectedAutoTags by remember(selectedCategoryId) {
+                mutableStateOf(ShayariTagMatcher.autoTagsForCategory(selectedCategoryId))
+            }
+            val suggestedCategoryTags = remember(selectedCategoryId) {
+                ShayariTagMatcher.suggestedTagsForCategory(selectedCategoryId).take(12)
+            }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = "टॉपिक चुनें",
+                    text = "टॉपिक / कैटेगरी चुनें",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1465,7 +1472,7 @@ private fun ComposeShayariSheet(
                                 .clickable { selectedCategoryId = cat.id }
                         ) {
                             Text(
-                                text = cat.titleHi,
+                                text = "${cat.emoji} ${cat.titleHi}",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = if (selected) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
@@ -1473,6 +1480,54 @@ private fun ComposeShayariSheet(
                                     MaterialTheme.colorScheme.onSurface
                                 },
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                            )
+                        }
+                    }
+                }
+
+                val selectedCatObj = ShayariCategory.fromId(selectedCategoryId)
+                Text(
+                    text = "${selectedCatObj.emoji} ${selectedCatObj.titleHi} से जुड़े टैग्स (ऑटो-सुझाव)",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.testTag("composer_related_tags_row")
+                ) {
+                    items(suggestedCategoryTags, key = { it }) { tag ->
+                        val isTagActive = selectedAutoTags.any { it.equals(tag, ignoreCase = true) }
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = if (isTagActive) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (isTagActive) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable {
+                                    selectedAutoTags = if (isTagActive) {
+                                        selectedAutoTags.filterNot { it.equals(tag, ignoreCase = true) }
+                                    } else {
+                                        selectedAutoTags + tag
+                                    }
+                                }
+                                .testTag("composer_tag_$tag")
+                        ) {
+                            Text(
+                                text = if (isTagActive) "✓ #$tag" else "+ #$tag",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isTagActive) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                             )
                         }
                     }
@@ -1504,7 +1559,14 @@ private fun ComposeShayariSheet(
 
             Button(
                 onClick = {
-                    val promptLabel = if (attachToPrompt) activePrompt.title else ""
+                    val tagsJoined = selectedAutoTags.joinToString(" ") { "#$it" }
+                    val promptLabel = when {
+                        attachToPrompt && tagsJoined.isNotBlank() ->
+                            "${activePrompt.title} • $tagsJoined".take(100)
+                        attachToPrompt -> activePrompt.title.take(100)
+                        tagsJoined.isNotBlank() -> tagsJoined.take(100)
+                        else -> ""
+                    }
                     onSubmit(trimmedPenName, trimmedCouplet, selectedCategoryId, promptLabel)
                 },
                 enabled = canSubmit,

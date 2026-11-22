@@ -448,10 +448,15 @@ object ShayariTagMatcher {
         "bismil" to listOf("बिस्मिल")
     )
 
+    private val GENERIC_ALL_SHAYARI_TOKENS: Set<String> = setOf(
+        "shayari", "shayri", "shairi", "shayree", "shayar", "poetry", "poem", "quote", "quotes",
+        "status", "शायरी", "शायर", "कविता", "स्टेटस"
+    )
+
     private val SEARCH_FILLER_TOKENS: Set<String> = setOf(
         "shayari", "shayri", "shairi", "shayree", "shayar", "poetry", "poem", "quote", "quotes",
         "status", "caption", "captions", "lines", "line", "post", "posts", "wali", "wala", "wale",
-        "ki", "ke", "ka", "par", "pe", "in", "on", "for", "of", "the", "a", "an", "and", "or",
+        "ki", "ke", "ka", "par", "pe", "in", "on", "for", "of", "the", "and", "or",
         "hindi", "english", "urdu", "hinglish", "best", "top", "new", "latest", "viral", "trending",
         "शायरी", "शायर", "स्टेटस", "कविता", "पर", "की", "के", "का", "वाली", "वाला", "वाले", "में", "हिंदी"
     )
@@ -535,8 +540,13 @@ object ShayariTagMatcher {
         }
 
         val allTokens = rawNorm.split(' ').filter { it.isNotEmpty() }
-        val filteredTokens = allTokens.filter { it !in SEARCH_FILLER_TOKENS }
-        val matchAllFallback = filteredTokens.isEmpty()
+        val filteredTokens = if (allTokens.size > 1) {
+            allTokens.filter { it !in SEARCH_FILLER_TOKENS }
+        } else {
+            allTokens.filter { it !in GENERIC_ALL_SHAYARI_TOKENS }
+        }
+        val matchAllFallback = filteredTokens.isEmpty() &&
+            allTokens.any { it in GENERIC_ALL_SHAYARI_TOKENS }
         val meaningfulTokens = if (filteredTokens.isNotEmpty()) filteredTokens else allTokens
 
         val matchedCategories = LinkedHashSet<String>()
@@ -614,7 +624,11 @@ object ShayariTagMatcher {
     private fun matchCategoriesForTerm(normTerm: String, out: MutableSet<String>) {
         if (normTerm.isEmpty()) return
         for ((catId, metaTerms) in NORMALIZED_CATEGORY_META) {
-            if (metaTerms.any { meta ->
+            if (normTerm.length == 1) {
+                if (metaTerms.any { meta -> meta.startsWith(normTerm) }) {
+                    out.add(catId)
+                }
+            } else if (metaTerms.any { meta ->
                     meta == normTerm ||
                         meta.contains(normTerm) ||
                         (normTerm.length >= 3 && normTerm.contains(meta) && meta.length >= 3)
@@ -623,14 +637,16 @@ object ShayariTagMatcher {
                 out.add(catId)
             }
         }
-        for ((keywords, catIds) in NORMALIZED_KEYWORD_TABLE) {
-            if (keywords.any { kw ->
-                    kw == normTerm ||
-                        (normTerm.length >= 3 && kw.startsWith(normTerm)) ||
-                        (kw.length >= 3 && normTerm.contains(kw))
+        if (normTerm.length >= 2) {
+            for ((keywords, catIds) in NORMALIZED_KEYWORD_TABLE) {
+                if (keywords.any { kw ->
+                        kw == normTerm ||
+                            (normTerm.length >= 3 && kw.startsWith(normTerm)) ||
+                            (kw.length >= 3 && normTerm.contains(kw))
+                    }
+                ) {
+                    out.addAll(catIds)
                 }
-            ) {
-                out.addAll(catIds)
             }
         }
     }

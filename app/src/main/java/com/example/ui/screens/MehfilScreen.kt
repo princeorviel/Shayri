@@ -94,6 +94,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
@@ -172,7 +173,16 @@ fun MehfilScreen(
 
     val searchFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-    val isSearchActive = searchExpanded || uiState.searchQuery.isNotEmpty()
+    var searchInputText by remember { mutableStateOf(uiState.searchQuery) }
+    var lastDispatchedSearchText by remember { mutableStateOf(uiState.searchQuery) }
+    LaunchedEffect(uiState.searchQuery) {
+        if (uiState.searchQuery != lastDispatchedSearchText) {
+            searchInputText = uiState.searchQuery
+            lastDispatchedSearchText = uiState.searchQuery
+        }
+    }
+    val isSearchActive = searchExpanded || searchInputText.isNotEmpty() || uiState.searchQuery.isNotEmpty()
+    var pinnedBarHeightPx by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(searchFocusTrigger, searchExpanded) {
         if (searchExpanded) {
@@ -250,10 +260,15 @@ fun MehfilScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. Collapsing Parallax Cover Photo (morphs smoothly into pinned top bar on scroll;
-            //    yields clean top spacing when the pinned Search drawer is active so results show immediately)
+            //    yields exact dynamic top spacing when the pinned Search drawer is active so results show immediately)
             item(key = "header") {
                 if (isSearchActive) {
-                    Spacer(modifier = Modifier.height(164.dp))
+                    val spacerHeight = if (pinnedBarHeightPx > 0) {
+                        with(density) { pinnedBarHeightPx.toDp() }
+                    } else {
+                        178.dp
+                    }
+                    Spacer(modifier = Modifier.height(spacerHeight))
                 } else {
                     val isBewafaiSelected = uiState.selectedCategoryId == "bewafai"
                     val headerShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
@@ -507,6 +522,8 @@ fun MehfilScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable {
+                                    searchInputText = ""
+                                    lastDispatchedSearchText = ""
                                     onCategorySelected(null)
                                     onSearchQueryChanged("")
                                 }
@@ -672,6 +689,7 @@ fun MehfilScreen(
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .widthIn(max = 760.dp)
+                .onSizeChanged { pinnedBarHeightPx = it.height }
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Row(
@@ -736,46 +754,35 @@ fun MehfilScreen(
                     ) {
                         Surface(
                             onClick = {
-                                if (isSearchActive && !searchExpanded && uiState.searchQuery.isNotEmpty()) {
-                                    onSearchQueryChanged("")
+                                if (isSearchActive) {
+                                    searchInputText = ""
+                                    lastDispatchedSearchText = ""
+                                    keyboardController?.hide()
+                                    if (!searchExpanded) {
+                                        onSearchQueryChanged("")
+                                    } else {
+                                        onToggleSearch()
+                                    }
                                 } else {
                                     onToggleSearch()
-                                }
-                                if (!isSearchActive) {
                                     refreshScope.launch { listState.animateScrollToItem(0) }
                                 }
                             },
-                            shape = RoundedCornerShape(50),
+                            shape = CircleShape,
                             color = searchPillBgColor,
-                            border = BorderStroke(1.dp, searchPillBorderColor),
+                            border = BorderStroke(1.2.dp, searchPillBorderColor),
                             shadowElevation = if (isSearchActive) 2.dp else 4.dp,
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
-                                .height(42.dp)
+                                .size(44.dp)
                                 .testTag("search_toggle_button")
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
                                     contentDescription = stringResource(R.string.search_hint),
                                     tint = searchPillContentColor,
-                                    modifier = Modifier.size(21.dp)
-                                )
-                                Text(
-                                    text = stringResource(
-                                        if (isSearchActive) R.string.search_close_label else R.string.action_search
-                                    ),
-                                    style = MaterialTheme.typography.labelLarge.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    ),
-                                    color = searchPillContentColor,
-                                    maxLines = 1,
-                                    softWrap = false
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
@@ -916,8 +923,12 @@ fun MehfilScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = onSearchQueryChanged,
+                            value = searchInputText,
+                            onValueChange = { updated ->
+                                searchInputText = updated
+                                lastDispatchedSearchText = updated
+                                onSearchQueryChanged(updated)
+                            },
                             placeholder = {
                                 Text(
                                     text = stringResource(R.string.search_hint),
@@ -934,9 +945,13 @@ fun MehfilScreen(
                                 )
                             },
                             trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
+                                if (searchInputText.isNotEmpty()) {
                                     IconButton(
-                                        onClick = { onSearchQueryChanged("") },
+                                        onClick = {
+                                            searchInputText = ""
+                                            lastDispatchedSearchText = ""
+                                            onSearchQueryChanged("")
+                                        },
                                         modifier = Modifier.testTag("clear_search_button")
                                     ) {
                                         Icon(
@@ -970,7 +985,7 @@ fun MehfilScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(QUICK_SEARCH_MOODS) { (label, queryTerm) ->
-                                val isSelected = uiState.searchQuery.equals(queryTerm, ignoreCase = true)
+                                val isSelected = searchInputText.equals(queryTerm, ignoreCase = true)
                                 Surface(
                                     shape = RoundedCornerShape(50),
                                     color = if (isSelected) {
@@ -985,7 +1000,10 @@ fun MehfilScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(50))
                                         .clickable {
-                                            onSearchQueryChanged(if (isSelected) "" else queryTerm)
+                                            val nextQuery = if (isSelected) "" else queryTerm
+                                            searchInputText = nextQuery
+                                            lastDispatchedSearchText = nextQuery
+                                            onSearchQueryChanged(nextQuery)
                                         }
                                         .testTag("quick_search_chip_$queryTerm")
                                 ) {
