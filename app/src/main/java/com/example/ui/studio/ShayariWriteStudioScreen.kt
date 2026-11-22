@@ -447,8 +447,13 @@ fun ShayariWriteStudioScreen(
                             onRequestGoogleSignIn = onRequestGoogleSignIn,
                             selectedPrimaryCategoryId = effectivePrimaryCategoryId,
                             onSelectPrimaryCategory = { catId ->
+                                val previousCatId = if (hasManualPrimaryCategory) selectedPrimaryCategoryId else null
                                 selectedPrimaryCategoryId = catId
                                 hasManualPrimaryCategory = true
+                                viewModel.applyCategoryAutoTags(
+                                    categoryId = catId,
+                                    previousCategoryId = previousCatId
+                                )
                             },
                             onAuthorNameChanged = { updated ->
                                 val clipped = updated.take(50)
@@ -627,6 +632,9 @@ private fun StudioWriteStepContent(
     }
     val selectedPrimaryCategory = remember(selectedPrimaryCategoryId) {
         ShayariCategory.fromId(selectedPrimaryCategoryId)
+    }
+    val categorySuggestedTags = remember(selectedPrimaryCategoryId) {
+        ShayariTagMatcher.suggestedTagsForCategory(selectedPrimaryCategoryId)
     }
 
     Column(
@@ -969,9 +977,6 @@ private fun StudioWriteStepContent(
                                     .clip(RoundedCornerShape(50))
                                     .clickable {
                                         onSelectPrimaryCategory(category.id)
-                                        if (selectedTags.isEmpty()) {
-                                            onAddCustomTag(category.titleHi)
-                                        }
                                     }
                                     .testTag("studio_primary_cat_${category.id}")
                             ) {
@@ -994,7 +999,7 @@ private fun StudioWriteStepContent(
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Text(
-                        text = "टैग्स जोड़ें (कई चुन सकते हैं — जैसे दर्द, बेवफ़ाई, जख्मी दिल)",
+                        text = "${selectedPrimaryCategory.emoji} ${selectedPrimaryCategory.titleHi} से जुड़े टैग्स (ऑटो-सुझाव • कई चुन सकते हैं)",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -1040,7 +1045,7 @@ private fun StudioWriteStepContent(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.testTag("studio_suggested_tags_row")
                     ) {
-                        items(ShayariTagMatcher.POPULAR_POST_TAGS, key = { it }) { tag ->
+                        items(categorySuggestedTags, key = { it }) { tag ->
                             val isSelected = selectedTags.any { it.equals(tag, ignoreCase = true) }
                             Surface(
                                 shape = RoundedCornerShape(50),

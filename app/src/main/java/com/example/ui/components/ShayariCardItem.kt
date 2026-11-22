@@ -98,7 +98,7 @@ fun ShayariCardItem(
     onShare: () -> Unit,
     modifier: Modifier = Modifier,
     commentCount: Int = 0,
-    cardStyleMode: FeedCardStyleMode = FeedCardStyleMode.MIX_YOURQUOTE,
+    cardStyleMode: FeedCardStyleMode = FeedCardStyleMode.PHOTO_CINEMA,
     isOnlinePost: Boolean = false
 ) {
     val category = ShayariCategory.fromId(shayari.categoryId)

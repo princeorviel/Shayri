@@ -404,38 +404,89 @@ enum class ShayariCategory(
 
     private val backgroundPool: IntArray by lazy {
         when (this) {
-            MOHABBAT -> intArrayOf(backgroundResId, R.drawable.img_bg_romantic, R.drawable.img_card_mushaira)
-            ROMANTIC -> intArrayOf(backgroundResId, R.drawable.img_bg_candle_lake, R.drawable.img_bg_tareef)
-            BEWAFAI -> intArrayOf(backgroundResId, R.drawable.img_bg_aansu, R.drawable.img_bg_candle_lake)
-            SHARABI -> intArrayOf(backgroundResId, R.drawable.img_card_mushaira, R.drawable.img_bg_bewafai)
-            KHUDA_RAB -> intArrayOf(backgroundResId, R.drawable.img_bg_candle_lake, R.drawable.img_bg_waqt)
-            MAUT_JANAZA -> intArrayOf(backgroundResId, R.drawable.img_bg_waqt, R.drawable.img_bg_aansu)
-            SECRET_LOVE -> intArrayOf(backgroundResId, R.drawable.img_bg_romantic, R.drawable.img_bg_candle_lake)
-            ADULTERY -> intArrayOf(backgroundResId, R.drawable.img_bg_bewafai, R.drawable.img_bg_romantic)
-            GEN_Z -> intArrayOf(backgroundResId, R.drawable.img_bg_nibba_nibbi, R.drawable.img_bg_attitude)
-            NIBBA_NIBBI -> intArrayOf(backgroundResId, R.drawable.img_bg_romantic, R.drawable.img_bg_genz)
-            ATTITUDE -> intArrayOf(backgroundResId, R.drawable.img_bg_motivation, R.drawable.img_bg_musafir)
-            TAREEF -> intArrayOf(backgroundResId, R.drawable.img_bg_romantic, R.drawable.img_bg_aaina)
-            AAINA -> intArrayOf(backgroundResId, R.drawable.img_bg_tareef, R.drawable.img_bg_waqt)
-            AANSU -> intArrayOf(backgroundResId, R.drawable.img_bg_prakriti_rain, R.drawable.img_bg_bewafai)
-            MUSAFIR -> intArrayOf(backgroundResId, R.drawable.img_bg_zindagi, R.drawable.img_bg_prakriti_rain)
-            NEW_YEAR -> intArrayOf(backgroundResId, R.drawable.img_bg_motivation, R.drawable.img_bg_candle_lake)
-            CHRISTMAS -> intArrayOf(backgroundResId, R.drawable.img_hero_mehfil, R.drawable.img_bg_candle_lake)
-            JIJA_SALI -> intArrayOf(backgroundResId)
-            MULLA_NASRUDDIN -> intArrayOf(backgroundResId)
-            SANTA_BANTA -> intArrayOf(backgroundResId)
-            MOTU_PATLU -> intArrayOf(backgroundResId)
-            DOSTI -> intArrayOf(backgroundResId, R.drawable.img_bg_candle_lake, R.drawable.img_bg_musafir)
-            PRAKRITI -> intArrayOf(backgroundResId, R.drawable.img_bg_zindagi, R.drawable.img_bg_musafir)
-            HAUSLA -> intArrayOf(backgroundResId, R.drawable.img_bg_attitude, R.drawable.img_bg_musafir)
-            ZINDAGI -> intArrayOf(backgroundResId, R.drawable.img_bg_prakriti_rain, R.drawable.img_bg_musafir)
-            DARD -> intArrayOf(backgroundResId, R.drawable.img_bg_aansu, R.drawable.img_bg_maut)
-            KHUSHI -> intArrayOf(backgroundResId, R.drawable.img_bg_prakriti_rain, R.drawable.img_bg_festive)
-            YAADEIN -> intArrayOf(backgroundResId, R.drawable.img_bg_candle_lake, R.drawable.img_bg_aaina)
-            TANHAI -> intArrayOf(backgroundResId, R.drawable.img_bg_prakriti_rain, R.drawable.img_bg_candle_lake)
-            WAQT -> intArrayOf(backgroundResId, R.drawable.img_bg_zindagi, R.drawable.img_bg_khuda)
-            PARIVAR -> intArrayOf(backgroundResId, R.drawable.img_bg_festive, R.drawable.img_bg_dosti)
-            DESHPREM -> intArrayOf(backgroundResId, R.drawable.img_bg_motivation, R.drawable.img_bg_musafir)
+            JIJA_SALI, MULLA_NASRUDDIN, SANTA_BANTA, MOTU_PATLU -> intArrayOf(backgroundResId)
+            MOHABBAT -> intArrayOf(
+                R.drawable.img_pic_red_roses_night,
+                R.drawable.img_pic_moonlit_boat,
+                backgroundResId,
+                R.drawable.img_bg_romantic,
+                R.drawable.img_pic_sunset_silhouettes,
+                R.drawable.img_pic_rainy_window,
+                R.drawable.img_card_mushaira,
+                R.drawable.img_pic_autumn_road
+            )
+            ROMANTIC -> intArrayOf(
+                R.drawable.img_pic_red_roses_night,
+                backgroundResId,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_pic_sunset_silhouettes,
+                R.drawable.img_bg_candle_lake,
+                R.drawable.img_bg_tareef,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_hero_mehfil
+            )
+            BEWAFAI -> intArrayOf(
+                backgroundResId,
+                R.drawable.img_pic_rainy_window,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_bg_aansu,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_bg_candle_lake,
+                R.drawable.img_pic_red_roses_night,
+                R.drawable.img_pic_sunset_silhouettes
+            )
+            DARD -> intArrayOf(
+                R.drawable.img_pic_rainy_window,
+                backgroundResId,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_bg_aansu,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_bg_maut,
+                R.drawable.img_bg_prakriti_rain,
+                R.drawable.img_pic_sunset_silhouettes
+            )
+            ZINDAGI -> intArrayOf(
+                R.drawable.img_pic_sunset_silhouettes,
+                R.drawable.img_pic_autumn_road,
+                backgroundResId,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_bg_prakriti_rain,
+                R.drawable.img_bg_musafir,
+                R.drawable.img_pic_rainy_window,
+                R.drawable.img_bg_candle_lake
+            )
+            DOSTI -> intArrayOf(
+                backgroundResId,
+                R.drawable.img_pic_sunset_silhouettes,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_bg_candle_lake,
+                R.drawable.img_bg_musafir,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_bg_festive,
+                R.drawable.img_hero_mehfil
+            )
+            HAUSLA -> intArrayOf(
+                R.drawable.img_pic_sunset_silhouettes,
+                backgroundResId,
+                R.drawable.img_bg_attitude,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_bg_musafir,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_bg_zindagi,
+                R.drawable.img_bg_khuda
+            )
+            else -> intArrayOf(
+                backgroundResId,
+                R.drawable.img_pic_moonlit_boat,
+                R.drawable.img_pic_rainy_window,
+                R.drawable.img_pic_sunset_silhouettes,
+                R.drawable.img_pic_red_roses_night,
+                R.drawable.img_pic_autumn_road,
+                R.drawable.img_bg_candle_lake,
+                R.drawable.img_bg_romantic,
+                R.drawable.img_bg_prakriti_rain,
+                R.drawable.img_hero_mehfil
+            )
         }
     }
 
@@ -443,8 +494,8 @@ enum class ShayariCategory(
     fun backgroundFor(shayariId: Int): Int {
         val pool = backgroundPool
         if (pool.size == 1) return pool[0]
-        val idx = ((shayariId % pool.size) + pool.size) % pool.size
-        return pool[idx]
+        val mixed = ((shayariId * 31 + ordinal * 17) and 0x7FFFFFFF)
+        return pool[mixed % pool.size]
     }
 
     @DrawableRes

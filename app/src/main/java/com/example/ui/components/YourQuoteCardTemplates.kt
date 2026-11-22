@@ -55,12 +55,12 @@ enum class FeedCardStyleMode(
     val labelHi: String,
     val emoji: String
 ) {
-    MIX_YOURQUOTE("मिक्स कार्ड", "✨"),
+    PHOTO_CINEMA("फ़ोटो कार्ड", "🌄"),
     PAPER_DIARY("डायरी पेपर", "📄"),
     POLAROID("पोलरॉइड", "🖼️"),
+    MIX_YOURQUOTE("मिक्स कार्ड", "✨"),
     ROYAL_DARK("रॉयल गोल्ड", "👑"),
-    PASTEL_ART("पेस्टल आर्ट", "🎨"),
-    PHOTO_CINEMA("फ़ोटो कार्ड", "🌄")
+    PASTEL_ART("पेस्टल आर्ट", "🎨")
 }
 
 enum class YourQuoteFeedLook {
@@ -141,6 +141,11 @@ private val MAGAZINE_ACCENTS = listOf(
 )
 
 private val DIVERSE_PHOTO_POOL = intArrayOf(
+    R.drawable.img_pic_moonlit_boat,
+    R.drawable.img_pic_rainy_window,
+    R.drawable.img_pic_sunset_silhouettes,
+    R.drawable.img_pic_red_roses_night,
+    R.drawable.img_pic_autumn_road,
     R.drawable.img_bg_candle_lake,
     R.drawable.img_bg_romantic,
     R.drawable.img_hero_mehfil,
@@ -166,21 +171,22 @@ private val DIVERSE_PHOTO_POOL = intArrayOf(
 )
 
 private val PHOTO_CARD_SCRIM = Brush.verticalGradient(
-    colors = listOf(
-        Color(0x2E0A0812),
-        Color(0x7A0C0915),
-        Color(0xBF080510)
+    colorStops = arrayOf(
+        0.0f to Color(0x300A0712),
+        0.38f to Color(0x5E0C0815),
+        0.74f to Color(0x9E0A0612),
+        1.0f to Color(0xCC07050E)
     )
 )
 
 private val DARK_TEXT_SHADOW = Shadow(
-    color = Color.Black.copy(alpha = 0.78f),
-    offset = Offset(0f, 1.5f),
-    blurRadius = 4f
+    color = Color.Black.copy(alpha = 0.82f),
+    offset = Offset(0f, 2f),
+    blurRadius = 5f
 )
 
-private val CANVAS_SHAPE = RoundedCornerShape(14.dp)
-private val INNER_FRAME_SHAPE = RoundedCornerShape(10.dp)
+private val CANVAS_SHAPE = RoundedCornerShape(16.dp)
+private val INNER_FRAME_SHAPE = RoundedCornerShape(12.dp)
 private val TAG_PILL_SHAPE = RoundedCornerShape(50)
 
 fun resolveYourQuoteFeedLook(
@@ -189,6 +195,7 @@ fun resolveYourQuoteFeedLook(
 ): YourQuoteFeedLook {
     val hash = kotlin.math.abs(shayariId * 2654435761L).toInt().let { kotlin.math.abs(it) }
     return when (mode) {
+        FeedCardStyleMode.PHOTO_CINEMA -> YourQuoteFeedLook.CINEMATIC_PHOTO
         FeedCardStyleMode.MIX_YOURQUOTE -> {
             val allLooks = YourQuoteFeedLook.entries
             allLooks[hash % allLooks.size]
@@ -205,19 +212,21 @@ fun resolveYourQuoteFeedLook(
             YourQuoteFeedLook.AURORA_GLASS
         }
         FeedCardStyleMode.PASTEL_ART -> YourQuoteFeedLook.PASTEL_WATERCOLOR
-        FeedCardStyleMode.PHOTO_CINEMA -> YourQuoteFeedLook.CINEMATIC_PHOTO
     }
 }
 
 @DrawableRes
 fun resolveDiversePhotoForCard(shayari: ShayariEntity, category: ShayariCategory): Int {
     if (category.isJokeCategory) return category.backgroundResId
-    val hash = kotlin.math.abs((shayari.id * 31 + shayari.couplet.hashCode()) and 0x7FFFFFFF)
-    // Mix category's native art with the full diverse gallery so no two cards in a category look identical
-    return if (hash % 4 == 0) {
+    val mixed = ((shayari.id.toLong() * 2654435761L) xor
+        (shayari.couplet.hashCode().toLong() * 31L) xor
+        (category.ordinal.toLong() * 131L))
+    val positive = (mixed xor (mixed ushr 16)).toInt() and 0x7FFFFFFF
+    // Spread across the entire 27-photo scenic & poetic gallery so every shayari in any category looks fresh & vivid
+    return if (positive % 5 == 0) {
         category.backgroundFor(shayari)
     } else {
-        DIVERSE_PHOTO_POOL[hash % DIVERSE_PHOTO_POOL.size]
+        DIVERSE_PHOTO_POOL[positive % DIVERSE_PHOTO_POOL.size]
     }
 }
 
@@ -1006,15 +1015,15 @@ private fun CinematicPhotoCardCanvas(
         modifier = modifier
             .fillMaxWidth()
             .padding(start = 8.dp, end = 8.dp, top = 8.dp)
-            .heightIn(min = 232.dp)
+            .heightIn(min = 248.dp)
             .clip(CANVAS_SHAPE),
         contentAlignment = Alignment.Center
     ) {
         OptimizedDrawableImage(
             resId = artworkResId,
             contentDescription = null,
-            widthPx = 720,
-            heightPx = 480,
+            widthPx = 900,
+            heightPx = 600,
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .matchParentSize()

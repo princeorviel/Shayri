@@ -179,7 +179,7 @@ class PersonalShayariViewModel(
     }
 
     fun onThemeTagChanged(value: String) {
-        if (value.length <= 100) {
+        if (value.length <= 160) {
             themeTagInputFlow.value = value
         }
     }
@@ -188,7 +188,7 @@ class PersonalShayariViewModel(
         themeTagInputFlow.value = com.example.data.model.ShayariTagMatcher.toggleTagInString(
             currentRaw = themeTagInputFlow.value,
             tagToToggle = tag,
-            maxLen = 100
+            maxLen = 160
         )
     }
 
@@ -196,7 +196,16 @@ class PersonalShayariViewModel(
         themeTagInputFlow.value = com.example.data.model.ShayariTagMatcher.addTagToString(
             currentRaw = themeTagInputFlow.value,
             tagToAdd = tag,
-            maxLen = 100
+            maxLen = 160
+        )
+    }
+
+    fun applyCategoryAutoTags(categoryId: String, previousCategoryId: String?) {
+        themeTagInputFlow.value = com.example.data.model.ShayariTagMatcher.applyCategoryAutoTags(
+            currentRaw = themeTagInputFlow.value,
+            newCategoryId = categoryId,
+            previousCategoryId = previousCategoryId,
+            maxLen = 160
         )
     }
 

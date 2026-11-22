@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -86,6 +87,38 @@ class ShayariViewModel(
             merged
         }
     }
+        .flowOn(Dispatchers.Default)
+        .shareIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            replay = 1
+        )
+
+    private data class IndexedShayari(
+        val entity: ShayariEntity,
+        val normCouplet: String,
+        val normPoet: String,
+        val normMoodTag: String,
+        val multiCategoryIds: Set<String>?
+    )
+
+    private val indexedShayariSharedFlow = allShayariSharedFlow
+        .map { all ->
+            all.map { item ->
+                val multiCats = if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
+                    ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
+                } else {
+                    null
+                }
+                IndexedShayari(
+                    entity = item,
+                    normCouplet = ShayariTagMatcher.normalizeForSearch(item.couplet),
+                    normPoet = ShayariTagMatcher.normalizeForSearch(item.poet),
+                    normMoodTag = ShayariTagMatcher.normalizeForSearch(item.moodTag),
+                    multiCategoryIds = multiCats
+                )
+            }
+        }
         .flowOn(Dispatchers.Default)
         .shareIn(
             scope = viewModelScope,
@@ -172,62 +205,47 @@ class ShayariViewModel(
     }
 
     private val filteredFlow: StateFlow<FilterResult> = combine(
-        allShayariSharedFlow,
+        indexedShayariSharedFlow,
         filterInputsFlow
-    ) { all, (query, selectedCat, refreshSeed) ->
+    ) { indexedAll, (query, selectedCat, refreshSeed) ->
         val trimmed = query.trim()
         val baseFiltered = when {
-            trimmed.isEmpty() && selectedCat == null -> all
-            trimmed.isEmpty() -> all.filter { item ->
-                if (item.categoryId == selectedCat) {
-                    true
-                } else if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
-                    selectedCat in ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
-                } else {
-                    false
-                }
+            trimmed.isEmpty() && selectedCat == null -> indexedAll.map { it.entity }
+            trimmed.isEmpty() -> indexedAll.mapNotNull { entry ->
+                val item = entry.entity
+                val matchesCat = item.categoryId == selectedCat ||
+                    (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
+                if (matchesCat) item else null
             }
             else -> {
-                val hindiQuery = if (HinglishTransliterator.hasConvertibleHinglish(trimmed)) {
-                    HinglishTransliterator.transliterateText(trimmed).trim()
-                } else {
-                    ""
-                }
-                val matchingCategoryIds = ShayariCategory.entries
-                    .filter { cat ->
-                        cat.titleHi.contains(trimmed, ignoreCase = true) ||
-                            cat.labelEn.contains(trimmed, ignoreCase = true) ||
-                            (hindiQuery.isNotEmpty() && cat.titleHi.contains(hindiQuery, ignoreCase = true))
-                    }
-                    .mapTo(HashSet()) { it.id }
-
-                all.filter { item ->
+                val spec = ShayariTagMatcher.buildSearchSpec(trimmed)
+                val scored = ArrayList<Pair<Int, ShayariEntity>>()
+                for (entry in indexedAll) {
+                    val item = entry.entity
                     if (selectedCat != null) {
                         val inSelectedCat = item.categoryId == selectedCat ||
-                            (ShayariTagMatcher.hasMultiTagMetadata(item) &&
-                                selectedCat in ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag))
-                        if (!inSelectedCat) return@filter false
+                            (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
+                        if (!inSelectedCat) continue
                     }
-                    val itemCats = if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
-                        ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
-                    } else {
-                        null
+                    val score = ShayariTagMatcher.scoreMatch(
+                        spec = spec,
+                        primaryCategoryId = item.categoryId,
+                        multiCategoryIds = entry.multiCategoryIds,
+                        normCouplet = entry.normCouplet,
+                        normPoet = entry.normPoet,
+                        normMoodTag = entry.normMoodTag
+                    )
+                    if (score > 0) {
+                        scored.add(score to item)
                     }
-                    val matchesRaw = item.categoryId in matchingCategoryIds ||
-                        (itemCats != null && itemCats.any { it in matchingCategoryIds }) ||
-                        item.couplet.contains(trimmed, ignoreCase = true) ||
-                        item.poet.contains(trimmed, ignoreCase = true) ||
-                        item.moodTag.contains(trimmed, ignoreCase = true)
-                    if (matchesRaw) return@filter true
-                    hindiQuery.isNotEmpty() && (
-                        item.couplet.contains(hindiQuery, ignoreCase = true) ||
-                            item.poet.contains(hindiQuery, ignoreCase = true) ||
-                            item.moodTag.contains(hindiQuery, ignoreCase = true)
-                        )
                 }
+                if (scored.size > 1) {
+                    scored.sortByDescending { it.first }
+                }
+                scored.map { it.second }
             }
         }
-        val filtered = if (refreshSeed > 0L) {
+        val filtered = if (refreshSeed > 0L && trimmed.isEmpty()) {
             baseFiltered.shuffled(Random(refreshSeed))
         } else {
             baseFiltered
@@ -291,6 +309,9 @@ class ShayariViewModel(
     }
 
     fun onSearchQueryChanged(query: String) {
+        if (query.isNotBlank() && selectedCategoryFlow.value != null) {
+            selectedCategoryFlow.value = null
+        }
         searchQueryFlow.value = query
     }
 

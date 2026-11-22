@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -33,6 +35,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowForward
@@ -67,6 +70,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -75,16 +79,27 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -136,11 +151,11 @@ fun MehfilScreen(
     val listState = rememberLazyListState()
     var isCategoryGridExpanded by remember { mutableStateOf(false) }
     var selectedCardStyleModeName by remember {
-        mutableStateOf(FeedCardStyleMode.MIX_YOURQUOTE.name)
+        mutableStateOf(FeedCardStyleMode.PHOTO_CINEMA.name)
     }
     val selectedCardStyleMode = remember(selectedCardStyleModeName) {
         FeedCardStyleMode.entries.firstOrNull { it.name == selectedCardStyleModeName }
-            ?: FeedCardStyleMode.MIX_YOURQUOTE
+            ?: FeedCardStyleMode.PHOTO_CINEMA
     }
     val popularPool = remember(uiState.popularShayari, uiState.featuredShayari) {
         uiState.popularShayari.ifEmpty { listOfNotNull(uiState.featuredShayari) }
@@ -155,9 +170,18 @@ fun MehfilScreen(
         }
     }
 
-    LaunchedEffect(searchFocusTrigger) {
-        if (searchFocusTrigger > 0 && searchExpanded) {
+    val searchFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val isSearchActive = searchExpanded || uiState.searchQuery.isNotEmpty()
+
+    LaunchedEffect(searchFocusTrigger, searchExpanded) {
+        if (searchExpanded) {
             listState.animateScrollToItem(0)
+            if (searchFocusTrigger > 0) {
+                delay(120L)
+                runCatching { searchFocusRequester.requestFocus() }
+                keyboardController?.show()
+            }
         }
     }
 
@@ -169,6 +193,37 @@ fun MehfilScreen(
 
     val refreshScope = rememberCoroutineScope()
     var isPullRefreshing by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val collapseRangePx = remember(density) { with(density) { 156.dp.toPx() } }
+    val collapseProgress by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) {
+                1f
+            } else {
+                (listState.firstVisibleItemScrollOffset / collapseRangePx).coerceIn(0f, 1f)
+            }
+        }
+    }
+    val lastTapTimeMs = remember { longArrayOf(0L) }
+    val tapCount = remember { intArrayOf(0) }
+    val handleTitleTap: () -> Unit = {
+        val now = System.currentTimeMillis()
+        if (now - lastTapTimeMs[0] <= 900L) {
+            tapCount[0] += 1
+        } else {
+            tapCount[0] = 1
+        }
+        lastTapTimeMs[0] = now
+        if (tapCount[0] >= 3 && onTripleTapOwnerToggle != null) {
+            tapCount[0] = 0
+            onTripleTapOwnerToggle()
+        } else {
+            onRefreshApp()
+            refreshScope.launch {
+                listState.animateScrollToItem(0)
+            }
+        }
+    }
 
     PullToRefreshBox(
         isRefreshing = isPullRefreshing,
@@ -189,282 +244,84 @@ fun MehfilScreen(
             state = listState,
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 760.dp),
+                .widthIn(max = 760.dp)
+                .testTag("mehfil_feed_list"),
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Editorial Header
+            // 1. Collapsing Parallax Cover Photo (morphs smoothly into pinned top bar on scroll;
+            //    yields clean top spacing when the pinned Search drawer is active so results show immediately)
             item(key = "header") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 8.dp, top = 20.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val lastTapTimeMs = remember { longArrayOf(0L) }
-                    val tapCount = remember { intArrayOf(0) }
-                    Column(
+                if (isSearchActive) {
+                    Spacer(modifier = Modifier.height(164.dp))
+                } else {
+                    val isBewafaiSelected = uiState.selectedCategoryId == "bewafai"
+                    val headerShape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
+
+                    Surface(
+                        shape = headerShape,
+                        color = Color.Black,
+                        shadowElevation = 6.dp,
+                        border = if (isBewafaiSelected) {
+                            BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                        } else {
+                            BorderStroke(0.75.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
+                        },
                         modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable {
-                                val now = System.currentTimeMillis()
-                                if (now - lastTapTimeMs[0] <= 900L) {
-                                    tapCount[0] += 1
-                                } else {
-                                    tapCount[0] = 1
-                                }
-                                lastTapTimeMs[0] = now
-                                if (tapCount[0] >= 3 && onTripleTapOwnerToggle != null) {
-                                    tapCount[0] = 0
-                                    onTripleTapOwnerToggle()
-                                } else {
-                                    onRefreshApp()
-                                }
-                            }
-                            .padding(horizontal = 4.dp, vertical = 4.dp)
-                            .testTag("header_title_refresh_button")
+                            .fillMaxWidth()
+                            .clip(headerShape)
                     ) {
-                        Text(
-                            text = stringResource(R.string.app_name),
-                            style = MaterialTheme.typography.displayLarge.copy(
-                                fontSize = 30.sp,
-                                lineHeight = 40.sp
-                            ),
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = stringResource(R.string.app_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(0.dp)
-                    ) {
-                        IconButton(
-                            onClick = onToggleSearch,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("search_toggle_button")
-                        ) {
-                            Icon(
-                                imageVector = if (searchExpanded) Icons.Rounded.Close else Icons.Rounded.Search,
-                                contentDescription = stringResource(R.string.search_hint),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onOpenNotificationSettings,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("notification_settings_button")
-                        ) {
-                            BadgedBox(
-                                badge = {
-                                    if (unreadNotificationCount > 0) {
-                                        Badge(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.testTag("notification_unread_badge")
-                                        ) {
-                                            Text(
-                                                text = if (unreadNotificationCount > 99) {
-                                                    "99+"
-                                                } else {
-                                                    unreadNotificationCount.toString()
-                                                },
-                                                style = MaterialTheme.typography.labelSmall
-                                            )
-                                        }
-                                    }
-                                }
-                            ) {
-                                Icon(
-                                    imageVector = if (unreadNotificationCount > 0) {
-                                        Icons.Rounded.NotificationsActive
-                                    } else {
-                                        Icons.Outlined.Notifications
-                                    },
-                                    contentDescription = stringResource(R.string.notification_settings_cd),
-                                    tint = if (unreadNotificationCount > 0) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurface
-                                    }
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = onShareApp,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("mehfil_share_app_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Share,
-                                contentDescription = stringResource(R.string.action_share_app),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        IconButton(
-                            onClick = onToggleTheme,
-                            modifier = Modifier
-                                .minimumInteractiveComponentSize()
-                                .testTag("theme_toggle_button")
-                        ) {
-                            Icon(
-                                imageVector = if (isDarkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
-                                contentDescription = stringResource(R.string.toggle_theme),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary,
-                            border = if (isCategoryGridExpanded) {
-                                BorderStroke(2.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f))
-                            } else {
-                                null
-                            },
-                            shadowElevation = if (isCategoryGridExpanded) 6.dp else 3.dp,
-                            modifier = Modifier
-                                .padding(start = 4.dp, end = 4.dp)
-                                .minimumInteractiveComponentSize()
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    isCategoryGridExpanded = !isCategoryGridExpanded
-                                    onOpenCategories()
-                                }
-                                .testTag("top_categories_button")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Rounded.GridView,
-                                    contentDescription = stringResource(R.string.action_categories),
-                                    tint = Color.White,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 2. Animated Search Bar + Quick Hinglish Mood Chips
-            item(key = "search_bar") {
-                AnimatedVisibility(
-                    visible = searchExpanded || uiState.searchQuery.isNotEmpty(),
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = uiState.searchQuery,
-                            onValueChange = onSearchQueryChanged,
-                            placeholder = {
-                                Text(
-                                    text = stringResource(R.string.search_hint),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Rounded.Search,
-                                    contentDescription = null
-                                )
-                            },
-                            trailingIcon = {
-                                if (uiState.searchQuery.isNotEmpty()) {
-                                    IconButton(
-                                        onClick = { onSearchQueryChanged("") },
-                                        modifier = Modifier.testTag("clear_search_button")
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Rounded.Close,
-                                            contentDescription = stringResource(R.string.clear_search)
-                                        )
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(18.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp)
-                                .testTag("search_input")
-                        )
-
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 20.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(QUICK_SEARCH_MOODS) { (label, queryTerm) ->
-                                val isSelected = uiState.searchQuery.equals(queryTerm, ignoreCase = true)
-                                Surface(
-                                    shape = RoundedCornerShape(50),
-                                    color = if (isSelected) {
-                                        MaterialTheme.colorScheme.primaryContainer
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceContainerLow
-                                    },
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) {
-                                            MaterialTheme.colorScheme.primary
-                                        } else {
-                                            MaterialTheme.colorScheme.outlineVariant
-                                        }
-                                    ),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable {
-                                            onSearchQueryChanged(if (isSelected) "" else queryTerm)
-                                        }
-                                        .testTag("quick_search_chip_$queryTerm")
-                                ) {
-                                    Text(
-                                        text = label,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = if (isSelected) {
-                                            MaterialTheme.colorScheme.onPrimaryContainer
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface
-                                        },
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                    )
+                                .aspectRatio(16f / 9f)
+                                .clickable {
+                                    onCategorySelected(if (isBewafaiSelected) null else "bewafai")
                                 }
-                            }
+                                .testTag("home_top_cover_banner")
+                        ) {
+                            OptimizedDrawableImage(
+                                resId = R.drawable.img_home_cover_banner,
+                                contentDescription = stringResource(R.string.cd_home_cover_photo),
+                                widthPx = 1080,
+                                heightPx = 608,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        val scrollPx = if (listState.firstVisibleItemIndex == 0) {
+                                            listState.firstVisibleItemScrollOffset.toFloat()
+                                        } else {
+                                            collapseRangePx
+                                        }
+                                        translationY = scrollPx * 0.42f
+                                        alpha = (1f - collapseProgress * 0.55f).coerceIn(0.45f, 1f)
+                                    }
+                            )
+
+                            // Light top scrim behind floating icons (fades away as solid top bar takes over)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(64.dp)
+                                    .align(Alignment.TopCenter)
+                                    .graphicsLayer { alpha = (1f - collapseProgress).coerceIn(0f, 1f) }
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.Black.copy(alpha = 0.48f),
+                                                Color.Transparent
+                                            )
+                                        )
+                                    )
+                            )
                         }
                     }
                 }
             }
 
-            // 2.5 Sticky Category Filter Bar (Mohabbat, Dard, Zindagi, Dosti, Hausla + all moods)
-            stickyHeader(key = "category_chips") {
+            // 2.5 Category Filter Bar (scrolls cleanly beneath the pinned collapsing top bar)
+            item(key = "category_chips") {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -537,7 +394,7 @@ fun MehfilScreen(
                         },
                         onToggleFavorite = onToggleFavorite,
                         onShare = onShare,
-                        modifier = Modifier.padding(horizontal = 20.dp)
+                        modifier = Modifier.padding(horizontal = 14.dp)
                     )
                 }
 
@@ -628,13 +485,19 @@ fun MehfilScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (showCounts) {
-                            "$activeCategoryTitle • ${uiState.filteredShayari.size} शायरी"
-                        } else {
-                            activeCategoryTitle
+                        text = when {
+                            uiState.searchQuery.isNotBlank() ->
+                                "“${uiState.searchQuery.trim()}” • ${uiState.filteredShayari.size} शायरियाँ मिलीं"
+                            showCounts ->
+                                "$activeCategoryTitle • ${uiState.filteredShayari.size} शायरी"
+                            else ->
+                                activeCategoryTitle
                         },
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
                     if (uiState.selectedCategoryId != null || uiState.searchQuery.isNotBlank()) {
                         Text(
@@ -763,6 +626,396 @@ fun MehfilScreen(
             }
         }
 
+        // Pinned Collapsing Top Bar: transparent floating icons over cover -> solid elevated header bar on scroll or active Search
+        val effectiveBarProgress = if (isSearchActive) 1f else collapseProgress
+        val surfaceBg = MaterialTheme.colorScheme.surface
+        val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+        val primaryColor = MaterialTheme.colorScheme.primary
+        val outlineColor = MaterialTheme.colorScheme.outlineVariant
+        val barBgColor = surfaceBg.copy(alpha = effectiveBarProgress * 0.98f)
+        val iconBgColor = Color.Black.copy(alpha = 0.44f * (1f - effectiveBarProgress))
+        val iconBorderColor = lerp(
+            Color.White.copy(alpha = 0.28f),
+            outlineColor.copy(alpha = 0.45f),
+            effectiveBarProgress
+        )
+        val iconTint = lerp(Color.White, onSurfaceColor, effectiveBarProgress)
+        val titleAlpha = ((effectiveBarProgress - 0.3f) / 0.7f).coerceIn(0f, 1f)
+        val searchPillBgColor = if (isSearchActive) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            lerp(
+                Color.Black.copy(alpha = 0.56f),
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f),
+                effectiveBarProgress
+            )
+        }
+        val searchPillContentColor = if (isSearchActive) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            lerp(Color.White, MaterialTheme.colorScheme.onPrimaryContainer, effectiveBarProgress)
+        }
+        val searchPillBorderColor = if (isSearchActive) {
+            primaryColor.copy(alpha = 0.75f)
+        } else {
+            lerp(
+                Color.White.copy(alpha = 0.48f),
+                primaryColor.copy(alpha = 0.55f),
+                effectiveBarProgress
+            )
+        }
+
+        Surface(
+            color = barBgColor,
+            shadowElevation = (4f * effectiveBarProgress).dp,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .widthIn(max = 760.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Real Circular Shayari Logo + morphing "शायरी" title when collapsed
+                    Row(
+                        modifier = Modifier
+                            .weight(1f, fill = false)
+                            .clip(RoundedCornerShape(22.dp))
+                            .clickable(onClick = handleTitleTap)
+                            .padding(end = 6.dp)
+                            .testTag("header_title_refresh_button"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.55f),
+                            border = BorderStroke(1.5.dp, Color(0xFFFFB74D).copy(alpha = 0.9f)),
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(38.dp)
+                        ) {
+                            OptimizedDrawableImage(
+                                resId = R.drawable.shayari_heartbreak_logo_1795079888557,
+                                contentDescription = stringResource(R.string.app_name),
+                                widthPx = 160,
+                                heightPx = 160,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
+
+                        if (titleAlpha > 0.02f) {
+                            Text(
+                                text = stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = primaryColor,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = titleAlpha
+                                    translationX = -10f * (1f - titleAlpha)
+                                }
+                            )
+                        }
+                    }
+
+                    // Action Buttons: Larger prominent Search pill + clean toolbar icons
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        Surface(
+                            onClick = {
+                                if (isSearchActive && !searchExpanded && uiState.searchQuery.isNotEmpty()) {
+                                    onSearchQueryChanged("")
+                                } else {
+                                    onToggleSearch()
+                                }
+                                if (!isSearchActive) {
+                                    refreshScope.launch { listState.animateScrollToItem(0) }
+                                }
+                            },
+                            shape = RoundedCornerShape(50),
+                            color = searchPillBgColor,
+                            border = BorderStroke(1.dp, searchPillBorderColor),
+                            shadowElevation = if (isSearchActive) 2.dp else 4.dp,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .height(42.dp)
+                                .testTag("search_toggle_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
+                                    contentDescription = stringResource(R.string.search_hint),
+                                    tint = searchPillContentColor,
+                                    modifier = Modifier.size(21.dp)
+                                )
+                                Text(
+                                    text = stringResource(
+                                        if (isSearchActive) R.string.search_close_label else R.string.action_search
+                                    ),
+                                    style = MaterialTheme.typography.labelLarge.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    ),
+                                    color = searchPillContentColor,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = onOpenNotificationSettings,
+                            shape = CircleShape,
+                            color = iconBgColor,
+                            border = BorderStroke(0.75.dp, iconBorderColor),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(36.dp)
+                                .testTag("notification_settings_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadNotificationCount > 0) {
+                                            Badge(
+                                                containerColor = primaryColor,
+                                                contentColor = MaterialTheme.colorScheme.onPrimary,
+                                                modifier = Modifier.testTag("notification_unread_badge")
+                                            ) {
+                                                Text(
+                                                    text = if (unreadNotificationCount > 99) {
+                                                        "99+"
+                                                    } else {
+                                                        unreadNotificationCount.toString()
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall
+                                                )
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (unreadNotificationCount > 0) {
+                                            Icons.Rounded.NotificationsActive
+                                        } else {
+                                            Icons.Outlined.Notifications
+                                        },
+                                        contentDescription = stringResource(R.string.notification_settings_cd),
+                                        tint = if (unreadNotificationCount > 0) {
+                                            lerp(Color(0xFFFFB74D), primaryColor, effectiveBarProgress)
+                                        } else {
+                                            iconTint
+                                        },
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Surface(
+                            onClick = onShareApp,
+                            shape = CircleShape,
+                            color = iconBgColor,
+                            border = BorderStroke(0.75.dp, iconBorderColor),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(36.dp)
+                                .testTag("mehfil_share_app_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Share,
+                                    contentDescription = stringResource(R.string.action_share_app),
+                                    tint = iconTint,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = onToggleTheme,
+                            shape = CircleShape,
+                            color = iconBgColor,
+                            border = BorderStroke(0.75.dp, iconBorderColor),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(36.dp)
+                                .testTag("theme_toggle_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (isDarkTheme) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                                    contentDescription = stringResource(R.string.toggle_theme),
+                                    tint = iconTint,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = {
+                                val willExpand = !isCategoryGridExpanded
+                                isCategoryGridExpanded = willExpand
+                                onOpenCategories()
+                                if (willExpand && listState.firstVisibleItemIndex > 0) {
+                                    refreshScope.launch { listState.animateScrollToItem(0) }
+                                }
+                            },
+                            shape = CircleShape,
+                            color = primaryColor.copy(alpha = 0.90f),
+                            border = if (isCategoryGridExpanded) {
+                                BorderStroke(2.dp, Color.White)
+                            } else {
+                                BorderStroke(1.dp, Color.White.copy(alpha = 0.35f))
+                            },
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(36.dp)
+                                .testTag("top_categories_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.GridView,
+                                    contentDescription = stringResource(R.string.action_categories),
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Pinned Live Search Input + Bilingual Quick Suggestion Chips (always accessible while scrolling!)
+                AnimatedVisibility(
+                    visible = isSearchActive,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = uiState.searchQuery,
+                            onValueChange = onSearchQueryChanged,
+                            placeholder = {
+                                Text(
+                                    text = stringResource(R.string.search_hint),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Rounded.Search,
+                                    contentDescription = null,
+                                    tint = primaryColor
+                                )
+                            },
+                            trailingIcon = {
+                                if (uiState.searchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { onSearchQueryChanged("") },
+                                        modifier = Modifier.testTag("clear_search_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Close,
+                                            contentDescription = stringResource(R.string.clear_search)
+                                        )
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = { keyboardController?.hide() }
+                            ),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                                focusedBorderColor = primaryColor,
+                                unfocusedBorderColor = outlineColor
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp)
+                                .focusRequester(searchFocusRequester)
+                                .testTag("search_input")
+                        )
+
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(QUICK_SEARCH_MOODS) { (label, queryTerm) ->
+                                val isSelected = uiState.searchQuery.equals(queryTerm, ignoreCase = true)
+                                Surface(
+                                    shape = RoundedCornerShape(50),
+                                    color = if (isSelected) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerLow
+                                    },
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) primaryColor else outlineColor
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            onSearchQueryChanged(if (isSelected) "" else queryTerm)
+                                        }
+                                        .testTag("quick_search_chip_$queryTerm")
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = if (isSelected) {
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        } else {
+                                            onSurfaceColor
+                                        },
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (effectiveBarProgress > 0.05f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(outlineColor.copy(alpha = 0.45f * effectiveBarProgress))
+                    )
+                }
+            }
+        }
+
         if (uiState.filteredShayari.isNotEmpty()) {
             FloatingScrollButtons(
                 listState = listState,
@@ -843,6 +1096,28 @@ private fun ActiveCategoryBanner(
     }
 }
 
+private val DYNAMIC_HERO_COVER_PICS = intArrayOf(
+    R.drawable.img_pic_moonlit_boat,
+    R.drawable.img_pic_rainy_window,
+    R.drawable.img_pic_sunset_silhouettes,
+    R.drawable.img_pic_red_roses_night,
+    R.drawable.img_pic_autumn_road,
+    R.drawable.img_bg_candle_lake,
+    R.drawable.img_bg_romantic,
+    R.drawable.img_bg_prakriti_rain,
+    R.drawable.img_hero_mehfil,
+    R.drawable.img_bg_bewafai,
+    R.drawable.img_bg_zindagi,
+    R.drawable.img_bg_musafir,
+    R.drawable.img_bg_secret_love,
+    R.drawable.img_bg_aansu,
+    R.drawable.img_bg_khuda,
+    R.drawable.img_bg_dosti,
+    R.drawable.img_bg_motivation,
+    R.drawable.img_bg_tareef,
+    R.drawable.img_card_mushaira
+)
+
 @Composable
 private fun FeaturedHeroCarousel(
     popularPool: List<ShayariEntity>,
@@ -856,12 +1131,14 @@ private fun FeaturedHeroCarousel(
     var activePopularIndex by remember(popularPool, refreshTrigger) {
         mutableIntStateOf(0)
     }
+    var manualAdvanceCounter by remember(popularPool, refreshTrigger) {
+        mutableIntStateOf(0)
+    }
 
-    LaunchedEffect(popularPool, refreshTrigger) {
-        activeIndexRef[0] = 0
+    LaunchedEffect(popularPool, refreshTrigger, manualAdvanceCounter) {
         if (popularPool.size > 1) {
             while (true) {
-                delay(5000L)
+                delay(4500L)
                 val next = (activePopularIndex + 1) % popularPool.size
                 activePopularIndex = next
                 activeIndexRef[0] = next
@@ -870,9 +1147,26 @@ private fun FeaturedHeroCarousel(
     }
 
     val activeShayari = popularPool.getOrNull(activePopularIndex) ?: popularPool.firstOrNull() ?: return
+    val coverResId = remember(activeShayari.id, activePopularIndex) {
+        val categoryPic = ShayariCategory.fromId(activeShayari.categoryId).backgroundFor(activeShayari)
+        val curatedPic = DYNAMIC_HERO_COVER_PICS[activePopularIndex % DYNAMIC_HERO_COVER_PICS.size]
+        if (activePopularIndex % 2 == 0) categoryPic else curatedPic
+    }
+
     FeaturedHeroCard(
         shayari = activeShayari,
+        coverResId = coverResId,
+        slideIndex = activePopularIndex,
+        totalSlides = popularPool.size,
         onOpen = { onOpen(activeShayari) },
+        onNextSlide = {
+            if (popularPool.size > 1) {
+                val next = (activePopularIndex + 1) % popularPool.size
+                activePopularIndex = next
+                activeIndexRef[0] = next
+                manualAdvanceCounter += 1
+            }
+        },
         onToggleFavorite = { onToggleFavorite(activeShayari) },
         onShare = { onShare(activeShayari) },
         modifier = modifier
@@ -882,51 +1176,61 @@ private fun FeaturedHeroCarousel(
 @Composable
 private fun FeaturedHeroCard(
     shayari: ShayariEntity,
+    coverResId: Int,
+    slideIndex: Int,
+    totalSlides: Int,
     onOpen: () -> Unit,
+    onNextSlide: () -> Unit,
     onToggleFavorite: () -> Unit,
     onShare: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val heroCategory = remember(shayari.categoryId) { ShayariCategory.fromId(shayari.categoryId) }
+    val cardShape = RoundedCornerShape(24.dp)
     Surface(
-        shape = MaterialTheme.shapes.large,
-        shadowElevation = 6.dp,
+        shape = cardShape,
+        color = Color(0xFF0E0912),
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, Color(0xFFE6BE78).copy(alpha = 0.42f)),
         modifier = modifier
             .fillMaxWidth()
-            .clip(MaterialTheme.shapes.large)
+            .clip(cardShape)
             .clickable(onClick = onOpen)
             .testTag("featured_hero_card")
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 196.dp)
+                .heightIn(min = 276.dp)
         ) {
+            // Vivid full-bleed rotating photographic Cover Background
             Crossfade(
-                targetState = shayari,
-                animationSpec = tween(durationMillis = 550),
+                targetState = coverResId,
+                animationSpec = tween(durationMillis = 700),
                 label = "featured_hero_bg_crossfade",
                 modifier = Modifier.matchParentSize()
-            ) { currentShayari ->
-                val heroCategory = ShayariCategory.fromId(currentShayari.categoryId)
+            ) { currentCoverResId ->
                 OptimizedDrawableImage(
-                    resId = heroCategory.backgroundFor(currentShayari),
+                    resId = currentCoverResId,
                     contentDescription = stringResource(R.string.cd_hero_banner),
-                    widthPx = 800,
-                    heightPx = 480,
+                    widthPx = 1080,
+                    heightPx = 720,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
             }
 
-            // Balanced twilight scrim for crisp couplet readability
+            // Editorial Cover-Photo scrim: keeps upper & middle photo bright and vibrant, darkens cleanly behind shayari
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0x9E190C18),
-                                Color(0xD4120914)
+                            colorStops = arrayOf(
+                                0.0f to Color(0x5A0A060E),
+                                0.28f to Color(0x1A0A060E),
+                                0.56f to Color(0x780D0712),
+                                1.0f to Color(0xDE09050D)
                             )
                         )
                     )
@@ -935,8 +1239,11 @@ private fun FeaturedHeroCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(22.dp)
+                    .heightIn(min = 276.dp)
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
+                // Top floating row: Dynamic Mood Pill + Frosted Share/Like Controls
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -944,8 +1251,8 @@ private fun FeaturedHeroCard(
                 ) {
                     Surface(
                         shape = RoundedCornerShape(50),
-                        color = Color(0xFFE6BE78).copy(alpha = 0.2f),
-                        border = BorderStroke(1.dp, Color(0xFFE6BE78).copy(alpha = 0.45f))
+                        color = Color(0x99140C18),
+                        border = BorderStroke(1.dp, Color(0xFFE6BE78).copy(alpha = 0.55f))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -959,92 +1266,197 @@ private fun FeaturedHeroCard(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = stringResource(R.string.featured_badge),
+                                text = "${stringResource(R.string.featured_badge)} • ${heroCategory.titleHi}",
                                 style = MaterialTheme.typography.labelMedium.copy(
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = Color(0xFFF3D59B)
+                                color = Color(0xFFFFE5B0),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
 
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
                             onClick = onShare,
+                            shape = CircleShape,
+                            color = Color(0x88120A16),
+                            border = BorderStroke(0.75.dp, Color.White.copy(alpha = 0.22f)),
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
+                                .size(38.dp)
                                 .testTag("featured_share_button")
                         ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Share,
-                                contentDescription = stringResource(R.string.action_share_short),
-                                tint = Color(0xFFF7EDE2)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Share,
+                                    contentDescription = stringResource(R.string.action_share_short),
+                                    tint = Color(0xFFFFF5EB),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
 
-                        IconButton(
+                        Surface(
                             onClick = onToggleFavorite,
+                            shape = CircleShape,
+                            color = Color(0x88120A16),
+                            border = BorderStroke(0.75.dp, Color.White.copy(alpha = 0.22f)),
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
+                                .size(38.dp)
                                 .testTag("featured_favorite_button")
                         ) {
-                            Icon(
-                                imageVector = if (shayari.isFavorite) {
-                                    Icons.Rounded.Favorite
-                                } else {
-                                    Icons.Rounded.FavoriteBorder
-                                },
-                                contentDescription = stringResource(R.string.action_favorite),
-                                tint = if (shayari.isFavorite) Color(0xFFFF8FA3) else Color(0xFFF7EDE2)
-                            )
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = if (shayari.isFavorite) {
+                                        Icons.Rounded.Favorite
+                                    } else {
+                                        Icons.Rounded.FavoriteBorder
+                                    },
+                                    contentDescription = stringResource(R.string.action_favorite),
+                                    tint = if (shayari.isFavorite) Color(0xFFFF6B8B) else Color(0xFFFFF5EB),
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                // Open breathing window so the vibrant cover artwork shows through clearly
+                Spacer(modifier = Modifier.height(34.dp))
 
+                // Lower Editorial Shayari Showcase Zone
                 val readingStyle = LocalShayariReadingStyle.current
-                AnimatedContent(
-                    targetState = shayari,
-                    transitionSpec = {
-                        (fadeIn(animationSpec = tween(420)) +
-                            slideInVertically(animationSpec = tween(420)) { it / 10 }) togetherWith
-                            fadeOut(animationSpec = tween(260))
-                    },
-                    label = "featured_hero_text_transition"
-                ) { currentShayari ->
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = currentShayari.couplet,
-                            style = readingStyle.heroCoupletTextStyle(MaterialTheme.typography.titleLarge),
-                            color = Color(0xFFFFF8F0)
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Row(
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    AnimatedContent(
+                        targetState = shayari,
+                        transitionSpec = {
+                            (fadeIn(animationSpec = tween(460)) +
+                                slideInVertically(animationSpec = tween(460)) { it / 8 }) togetherWith
+                                fadeOut(animationSpec = tween(260))
+                        },
+                        label = "featured_hero_text_transition"
+                    ) { currentShayari ->
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
+                            Text(
+                                text = currentShayari.couplet,
+                                style = readingStyle.heroCoupletTextStyle(MaterialTheme.typography.titleLarge).copy(
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.72f),
+                                        offset = Offset(0f, 2f),
+                                        blurRadius = 6f
+                                    )
+                                ),
+                                color = Color(0xFFFFFAF4)
+                            )
+
                             Text(
                                 text = "— ${currentShayari.poet}",
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontFamily = readingStyle.fontStyle.fontFamily
+                                    fontFamily = readingStyle.fontStyle.fontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    shadow = Shadow(
+                                        color = Color.Black.copy(alpha = 0.65f),
+                                        offset = Offset(0f, 1.5f),
+                                        blurRadius = 4f
+                                    )
                                 ),
-                                color = Color(0xFFE6BE78),
+                                color = Color(0xFFF3D59B),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false)
+                                overflow = TextOverflow.Ellipsis
                             )
+                        }
+                    }
+
+                    // Bottom bar: Animated Dynamic Indicator Dots + Next Slide + Read Full CTA
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val visibleDots = totalSlides.coerceIn(1, 6)
+                        val activeDot = slideIndex % visibleDots
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            repeat(visibleDots) { idx ->
+                                val isCurrent = idx == activeDot
+                                val dotWidth by animateDpAsState(
+                                    targetValue = if (isCurrent) 20.dp else 6.dp,
+                                    animationSpec = tween(300),
+                                    label = "dynamic_hero_dot_width"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(6.dp)
+                                        .width(dotWidth)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(
+                                            if (isCurrent) {
+                                                Color(0xFFF3D59B)
+                                            } else {
+                                                Color.White.copy(alpha = 0.35f)
+                                            }
+                                        )
+                                )
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (totalSlides > 1) {
+                                Surface(
+                                    onClick = onNextSlide,
+                                    shape = RoundedCornerShape(50),
+                                    color = Color(0x66000000),
+                                    border = BorderStroke(1.dp, Color(0xFFE6BE78).copy(alpha = 0.45f)),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("featured_next_slide_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.hero_next_slide_label),
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.SemiBold
+                                            ),
+                                            color = Color(0xFFFFE5B0)
+                                        )
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
+                                            contentDescription = stringResource(R.string.hero_next_slide_cd),
+                                            tint = Color(0xFFFFE5B0),
+                                            modifier = Modifier.size(13.dp)
+                                        )
+                                    }
+                                }
+                            }
 
                             Surface(
                                 shape = RoundedCornerShape(50),
-                                color = Color.White.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
+                                color = Color.White.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.32f))
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
@@ -1053,12 +1465,12 @@ private fun FeaturedHeroCard(
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             fontWeight = FontWeight.SemiBold
                                         ),
-                                        color = Color(0xFFFFF8F0)
+                                        color = Color(0xFFFFFAF4)
                                     )
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                                         contentDescription = null,
-                                        tint = Color(0xFFFFF8F0),
+                                        tint = Color(0xFFFFFAF4),
                                         modifier = Modifier.size(13.dp)
                                     )
                                 }
@@ -1215,12 +1627,15 @@ private fun MobileQuickActionStrip(
 }
 
 private val QUICK_SEARCH_MOODS: List<Pair<String, String>> = listOf(
-    "प्यार • Pyar" to "प्यार",
+    "प्यार • Love" to "प्यार",
     "इश्क़ • Ishq" to "इश्क़",
-    "ज़िंदगी • Zindagi" to "ज़िंदगी",
-    "तन्हाई • Tanhai" to "तन्हाई",
-    "दर्द • Dard" to "दर्द",
-    "ख़ुदा • Khuda" to "ख़ुदा",
+    "बेवफ़ाई • Bewafa" to "बेवफ़ा",
+    "दर्द • Sad" to "दर्द",
+    "रोमांटिक • Romantic" to "Romantic",
+    "Attitude • रॉयल" to "Attitude",
     "दोस्ती • Dosti" to "दोस्ती",
-    "बेवफ़ा • Bewafa" to "बेवफ़ा"
+    "ज़िंदगी • Life" to "ज़िंदगी",
+    "तन्हाई • Alone" to "तन्हाई",
+    "चुटकुले • Funny" to "Funny",
+    "ख़ुदा • Khuda" to "ख़ुदा"
 )

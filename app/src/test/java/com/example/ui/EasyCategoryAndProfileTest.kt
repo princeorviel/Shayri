@@ -486,7 +486,10 @@ class EasyCategoryAndProfileTest {
         }
 
         composeRule.waitForIdle()
+        composeRule.onNodeWithTag("mehfil_feed_list").performScrollToKey("feed_card_style_strip")
+        composeRule.waitForIdle()
         composeRule.onNodeWithTag("feed_card_style_strip").assertIsDisplayed()
+        composeRule.onNodeWithTag("feed_card_style_PHOTO_CINEMA").assertIsDisplayed()
         composeRule.onNodeWithTag("feed_card_style_PAPER_DIARY").assertIsDisplayed().performClick()
         composeRule.waitForIdle()
         composeRule.onNodeWithTag("feed_card_style_POLAROID").assertIsDisplayed().performClick()
@@ -557,6 +560,110 @@ class EasyCategoryAndProfileTest {
             assertEquals(ShayariCategory.DARD.id, publishedPrimaryCat)
             assertTrue(publishedTags.contains("बेवफ़ाई"))
             assertTrue(publishedTags.contains("जख्मी दिल"))
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `ShayariViewModel universal search matches Hindi English Hinglish tags categories poets and nukta variants`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val catalog = listOf(
+                ShayariEntity(
+                    id = 801,
+                    couplet = "इश्क़ में तेरे हर शाम चाँदनी लगती है,\nमोहब्बत की दुनिया कितनी प्यारी लगती है।",
+                    poet = "मिर्ज़ा ग़ालिब",
+                    categoryId = ShayariCategory.MOHABBAT.id,
+                    moodTag = "मोहब्बत, love, ishq shayri"
+                ),
+                ShayariEntity(
+                    id = 802,
+                    couplet = "बेवफ़ाई का दर्द आँसुओं में बह गया,\nज़िंदगी का सबसे बड़ा सबक मिल गया।",
+                    poet = "जौन एलिया",
+                    categoryId = ShayariCategory.BEWAFAI.id,
+                    moodTag = "बेवफ़ाई, broken heart"
+                ),
+                ShayariEntity(
+                    id = 803,
+                    couplet = "संता ने बंता से पूछा इतना क्यों हँस रहे हो,\nबोला आज़ादी से जीने का मज़ा ही अलग है।",
+                    poet = "कॉमेडी मंच",
+                    categoryId = ShayariCategory.SANTA_BANTA.id,
+                    moodTag = "चुटकुले"
+                )
+            )
+            runBlocking { db.shayariDao().insertAll(catalog) }
+            val vm = ShayariViewModel(
+                repository = ShayariRepository(db.shayariDao()),
+                preferencesRepository = UserPreferencesRepository(context),
+                autoSeed = false
+            )
+
+            fun searchAndWait(query: String, check: (List<ShayariEntity>) -> Boolean) {
+                vm.onSearchQueryChanged(query)
+                composeRule.waitUntil(timeoutMillis = 5_000L) {
+                    ShadowLooper.idleMainLooper()
+                    val s = vm.uiState.value
+                    s.searchQuery == query && check(s.filteredShayari)
+                }
+            }
+
+            // Even after selecting a different category, searching finds global matches
+            vm.onCategorySelected(ShayariCategory.SANTA_BANTA.id)
+            searchAndWait("love shayari") { list -> list.any { it.id == 801 } }
+            searchAndWait("romantic") { list -> list.any { it.id == 801 } }
+            searchAndWait("moon") { list -> list.any { it.id == 801 } }
+            searchAndWait("galib") { list -> list.any { it.id == 801 } }
+            searchAndWait("बेवफाई") { list -> list.any { it.id == 802 } } // without nukta
+            searchAndWait("जिंदगी") { list -> list.any { it.id == 802 } } // without nukta
+            searchAndWait("#breakup") { list -> list.any { it.id == 802 } }
+            searchAndWait("funny jokes") { list -> list.any { it.id == 803 } }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `ShayariWriteStudioScreen auto populates related bilingual tags when Mohabbat category is selected`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val db = Room.inMemoryDatabaseBuilder(context, ShayariDatabase::class.java)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val personalVm = PersonalShayariViewModel(
+                repository = LocalPersonalShayariRepository(db.localPersonalShayariDao()),
+                currentUserId = "local_guest"
+            )
+
+            composeRule.setContent {
+                ShayariTheme {
+                    ShayariWriteStudioScreen(
+                        viewModel = personalVm,
+                        authorName = "Prince",
+                        isOnlineAccount = false,
+                        onRequestGoogleSignIn = {},
+                        onClose = {},
+                        onSaved = {},
+                        onFeedback = {}
+                    )
+                }
+            }
+
+            composeRule.waitForIdle()
+            composeRule.onNodeWithTag("studio_category_and_tags_card").performScrollTo()
+            composeRule.onNodeWithTag("studio_primary_category_row").performScrollToKey(ShayariCategory.MOHABBAT.id)
+            composeRule.onNodeWithTag("studio_primary_cat_mohabbat").performClick()
+            composeRule.waitForIdle()
+
+            val activeTags = ShayariTagMatcher.parseTags(personalVm.uiState.value.themeTagInput)
+            assertTrue(activeTags.contains("मोहब्बत"))
+            assertTrue(activeTags.contains("romantic शायरी"))
+            assertTrue(activeTags.contains("ishq shayri"))
+            assertTrue(activeTags.contains("pyar"))
+            assertTrue(activeTags.contains("love"))
         } finally {
             db.close()
         }

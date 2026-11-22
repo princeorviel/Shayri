@@ -52,9 +52,12 @@
     <string name="mehfil_quick_read_cta">दिल की पसंद पढ़ें</string>
     <string name="mehfil_quick_write_cta">नया कार्ड बनाएँ</string>
     <string name="hero_read_full_cta">पूरी पढ़ें</string>
+    <string name="hero_next_slide_label">अगली</string>
+    <string name="hero_next_slide_cd">अगली शायरी देखें</string>
 
-    <string name="search_hint">हिंदी या Hinglish में खोजें (जैसे: pyar, zindagi)…</string>
+    <string name="search_hint">टैग, कैटेगरी या शायरी खोजें (Hindi / English)…</string>
     <string name="clear_search">खोज हटाएँ</string>
+    <string name="search_close_label">बंद</string>
     <string name="toggle_theme">लाइट / डार्क मोड</string>
 
     <string name="studio_newline_key">↵ नई लाइन</string>
@@ -132,6 +135,7 @@
     <string name="swipe_hint">अगली शायरी के लिए दाएं-बाएं स्वाइप करें</string>
 
     <string name="cd_hero_banner">शायरी बैकग्राउंड फोटो</string>
+    <string name="cd_home_cover_photo">बेवफ़ाई शायरी कवर फ़ोटो</string>
     <string name="cd_empty_diwan">खाली डायरी फोटो</string>
     <string name="cd_card_backdrop">शायरी कार्ड बैकग्राउंड</string>
 
