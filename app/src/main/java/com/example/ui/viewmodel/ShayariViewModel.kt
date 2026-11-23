@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ShayariRepository
+import com.example.data.local.ShayariSeedData
 import com.example.data.local.UserPreferences
 import com.example.data.local.UserPreferencesRepository
 import com.example.data.model.CardStyle
@@ -26,8 +27,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -67,19 +68,24 @@ class ShayariViewModel(
     private val initialPreferences: UserPreferences = preferencesRepository.readCachedPreferencesSync()
 
     private val allShayariSharedFlow = combine(
-        repository.allShayari,
+        repository.allShayari.onStart {
+            // Emit bundled catalog instantly on cold start before Room finishes first query/seeding
+            emit(ShayariSeedData.allShayari)
+        },
         onlineCommunityPostsFlow
     ) { localCatalog, onlinePosts ->
+        // If Room hasn't finished seeding yet on fresh install, keep showing bundled catalog immediately
+        val effectiveLocal = if (localCatalog.isEmpty()) ShayariSeedData.allShayari else localCatalog
         if (onlinePosts.isEmpty()) {
-            localCatalog
+            effectiveLocal
         } else {
             val onlineKeys = HashSet<String>(onlinePosts.size * 2)
             for (post in onlinePosts) {
                 onlineKeys.add(dedupeKey(post.couplet, post.poet))
             }
-            val merged = ArrayList<ShayariEntity>(onlinePosts.size + localCatalog.size)
+            val merged = ArrayList<ShayariEntity>(onlinePosts.size + effectiveLocal.size)
             merged.addAll(onlinePosts)
-            for (item in localCatalog) {
+            for (item in effectiveLocal) {
                 // Skip local user-post copy if the exact same post is already live from Firestore
                 if (item.id >= ShayariRepository.USER_POST_ID_BASE &&
                     dedupeKey(item.couplet, item.poet) in onlineKeys
@@ -106,14 +112,26 @@ class ShayariViewModel(
         val multiCategoryIds: Set<String>?
     )
 
-    private val indexedShayariSharedFlow = allShayariSharedFlow
-        .map { all ->
-            all.map { item ->
-                val multiCats = if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
-                    ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
-                } else {
-                    null
-                }
+    @Volatile
+    private var cachedIndexSource: List<ShayariEntity>? = null
+    @Volatile
+    private var cachedIndexList: List<IndexedShayari> = emptyList()
+
+    private suspend fun getOrBuildSearchIndex(source: List<ShayariEntity>): List<IndexedShayari> {
+        if (cachedIndexSource === source && cachedIndexList.size == source.size) {
+            return cachedIndexList
+        }
+        val ctx = currentCoroutineContext()
+        val built = ArrayList<IndexedShayari>(source.size)
+        for (i in source.indices) {
+            if ((i and 511) == 0) ctx.ensureActive()
+            val item = source[i]
+            val multiCats = if (ShayariTagMatcher.hasMultiTagMetadata(item)) {
+                ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag)
+            } else {
+                null
+            }
+            built.add(
                 IndexedShayari(
                     entity = item,
                     normCouplet = ShayariTagMatcher.normalizeForSearch(item.couplet),
@@ -121,14 +139,12 @@ class ShayariViewModel(
                     normMoodTag = ShayariTagMatcher.normalizeForSearch(item.moodTag),
                     multiCategoryIds = multiCats
                 )
-            }
+            )
         }
-        .flowOn(Dispatchers.Default)
-        .shareIn(
-            scope = viewModelScope,
-            started = SharingStarted.Eagerly,
-            replay = 1
-        )
+        cachedIndexSource = source
+        cachedIndexList = built
+        return built
+    }
 
     private data class CatalogDerivedState(
         val isLoaded: Boolean = false,
@@ -186,7 +202,7 @@ class ShayariViewModel(
         }
 
         CatalogDerivedState(
-            isLoaded = true,
+            isLoaded = all.isNotEmpty(),
             allShayari = all,
             categoryCounts = counts,
             popularShayari = popularList,
@@ -210,27 +226,28 @@ class ShayariViewModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val filteredFlow: StateFlow<FilterResult> = combine(
-        indexedShayariSharedFlow,
+        allShayariSharedFlow,
         filterInputsFlow
-    ) { indexedAll, inputs ->
-        indexedAll to inputs
+    ) { allItems, inputs ->
+        allItems to inputs
     }
-        .mapLatest { (indexedAll, inputs) ->
+        .mapLatest { (allItems, inputs) ->
             val (query, selectedCat, refreshSeed) = inputs
             val trimmed = query.trim()
             val baseFiltered = when {
-                trimmed.isEmpty() && selectedCat == null -> indexedAll.map { it.entity }
-                trimmed.isEmpty() -> indexedAll.mapNotNull { entry ->
-                    val item = entry.entity
-                    val matchesCat = item.categoryId == selectedCat ||
-                        (entry.multiCategoryIds != null && selectedCat in entry.multiCategoryIds)
-                    if (matchesCat) item else null
+                // Fast-path: Home screen & category filter NEVER wait for heavy search normalization!
+                trimmed.isEmpty() && selectedCat == null -> allItems
+                trimmed.isEmpty() -> allItems.filter { item ->
+                    item.categoryId == selectedCat ||
+                        (ShayariTagMatcher.hasMultiTagMetadata(item) &&
+                            selectedCat in ShayariTagMatcher.matchingCategoryIds(item.categoryId, item.moodTag))
                 }
                 else -> {
                     val spec = ShayariTagMatcher.buildSearchSpec(trimmed)
                     if (spec.matchAllFallback && selectedCat == null) {
-                        indexedAll.map { it.entity }
+                        allItems
                     } else {
+                        val indexedAll = getOrBuildSearchIndex(allItems)
                         val scored = ArrayList<Pair<Int, ShayariEntity>>()
                         var firstScore = -1
                         var hasDistinctScores = false

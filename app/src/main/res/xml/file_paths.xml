@@ -3,4 +3,7 @@
     <cache-path
         name="shared_cards"
         path="shared_cards/" />
+    <files-path
+        name="reels_media"
+        path="reels_media/" />
 </paths>

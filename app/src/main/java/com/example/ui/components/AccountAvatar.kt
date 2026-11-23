@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -33,13 +34,14 @@ fun AccountAvatar(
     isSelected: Boolean = false,
     size: Dp = 26.dp,
     contentDescription: String? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    tintOverride: Color? = null
 ) {
     if (!isSignedIn && photoUrl == null) {
         Icon(
             imageVector = if (isSelected) Icons.Rounded.Person else Icons.Outlined.Person,
             contentDescription = contentDescription,
-            tint = if (isSelected) {
+            tint = tintOverride ?: if (isSelected) {
                 MaterialTheme.colorScheme.primary
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
@@ -50,7 +52,7 @@ fun AccountAvatar(
     }
 
     val initial = displayName?.trim()?.firstOrNull()?.uppercaseChar()?.toString()
-    val borderColor = if (isSelected) {
+    val borderColor = tintOverride ?: if (isSelected) {
         MaterialTheme.colorScheme.primary
     } else {
         MaterialTheme.colorScheme.outlineVariant

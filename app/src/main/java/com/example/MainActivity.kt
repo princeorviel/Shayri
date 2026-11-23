@@ -23,9 +23,11 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.AutoStories
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.rounded.AccountCircle
 import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +51,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -122,8 +125,10 @@ import com.example.ui.screens.KaviManchScreen
 import com.example.ui.screens.MehfilScreen
 import com.example.ui.screens.PoetProfileScreen
 import com.example.ui.screens.PostNotificationsSheet
+import com.example.ui.screens.ReelsScreen
 import com.example.ui.screens.ShayariCommentsSheet
 import com.example.ui.screens.ShayariReaderScreen
+import com.example.ui.screens.UserCreatedReel
 import com.example.ui.theme.ShayariReadingStyle
 import com.example.ui.theme.ShayariTheme
 import com.example.ui.viewmodel.AdminDashboardUiState
@@ -133,6 +138,7 @@ import com.example.ui.viewmodel.CommunityViewModel
 import com.example.ui.viewmodel.PersonalShayariViewModel
 import com.example.ui.viewmodel.ShayariViewModel
 import com.example.util.ProfilePhotoStorage
+import com.example.util.ReelsStorage
 import com.example.util.ShayariShareHelper
 import com.example.util.SocialShareLauncher
 import com.example.util.SocialSharePlatform
@@ -143,6 +149,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 const val ROUTE_MEHFIL = "mehfil"
+const val ROUTE_REELS = "reels"
 const val ROUTE_CATEGORIES = "categories"
 const val ROUTE_CATEGORY_DETAIL = "category_detail/{categoryId}"
 const val ROUTE_FAVORITES = "favorites"
@@ -168,6 +175,13 @@ private enum class BottomTab(
         selectedIcon = Icons.Rounded.AutoStories,
         unselectedIcon = Icons.Outlined.AutoStories,
         testTag = "nav_tab_mehfil"
+    ),
+    REELS(
+        route = ROUTE_REELS,
+        labelRes = R.string.nav_reels,
+        selectedIcon = Icons.Rounded.SmartDisplay,
+        unselectedIcon = Icons.Outlined.SmartDisplay,
+        testTag = "nav_tab_reels"
     ),
     FAVORITES(
         route = ROUTE_FAVORITES,
@@ -283,6 +297,15 @@ private fun ShayariAppRoot(
     var homeRefreshTick by remember { mutableIntStateOf(0) }
     var isHomeSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchFocusTrigger by remember { mutableIntStateOf(0) }
+    var userCreatedReels by remember { mutableStateOf<List<UserCreatedReel>>(emptyList()) }
+    var reelsCreateTrigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(context) {
+        val persisted = ReelsStorage.loadUserReels(context)
+        if (persisted.isNotEmpty()) {
+            userCreatedReels = persisted
+        }
+    }
 
     val credentialManager = remember(context) { CredentialManager.create(context) }
     val firebaseReady = remember(context) { isFirebaseAvailable(context) }
@@ -477,6 +500,7 @@ private fun ShayariAppRoot(
 
     val showTopLevelNav = currentRoute in setOf(
         ROUTE_MEHFIL,
+        ROUTE_REELS,
         ROUTE_FAVORITES,
         ROUTE_ACCOUNT
     )
@@ -551,7 +575,11 @@ private fun ShayariAppRoot(
     }
 
     fun handleCreateTabClick() {
-        openWriteStudio(resetDraft = true)
+        if (currentRoute == ROUTE_REELS) {
+            reelsCreateTrigger++
+        } else {
+            openWriteStudio(resetDraft = true)
+        }
     }
 
     fun handleAccountTabClick() {
@@ -1003,13 +1031,15 @@ private fun ShayariAppRoot(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val useNavigationRail = maxWidth >= 600.dp
 
+        val isReelsRoute = currentRoute == ROUTE_REELS
         val isFullScreenStudioOrReader = currentRoute == ROUTE_READER ||
             currentRoute == ROUTE_WRITE_STUDIO ||
-            currentRoute == ROUTE_EDIT_PROFILE
+            currentRoute == ROUTE_EDIT_PROFILE ||
+            isReelsRoute
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
+            containerColor = if (isReelsRoute) Color.Black else MaterialTheme.colorScheme.background,
             contentWindowInsets = if (isFullScreenStudioOrReader) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
             snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             bottomBar = {
@@ -1024,7 +1054,9 @@ private fun ShayariAppRoot(
                         onHomeClick = ::handleHomeTabClick,
                         onFavoritesClick = { navigateToTab(ROUTE_FAVORITES) },
                         onCreateClick = ::handleCreateTabClick,
-                        onAccountClick = ::handleAccountTabClick
+                        onAccountClick = ::handleAccountTabClick,
+                        isReelsSelected = isReelsRoute,
+                        onReelsClick = { navigateToTab(ROUTE_REELS) }
                     )
                 }
             }
@@ -1036,16 +1068,26 @@ private fun ShayariAppRoot(
             ) {
                 if (showTopLevelNav && useNavigationRail) {
                     NavigationRail(
-                        containerColor = MaterialTheme.colorScheme.surface,
+                        containerColor = if (isReelsRoute) Color(0xFF0A0A0E) else MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxHeight()
                     ) {
-                        val railItemColors = NavigationRailItemDefaults.colors(
-                            selectedIconColor = MaterialTheme.colorScheme.primary,
-                            selectedTextColor = MaterialTheme.colorScheme.primary,
-                            indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                            unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        val railItemColors = if (isReelsRoute) {
+                            NavigationRailItemDefaults.colors(
+                                selectedIconColor = Color.White,
+                                selectedTextColor = Color.White,
+                                indicatorColor = Color.White.copy(alpha = 0.16f),
+                                unselectedIconColor = Color.White.copy(alpha = 0.65f),
+                                unselectedTextColor = Color.White.copy(alpha = 0.65f)
+                            )
+                        } else {
+                            NavigationRailItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.primary,
+                                indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Spacer(modifier = Modifier.weight(1f))
                         BottomTab.entries.forEach { tab ->
                             val selected = currentRoute == tab.route
@@ -1139,6 +1181,46 @@ private fun ShayariAppRoot(
                                 onOpenAdminDashboard = {
                                     navController.navigate(ROUTE_ADMIN_DASHBOARD) {
                                         launchSingleTop = true
+                                    }
+                                }
+                            )
+                        }
+
+                        composable(ROUTE_REELS) {
+                            ReelsScreen(
+                                allShayari = uiState.allShayari,
+                                popularShayari = uiState.popularShayari,
+                                userReels = userCreatedReels,
+                                commentCounts = commentCounts,
+                                authorName = resolvedAuthorName,
+                                onToggleFavorite = ::handleToggleFavorite,
+                                onComment = ::openCommentsForShayari,
+                                onShare = ::handleShareShayari,
+                                onCreateUserReel = { newReel ->
+                                    val updated = listOf(newReel) + userCreatedReels
+                                    userCreatedReels = updated
+                                    scope.launch {
+                                        ReelsStorage.saveUserReels(context, updated)
+                                    }
+                                    if (newReel.couplet.trim().length >= 4) {
+                                        viewModel.upsertUserPostToCatalog(
+                                            personalId = newReel.id,
+                                            couplet = newReel.couplet.trim(),
+                                            authorName = newReel.poet.ifBlank { "शायर दोस्त" },
+                                            title = "",
+                                            themeTag = newReel.tags.joinToString(" ")
+                                        )
+                                    }
+                                },
+                                onShowFeedback = ::showFeedback,
+                                createSheetTrigger = reelsCreateTrigger,
+                                onDeleteUserReel = { target ->
+                                    val updated = userCreatedReels.filterNot { it.id == target.id }
+                                    userCreatedReels = updated
+                                    scope.launch {
+                                        ReelsStorage.deleteLocalMediaIfOwned(context, target.videoUri)
+                                        ReelsStorage.deleteLocalMediaIfOwned(context, target.photoUri)
+                                        ReelsStorage.saveUserReels(context, updated)
                                     }
                                 }
                             )

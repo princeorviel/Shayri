@@ -583,8 +583,35 @@ fun MehfilScreen(
                 }
             }
 
-            // 5. Shayari Feed or Empty Search State
-            if (uiState.filteredShayari.isEmpty() && !uiState.isLoading) {
+            // 5. Shayari Feed, Loading State, or Empty Search State
+            if (uiState.filteredShayari.isEmpty() && uiState.isLoading) {
+                item(key = "feed_loading_card") {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator(
+                                strokeWidth = 2.5.dp,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Text(
+                                text = "शायरियाँ लोड हो रही हैं…",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            } else if (uiState.filteredShayari.isEmpty() && !uiState.isLoading) {
                 item(key = "empty_search") {
                     Surface(
                         shape = MaterialTheme.shapes.large,

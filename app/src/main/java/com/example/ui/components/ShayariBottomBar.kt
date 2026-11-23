@@ -16,9 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.rounded.SmartDisplay
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +31,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -52,20 +55,28 @@ fun ShayariBottomBar(
     onFavoritesClick: () -> Unit,
     onCreateClick: () -> Unit,
     onAccountClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isReelsSelected: Boolean = false,
+    onReelsClick: (() -> Unit)? = null
 ) {
     val homeLabel = stringResource(R.string.nav_mehfil)
+    val reelsLabel = stringResource(R.string.nav_reels)
     val favoritesLabel = stringResource(R.string.nav_favorites)
     val createLabel = stringResource(R.string.mehfil_write_invite_cta)
     val accountLabel = stringResource(R.string.nav_account)
 
+    val barContainerColor = if (isReelsSelected) Color(0xFF0A0A0E) else MaterialTheme.colorScheme.surface
+    val dividerColor = if (isReelsSelected) Color.White.copy(alpha = 0.14f) else MaterialTheme.colorScheme.outlineVariant
+    val activeTint = if (isReelsSelected) Color.White else MaterialTheme.colorScheme.primary
+    val inactiveTint = if (isReelsSelected) Color.White.copy(alpha = 0.62f) else MaterialTheme.colorScheme.onSurfaceVariant
+
     Column(modifier = modifier.fillMaxWidth()) {
         HorizontalDivider(
             thickness = 0.8.dp,
-            color = MaterialTheme.colorScheme.outlineVariant
+            color = dividerColor
         )
         Surface(
-            color = MaterialTheme.colorScheme.surface,
+            color = barContainerColor,
             tonalElevation = 0.dp
         ) {
             Row(
@@ -73,7 +84,7 @@ fun ShayariBottomBar(
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .defaultMinSize(minHeight = 62.dp)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -82,6 +93,7 @@ fun ShayariBottomBar(
                     label = homeLabel,
                     showLabel = isHomeSelected,
                     selected = isHomeSelected,
+                    activeColor = activeTint,
                     onClick = onHomeClick,
                     testTag = "nav_tab_mehfil",
                     modifier = Modifier.weight(1f)
@@ -89,38 +101,29 @@ fun ShayariBottomBar(
                     Icon(
                         imageVector = if (isHomeSelected) Icons.Rounded.Home else Icons.Outlined.Home,
                         contentDescription = null,
-                        tint = if (isHomeSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        tint = if (isHomeSelected) activeTint else inactiveTint,
                         modifier = Modifier.size(25.dp)
                     )
                 }
 
-                // 2. Favorites
-                BottomBarSlot(
-                    label = favoritesLabel,
-                    showLabel = isFavoritesSelected,
-                    selected = isFavoritesSelected,
-                    onClick = onFavoritesClick,
-                    testTag = "nav_tab_favorites",
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = if (isFavoritesSelected) {
-                            Icons.Rounded.Favorite
-                        } else {
-                            Icons.Outlined.FavoriteBorder
-                        },
-                        contentDescription = null,
-                        tint = if (isFavoritesSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                        modifier = Modifier.size(24.dp)
-                    )
+                // 2. Reels (Instagram / TikTok Style Vertical Feed)
+                if (onReelsClick != null) {
+                    BottomBarSlot(
+                        label = reelsLabel,
+                        showLabel = isReelsSelected,
+                        selected = isReelsSelected,
+                        activeColor = activeTint,
+                        onClick = onReelsClick,
+                        testTag = "nav_tab_reels",
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = if (isReelsSelected) Icons.Rounded.SmartDisplay else Icons.Outlined.SmartDisplay,
+                            contentDescription = null,
+                            tint = if (isReelsSelected) activeTint else inactiveTint,
+                            modifier = Modifier.size(25.dp)
+                        )
+                    }
                 }
 
                 // 3. Create (+) Circular Button
@@ -136,26 +139,49 @@ fun ShayariBottomBar(
                 ) {
                     Surface(
                         shape = CircleShape,
-                        color = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                        color = if (isReelsSelected) Color(0xFFFF4D6D) else MaterialTheme.colorScheme.primary,
+                        contentColor = Color.White,
                         shadowElevation = 4.dp,
-                        modifier = Modifier.size(46.dp)
+                        modifier = Modifier.size(44.dp)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.Rounded.Add,
                                 contentDescription = null,
-                                modifier = Modifier.size(26.dp)
+                                modifier = Modifier.size(25.dp)
                             )
                         }
                     }
                 }
 
-                // 4. Account (Icon or logged-in user photo)
+                // 4. Favorites
+                BottomBarSlot(
+                    label = favoritesLabel,
+                    showLabel = isFavoritesSelected,
+                    selected = isFavoritesSelected,
+                    activeColor = activeTint,
+                    onClick = onFavoritesClick,
+                    testTag = "nav_tab_favorites",
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = if (isFavoritesSelected) {
+                            Icons.Rounded.Favorite
+                        } else {
+                            Icons.Outlined.FavoriteBorder
+                        },
+                        contentDescription = null,
+                        tint = if (isFavoritesSelected) activeTint else inactiveTint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // 5. Account (Icon or logged-in user photo)
                 BottomBarSlot(
                     label = accountLabel,
                     showLabel = isAccountSelected,
                     selected = isAccountSelected,
+                    activeColor = activeTint,
                     onClick = onAccountClick,
                     testTag = "nav_tab_account",
                     modifier = Modifier.weight(1f)
@@ -166,7 +192,8 @@ fun ShayariBottomBar(
                         isSignedIn = isSignedIn,
                         isSelected = isAccountSelected,
                         size = 25.dp,
-                        contentDescription = null
+                        contentDescription = null,
+                        tintOverride = if (isReelsSelected) inactiveTint else null
                     )
                 }
             }
@@ -179,6 +206,7 @@ private fun BottomBarSlot(
     label: String,
     showLabel: Boolean,
     selected: Boolean,
+    activeColor: Color,
     onClick: () -> Unit,
     testTag: String,
     modifier: Modifier = Modifier,
@@ -203,7 +231,7 @@ private fun BottomBarSlot(
                     fontSize = 11.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
                 ),
-                color = MaterialTheme.colorScheme.primary,
+                color = activeColor,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis
