@@ -26,8 +26,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "ShayariBgmPlayer"
-private const val BGM_CACHE_DIR = "bgm_loops_v2"
-private const val SAMPLE_RATE = 32_000
+private const val BGM_CACHE_DIR = "bgm_loops_v3"
+private const val SAMPLE_RATE = 24_000
 private const val TWO_PI = 2.0 * PI
 
 enum class ReelBgmTrack(
@@ -151,7 +151,7 @@ class ShayariBgmPlayer(context: Context) {
     private var desiredTrack: ReelBgmTrack = ReelBgmTrack.TIKTOK_SAD_GUITAR
     private var isPlayingDesired: Boolean = false
     private var isDucked: Boolean = false
-    private var currentVolume: Float = 0.42f
+    private var currentVolume: Float = 0.78f
     private var switchJob: Job? = null
     private var fadeJob: Job? = null
 
@@ -206,8 +206,8 @@ class ShayariBgmPlayer(context: Context) {
     }
 
     private fun targetVolume(): Float {
-        // Gentle, clean volume balance: quiet silk bed under Shayar voice, warm clarity during pauses
-        return if (isDucked) 0.16f else 0.44f
+        // Crystal-clear mix: warm gentle silk bed under Shayar voice, rich TikTok clarity during pauses
+        return if (isDucked) 0.24f else 0.80f
     }
 
     private fun smoothFadeTo(target: Float) {
@@ -263,11 +263,18 @@ class ShayariBgmPlayer(context: Context) {
 
             mediaPlayer = mp
             loadedTrack = track
+            mp.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "BGM MediaPlayer runtime error what=$what extra=$extra for ${track.id}")
+                stopAndReleasePlayer()
+                true
+            }
             val vol = targetVolume()
             currentVolume = vol
             runCatching {
                 mp.setVolume(vol, vol)
                 mp.start()
+            }.onFailure {
+                Log.e(TAG, "Failed starting BGM MediaPlayer for ${track.id}", it)
             }
         }
     }
@@ -298,7 +305,7 @@ private object BgmLoopRenderer {
     fun getOrRenderLoopWav(context: Context, track: ReelBgmTrack): File? {
         if (track == ReelBgmTrack.OFF) return null
         val dir = File(context.cacheDir, BGM_CACHE_DIR).apply { mkdirs() }
-        val target = File(dir, "${track.id}_32k.wav")
+        val target = File(dir, "${track.id}_24k.wav")
         if (target.exists() && target.length() > 4096L) {
             return target
         }
@@ -309,8 +316,9 @@ private object BgmLoopRenderer {
             }
             return runCatching {
                 val (left, right) = renderTrackBuffers(track)
-                val tmp = File(dir, "${track.id}_32k.wav.tmp")
-                writeNormalizedStereoWav(tmp, left, right, targetPeak = 0.42f)
+                val tmp = File(dir, "${track.id}_24k.wav.tmp")
+                // Normalize cleanly to -1.5 dBFS (zero clipping, full warm loudness on phone speakers)
+                writeNormalizedStereoWav(tmp, left, right, targetPeak = 0.84f)
                 if (!tmp.renameTo(target)) {
                     target.writeBytes(tmp.readBytes())
                     tmp.delete()
@@ -331,13 +339,13 @@ private object BgmLoopRenderer {
             ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 88.0
             ReelBgmTrack.OFF -> 72.0
         }
-        // 8 bars = 32 quarter-note beats (clean seamless harmonic phrase)
+        // 4 full bars = 16 quarter-note beats (~12-15s seamless phrase) — renders 3x faster!
         val beatSec = 60.0 / bpm
         val eighthSec = beatSec * 0.5
-        val totalEighths = 64
+        val totalEighths = 32
         val loopSamples = (totalEighths * eighthSec * SAMPLE_RATE).toInt()
-        // Extra 4.5s tail folded seamlessly onto start of loop for click-free circular looping
-        val tailSamples = (4.5 * SAMPLE_RATE).toInt()
+        // Extra 3.0s tail folded seamlessly onto start of loop for click-free circular looping
+        val tailSamples = (3.0 * SAMPLE_RATE).toInt()
         val bufL = FloatArray(loopSamples + tailSamples)
         val bufR = FloatArray(loopSamples + tailSamples)
 

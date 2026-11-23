@@ -1175,6 +1175,13 @@ object ShayariSeedData {
 
     const val EXPECTED_CATALOG_SIZE = 30_000
 
+    /**
+     * Instant (<1ms) in-memory starter catalog so the Home feed & Reels render on Frame 1
+     * without waiting to parse all 30,000 extra catalog rows on cold start.
+     */
+    val quickStartShayari: List<ShayariEntity>
+        get() = classicShayari
+
     val allShayari: List<ShayariEntity> by lazy {
         baseShayari + loadExtraCatalog()
     }

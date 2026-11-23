@@ -170,16 +170,30 @@ fun ReelVoiceStatusPill(
                             )
                         }
                     }
-                    Text(
-                        text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} (लोकल) • AI कोटा रिट्राई",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.sp
-                        ),
-                        color = Color(0xFFFFE0B2),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} • ${bgmTrack.emoji} ${bgmTrack.labelHi}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 11.sp
+                            ),
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (voiceState.detail.isNotBlank()) {
+                            Text(
+                                text = voiceState.detail,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 9.5.sp
+                                ),
+                                color = Color(0xFFFFCC80),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
                 }
                 is ShayarVoicePlaybackState.Error -> {
                     Text(

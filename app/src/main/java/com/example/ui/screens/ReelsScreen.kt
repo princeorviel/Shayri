@@ -426,21 +426,34 @@ fun ReelsScreen(
         val shouldPause = isCurrentReelPaused || showCreateSheet || !isAudioEnabled
         if (shouldPause) {
             localFallbackSpeaker.stop()
+            bgmPlayer.setDucked(false)
         }
-        val player = voicePlayerRef[0] ?: return@LaunchedEffect
-        runCatching {
-            if (shouldPause) {
-                if (player.isPlaying) player.pause()
-                bgmPlayer.setDucked(false)
-            } else if (!player.isPlaying) {
-                player.start()
-                bgmPlayer.setDucked(true)
+        val player = voicePlayerRef[0]
+        if (player != null) {
+            runCatching {
+                if (shouldPause) {
+                    if (player.isPlaying) player.pause()
+                } else if (!player.isPlaying) {
+                    player.start()
+                    bgmPlayer.setDucked(true)
+                }
+            }
+        } else if (!shouldPause && voicePlaybackState is ShayarVoicePlaybackState.QuotaFallback) {
+            val entry = currentEntry
+            if (entry != null && entry.couplet.isNotBlank() && !currentHasVideoAudio) {
+                localFallbackSpeaker.speak(
+                    couplet = entry.couplet,
+                    persona = effectivePersona,
+                    onSpeakingChanged = { speaking ->
+                        bgmPlayer.setDucked(speaking)
+                    }
+                )
             }
         }
     }
 
     // 3. Expressive Human-Like Shayar Voice via Gemini Flash TTS (quota-safe: single active reel only,
-    // durable disk cache, transparent local Hindi fallback if free-tier Gemini quota is temporarily exhausted)
+    // durable disk cache, automatic local Hindi neural voice fallback if Gemini quota/App Check/network fails)
     LaunchedEffect(currentEntry?.stableKey, effectivePersona, isAudioEnabled, showCreateSheet, voiceRetryTick) {
         releaseVoicePlayer()
         val entry = currentEntry
@@ -460,8 +473,8 @@ fun ReelsScreen(
         val result: ShayarVoiceResult = if (cachedFile != null) {
             ShayarVoiceResult.Ready(cachedFile)
         } else {
-            // Wait 420ms so rapid vertical scrolling through Reels never wastes Gemini TTS quota!
-            delay(420L)
+            // Wait 380ms so rapid vertical scrolling through Reels never wastes Gemini TTS quota!
+            delay(380L)
             voicePlaybackState = ShayarVoicePlaybackState.Loading
             ShayarVoiceEngine.getOrGenerateVoice(
                 context = context,
@@ -471,23 +484,47 @@ fun ReelsScreen(
             )
         }
 
-        when (result) {
-            is ShayarVoiceResult.QuotaExceeded -> {
-                // Transparently notify AI quota limit while immediately reciting with local backup speaker
-                voicePlaybackState = ShayarVoicePlaybackState.QuotaFallback(effectivePersona, result.message)
-                if (!latestIsPaused && isAudioEnabled && !showCreateSheet) {
-                    localFallbackSpeaker.speak(
-                        couplet = entry.couplet,
-                        persona = effectivePersona,
-                        onSpeakingChanged = { speaking ->
-                            bgmPlayer.setDucked(speaking)
-                        }
-                    )
+        val activeReelKey = entry.stableKey
+        val activePersonaSnapshot = effectivePersona
+
+        fun startLocalRecitationWithReplay(reasonMessage: String) {
+            voicePlaybackState = ShayarVoicePlaybackState.QuotaFallback(activePersonaSnapshot, reasonMessage)
+            if (latestIsPaused || !isAudioEnabled || showCreateSheet) return
+
+            fun speakOnce() {
+                if (latestIsPaused || !isAudioEnabled || showCreateSheet || currentEntry?.stableKey != activeReelKey) {
+                    return
                 }
+                localFallbackSpeaker.speak(
+                    couplet = entry.couplet,
+                    persona = activePersonaSnapshot,
+                    onSpeakingChanged = { speaking ->
+                        bgmPlayer.setDucked(speaking)
+                    },
+                    onCompletedAll = {
+                        scope.launch {
+                            delay(3_200L)
+                            if (!latestIsPaused && isAudioEnabled && !showCreateSheet &&
+                                currentEntry?.stableKey == activeReelKey &&
+                                voicePlayerRef[0] == null
+                            ) {
+                                speakOnce()
+                            }
+                        }
+                    }
+                )
+            }
+            speakOnce()
+        }
+
+        when (result) {
+            is ShayarVoiceResult.FallbackRequired -> {
+                // Transparently track AI status (Quota / App Check) while immediately reciting aloud in Hindi!
+                startLocalRecitationWithReplay(result.message)
             }
             is ShayarVoiceResult.Error -> {
-                voicePlaybackState = ShayarVoicePlaybackState.Error(result.message)
-                bgmPlayer.setDucked(false)
+                // Even on transient network/timeout errors, never leave the Reel silent — recite with local speaker!
+                startLocalRecitationWithReplay(result.message)
             }
             is ShayarVoiceResult.Ready -> {
                 val mp = MediaPlayer()
@@ -514,7 +551,7 @@ fun ReelsScreen(
                 }
 
                 if (!prepared) {
-                    voicePlaybackState = ShayarVoicePlaybackState.Error("आवाज़ प्ले नहीं हो सकी — टैप करके फिर चलाएँ")
+                    startLocalRecitationWithReplay("ऑडियो प्लेयर रीकवरी — लोकल आवाज़ चालू")
                     return@LaunchedEffect
                 }
 
@@ -522,7 +559,7 @@ fun ReelsScreen(
 
                 mp.setOnErrorListener { _, _, _ ->
                     releaseVoicePlayer()
-                    voicePlaybackState = ShayarVoicePlaybackState.Error("ऑडियो प्लेयर एरर — टैप करें")
+                    startLocalRecitationWithReplay("ऑडियो प्लेयर एरर — लोकल आवाज़ चालू")
                     true
                 }
 

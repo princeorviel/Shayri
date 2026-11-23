@@ -29,9 +29,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v3"
+private const val VOICE_CACHE_DIR = "shayar_voices_v4"
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 private const val QUOTA_COOLDOWN_MS = 45_000L
+private const val APP_CHECK_COOLDOWN_MS = 120_000L
 
 enum class ShayarVoicePersona(
     val id: String,
@@ -218,7 +219,11 @@ enum class ShayarVoicePersona(
 
 sealed interface ShayarVoiceResult {
     data class Ready(val audioFile: File) : ShayarVoiceResult
-    data class QuotaExceeded(val message: String) : ShayarVoiceResult
+    data class FallbackRequired(
+        val message: String,
+        val isAppCheckError: Boolean = false,
+        val isQuotaError: Boolean = false
+    ) : ShayarVoiceResult
     data class Error(val message: String) : ShayarVoiceResult
 }
 
@@ -226,19 +231,28 @@ sealed interface ShayarVoiceResult {
  * Generates expressive, human-like Hindi/Urdu Mushaira poet & poetess voice recitations
  * using Gemini Flash TTS via Firebase AI Logic (`ResponseModality.AUDIO` + `SpeechConfig(Voice)`),
  * with durable disk caching in `filesDir`, single-flight request deduplication, and
- * quota-safe rate handling.
+ * quota/App-Check-safe rate handling.
  */
 object ShayarVoiceEngine {
 
     @Volatile
-    private var quotaCooldownUntilMs: Long = 0L
+    private var fallbackCooldownUntilMs: Long = 0L
+    @Volatile
+    private var fallbackCooldownMessage: String = ""
+    @Volatile
+    private var fallbackCooldownIsAppCheck: Boolean = false
+    @Volatile
+    private var fallbackCooldownIsQuota: Boolean = false
 
     private val modelCache = ConcurrentHashMap<String, com.google.firebase.ai.GenerativeModel>()
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<ShayarVoiceResult>>()
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun clearQuotaCooldown() {
-        quotaCooldownUntilMs = 0L
+        fallbackCooldownUntilMs = 0L
+        fallbackCooldownMessage = ""
+        fallbackCooldownIsAppCheck = false
+        fallbackCooldownIsQuota = false
     }
 
     @OptIn(PublicPreviewAPI::class)
@@ -289,10 +303,14 @@ object ShayarVoiceEngine {
             return ShayarVoiceResult.Ready(existing)
         }
 
-        // If Gemini TTS recently returned HTTP 429 Quota Exceeded, avoid spamming the backend
+        // If Gemini TTS recently returned Quota Exceeded or App Check Invalid, switch to local voice immediately
         val now = System.currentTimeMillis()
-        if (now < quotaCooldownUntilMs) {
-            return ShayarVoiceResult.QuotaExceeded("Gemini AI कोटा सीमा पूरी — लोकल आवाज़ चालू")
+        if (now < fallbackCooldownUntilMs) {
+            return ShayarVoiceResult.FallbackRequired(
+                message = fallbackCooldownMessage.ifBlank { "AI आवाज़ उपलब्ध नहीं — लोकल शायर आवाज़ चालू" },
+                isAppCheckError = fallbackCooldownIsAppCheck,
+                isQuotaError = fallbackCooldownIsQuota
+            )
         }
 
         val requestKey = cacheFile.nameWithoutExtension
@@ -331,7 +349,7 @@ object ShayarVoiceEngine {
                 }
 
             if (audioPart != null) {
-                quotaCooldownUntilMs = 0L
+                clearQuotaCooldown()
                 Log.d(
                     TAG,
                     "Shayar voice ready via $PRIMARY_TTS_MODEL (${persona.id}/${persona.geminiVoiceName}): mime=${audioPart.mimeType}, bytes=${audioPart.inlineData.size}"
@@ -363,14 +381,39 @@ object ShayarVoiceEngine {
                 rawMsg.contains("billing", ignoreCase = true) ||
                 rawMsg.contains("rate limit", ignoreCase = true)
 
-            if (isQuota) {
-                quotaCooldownUntilMs = System.currentTimeMillis() + QUOTA_COOLDOWN_MS
-                ShayarVoiceResult.QuotaExceeded(rawMsg.take(72).ifBlank { "Quota exceeded" })
-            } else {
-                ShayarVoiceResult.Error(
-                    rawMsg.take(72).takeIf { it.isNotBlank() }
-                        ?: "शायर आवाज़ लोड नहीं हो सकी — दोबारा टैप करें"
-                )
+            val isAppCheck = rawMsg.contains("app check", ignoreCase = true) ||
+                rawMsg.contains("attestation", ignoreCase = true) ||
+                rawMsg.contains("token is invalid", ignoreCase = true) ||
+                rawMsg.contains("403", ignoreCase = true) ||
+                rawMsg.contains("unauthenticated", ignoreCase = true)
+
+            when {
+                isQuota -> {
+                    fallbackCooldownUntilMs = System.currentTimeMillis() + QUOTA_COOLDOWN_MS
+                    fallbackCooldownIsQuota = true
+                    fallbackCooldownIsAppCheck = false
+                    fallbackCooldownMessage = "AI कोटा सीमा • लोकल हिंदी आवाज़ सक्रिय"
+                    ShayarVoiceResult.FallbackRequired(
+                        message = fallbackCooldownMessage,
+                        isQuotaError = true
+                    )
+                }
+                isAppCheck -> {
+                    fallbackCooldownUntilMs = System.currentTimeMillis() + APP_CHECK_COOLDOWN_MS
+                    fallbackCooldownIsAppCheck = true
+                    fallbackCooldownIsQuota = false
+                    fallbackCooldownMessage = "लोकल हिंदी आवाज़ सक्रिय • AI रिट्राई (App Check)"
+                    ShayarVoiceResult.FallbackRequired(
+                        message = fallbackCooldownMessage,
+                        isAppCheckError = true
+                    )
+                }
+                else -> {
+                    ShayarVoiceResult.Error(
+                        rawMsg.take(72).takeIf { it.isNotBlank() }
+                            ?: "लोकल हिंदी आवाज़ सक्रिय • AI रिट्राई"
+                    )
+                }
             }
         }
     }
@@ -390,7 +433,13 @@ object ShayarVoiceEngine {
         couplet: String,
         persona: ShayarVoicePersona
     ): String {
-        return "Recite this Hindi/Urdu shayari aloud like ${persona.voiceDirection} (${persona.emotionalStyleCue}). Natural pauses, speak ONLY these lines:\n$couplet"
+        val phrasedCouplet = couplet
+            .replace("\r\n", "\n")
+            .split("\n")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString("\n...\n")
+        return "You are performing live at an intimate late-night Indian Mushaira into a close studio microphone as a ${persona.voiceDirection} (${persona.emotionalStyleCue}). Speak like a real emotional human poet — natural Hindi-Urdu accent, gentle organic breaths, unhurried emotional pauses, subtle pitch rise and fall, never flat or robotic or newsreader-like. Speak ONLY the shayari lines below with zero intro or outro:\n$phrasedCouplet"
     }
 
     private fun resolveCacheFile(

@@ -21,6 +21,7 @@ import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,25 +58,35 @@ class ShayariViewModel(
     private val refreshSeedFlow = MutableStateFlow(0L)
     private val onlineCommunityPostsFlow = MutableStateFlow<List<ShayariEntity>>(emptyList())
 
+    // Instant (<1ms) in-memory starter catalog for immediate Frame-1 rendering with zero blank screen
+    private val quickStartCatalog: List<ShayariEntity> = ShayariSeedData.quickStartShayari
+    private val initialPreferences: UserPreferences = preferencesRepository.readCachedPreferencesSync()
+    private val initialQuickCounts: Map<String, Int> = buildMap {
+        for (item in quickStartCatalog) {
+            this[item.categoryId] = (this[item.categoryId] ?: 0) + 1
+        }
+    }
+    private val initialQuickPopular: List<ShayariEntity> = quickStartCatalog.take(40)
+
     init {
         if (autoSeed) {
-            viewModelScope.launch {
+            viewModelScope.launch(Dispatchers.IO) {
+                // Let Frame 1 render & settle completely before running 30k-row Room seed check in background
+                delay(550L)
                 repository.ensureSeeded()
             }
         }
     }
 
-    private val initialPreferences: UserPreferences = preferencesRepository.readCachedPreferencesSync()
-
     private val allShayariSharedFlow = combine(
         repository.allShayari.onStart {
-            // Emit bundled catalog instantly on cold start before Room finishes first query/seeding
-            emit(ShayariSeedData.allShayari)
+            // Emit instant in-memory starter catalog before Room finishes its first query
+            emit(quickStartCatalog)
         },
         onlineCommunityPostsFlow
     ) { localCatalog, onlinePosts ->
-        // If Room hasn't finished seeding yet on fresh install, keep showing bundled catalog immediately
-        val effectiveLocal = if (localCatalog.isEmpty()) ShayariSeedData.allShayari else localCatalog
+        // While Room is still seeding on fresh install, keep showing instant starter catalog
+        val effectiveLocal = if (localCatalog.isEmpty()) quickStartCatalog else localCatalog
         if (onlinePosts.isEmpty()) {
             effectiveLocal
         } else {
@@ -213,7 +224,13 @@ class ShayariViewModel(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = CatalogDerivedState()
+            initialValue = CatalogDerivedState(
+                isLoaded = quickStartCatalog.isNotEmpty(),
+                allShayari = quickStartCatalog,
+                categoryCounts = initialQuickCounts,
+                popularShayari = initialQuickPopular,
+                featuredShayari = initialQuickPopular.firstOrNull()
+            )
         )
 
     private val filterInputsFlow = combine(
@@ -303,7 +320,7 @@ class ShayariViewModel(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = FilterResult()
+            initialValue = FilterResult(filtered = quickStartCatalog)
         )
 
     private val favoritesFlow: StateFlow<List<ShayariEntity>> = repository.favoriteShayari.stateIn(
@@ -340,7 +357,15 @@ class ShayariViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
-        initialValue = ShayariUiState(preferences = initialPreferences)
+        initialValue = ShayariUiState(
+            isLoading = false,
+            allShayari = quickStartCatalog,
+            filteredShayari = quickStartCatalog,
+            featuredShayari = initialQuickPopular.firstOrNull(),
+            popularShayari = initialQuickPopular,
+            categoryCounts = initialQuickCounts,
+            preferences = initialPreferences
+        )
     )
 
     fun refreshFeed() {
