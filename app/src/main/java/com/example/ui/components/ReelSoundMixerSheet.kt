@@ -36,6 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -239,7 +241,11 @@ fun ReelSoundMixerSheet(
     effectiveBgmTrack: ReelBgmTrack,
     onSelectPersona: (ShayarVoicePersona?) -> Unit,
     onSelectBgmTrack: (ReelBgmTrack?) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    voiceState: ShayarVoicePlaybackState = ShayarVoicePlaybackState.Idle,
+    onRetryVoice: (() -> Unit)? = null,
+    allowLocalTtsFallback: Boolean = true,
+    onToggleLocalTtsFallback: ((Boolean) -> Unit)? = null
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -489,6 +495,131 @@ fun ReelSoundMixerSheet(
                                 )
                             }
                         }
+                    }
+                }
+            }
+
+            // Section 3: Voice Engine Status & Local Phone TTS Toggle
+            when (voiceState) {
+                is ShayarVoicePlaybackState.Speaking -> {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFF1A3324).copy(alpha = 0.72f),
+                        border = BorderStroke(0.8.dp, Color(0xFF69F0AE).copy(alpha = 0.45f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("mixer_gemini_active_row")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = null,
+                                tint = Color(0xFF69F0AE),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Google Android हिंदी आवाज़ सक्रिय 🎙️",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = Color(0xFFB9F6CA)
+                            )
+                        }
+                    }
+                }
+                is ShayarVoicePlaybackState.QuotaFallback,
+                is ShayarVoicePlaybackState.Error -> {
+                    val statusDetail = when (voiceState) {
+                        is ShayarVoicePlaybackState.QuotaFallback -> voiceState.detail
+                        is ShayarVoicePlaybackState.Error -> voiceState.message
+                        else -> ""
+                    }
+                    if (statusDetail.isNotBlank()) {
+                        Surface(
+                            onClick = { onRetryVoice?.invoke() },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color.White.copy(alpha = 0.06f),
+                            border = BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("mixer_ai_voice_retry_row")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = statusDetail,
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                    color = Color(0xFFFFCC80),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "रिट्राई",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = Color(0xFFFFD580)
+                                )
+                            }
+                        }
+                    }
+                }
+                else -> Unit
+            }
+
+            if (onToggleLocalTtsFallback != null) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White.copy(alpha = 0.05f),
+                    border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.12f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("mixer_local_tts_toggle_row")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = "फ़ोन की लोकल आवाज़ (फ़ॉलबैक)",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (allowLocalTtsFallback) {
+                                    "Gemini न चलने पर फ़ोन की लोकल हिंदी आवाज़ बजेगी"
+                                } else {
+                                    "सिर्फ़ इमोशनल म्यूज़िक (जब Gemini उपलब्ध न हो)"
+                                },
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                color = Color.White.copy(alpha = 0.68f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Switch(
+                            checked = allowLocalTtsFallback,
+                            onCheckedChange = onToggleLocalTtsFallback,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFFFF4D6D),
+                                uncheckedThumbColor = Color.White.copy(alpha = 0.8f),
+                                uncheckedTrackColor = Color.White.copy(alpha = 0.18f)
+                            ),
+                            modifier = Modifier.testTag("mixer_local_tts_switch")
+                        )
                     }
                 }
             }

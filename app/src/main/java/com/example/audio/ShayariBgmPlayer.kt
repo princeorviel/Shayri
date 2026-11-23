@@ -206,21 +206,21 @@ class ShayariBgmPlayer(context: Context) {
     }
 
     private fun targetVolume(): Float {
-        // Crystal-clear mix: warm gentle silk bed under Shayar voice, rich TikTok clarity during pauses
-        return if (isDucked) 0.24f else 0.80f
+        // Warm studio glue: soft music gently hugs the Shayar's voice instead of exposing dry silence
+        return if (isDucked) 0.32f else 0.72f
     }
 
     private fun smoothFadeTo(target: Float) {
         fadeJob?.cancel()
         fadeJob = scope.launch {
-            val steps = 12
+            val steps = 14
             val start = currentVolume
             for (step in 1..steps) {
                 if (!isActive) return@launch
                 val v = start + (target - start) * (step.toFloat() / steps.toFloat())
                 currentVolume = v
                 runCatching { mediaPlayer?.setVolume(v, v) }
-                delay(24L)
+                delay(23L)
             }
         }
     }

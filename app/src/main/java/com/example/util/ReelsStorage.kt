@@ -191,6 +191,17 @@ object ReelsStorage {
 
     private const val KEY_PER_REEL_VOICE_MAP = "per_reel_voice_map_v1"
     private const val KEY_PER_REEL_BGM_MAP = "per_reel_bgm_map_v1"
+    private const val KEY_ALLOW_LOCAL_TTS_FALLBACK = "allow_local_tts_fallback_v1"
+
+    fun loadAllowLocalTtsFallback(context: Context): Boolean {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_ALLOW_LOCAL_TTS_FALLBACK, true)
+    }
+
+    fun saveAllowLocalTtsFallback(context: Context, enabled: Boolean) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putBoolean(KEY_ALLOW_LOCAL_TTS_FALLBACK, enabled).apply()
+    }
 
     fun loadFollowedPoets(context: Context): Set<String> {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

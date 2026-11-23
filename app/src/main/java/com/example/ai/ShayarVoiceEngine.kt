@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v4"
+private const val VOICE_CACHE_DIR = "shayar_voices_v8"
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 private const val QUOTA_COOLDOWN_MS = 45_000L
 private const val APP_CHECK_COOLDOWN_MS = 120_000L
@@ -45,7 +45,7 @@ enum class ShayarVoicePersona(
     val voiceDirection: String,
     val emotionalStyleCue: String
 ) {
-    // 4 Expressive Female Shayara (लड़की शायर) Voices
+    // 4 Expressive Female Shayara (लड़की शायर) Voices — cast from Gemini's warmest, softest storytelling voices
     DARD_SHAYARA(
         id = "dard_shayara",
         labelHi = "दर्द भरी शायरा",
@@ -53,9 +53,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "💔",
-        geminiVoiceName = "Kore",
-        voiceDirection = "heartbroken Indian woman reciting sad Hindi-Urdu shayari in a tender, aching, slightly trembling voice with slow pauses",
-        emotionalStyleCue = "deep heartbreak, fragile tearful breathiness"
+        geminiVoiceName = "Vindemiatrix",
+        voiceDirection = "a heartbroken young Indian woman speaking quietly from her own fresh pain at 2 AM, voice fragile and misty with unshed tears",
+        emotionalStyleCue = "raw personal heartbreak, tender quiet ache, speaking to someone she still misses"
     ),
     SUREELI_SHAYARA(
         id = "sureeli_shayara",
@@ -64,9 +64,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🎶",
-        geminiVoiceName = "Aoede",
-        voiceDirection = "melodious, sweet-voiced Indian poetess with silky lyrical lilt and graceful Hindi-Urdu pronunciation",
-        emotionalStyleCue = "musical poetic cadence, sweet warmth"
+        geminiVoiceName = "Sulafat",
+        voiceDirection = "a warm, sweet-voiced Indian poetess sharing a heartfelt sher with a soft smile and soulful natural Hindustani flow",
+        emotionalStyleCue = "warm affectionate intimacy, effortless lyrical charm, smiling softly through the words"
     ),
     TADAP_SHAYARA(
         id = "tadap_shayara",
@@ -75,9 +75,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🥺",
-        geminiVoiceName = "Leda",
-        voiceDirection = "soft, yearning young woman aching with intense love and separation (tadap), whispered intimacy",
-        emotionalStyleCue = "desperate romantic longing, tender quivering pauses"
+        geminiVoiceName = "Achernar",
+        voiceDirection = "a soft, deeply yearning young Indian woman confessing unspoken love and longing in an intimate close voice note",
+        emotionalStyleCue = "quiet breathless longing, vulnerable confession, gentle ache in the throat"
     ),
     ROMANTIC_SHAYARA(
         id = "romantic_shayara",
@@ -86,12 +86,12 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🌹",
-        geminiVoiceName = "Zephyr",
-        voiceDirection = "dreamy, warm romantic young Indian woman whispering love poetry with velvet tenderness",
-        emotionalStyleCue = "dreamy romantic intimacy, affectionate softness"
+        geminiVoiceName = "Despina",
+        voiceDirection = "a dreamy, smooth-voiced Indian woman whispering loving Urdu-Hindi words closely to someone dear",
+        emotionalStyleCue = "velvet romantic warmth, gentle affectionate whisper-soft closeness"
     ),
 
-    // 4 Expressive Male Shayar (शायर) Voices
+    // 4 Expressive Male Shayar (शायर) Voices — cast from Gemini's breathy, mature & gravelly storytelling voices
     DARD_SHAYAR(
         id = "dard_shayar",
         labelHi = "दर्द-ए-दिल शायर",
@@ -99,9 +99,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🥀",
-        geminiVoiceName = "Orus",
-        voiceDirection = "deep, melancholic, heartbroken male Indian Urdu ghazal shayar with quiet pain and lingering pauses",
-        emotionalStyleCue = "profound sadness, heavy emotional silence"
+        geminiVoiceName = "Enceladus",
+        voiceDirection = "a heartbroken Indian man speaking softly and breathily from deep personal grief in late-night silence",
+        emotionalStyleCue = "heavy quiet pain, intimate breathy vulnerability, spoken straight from a bruised heart"
     ),
     TADAP_AASHIQ(
         id = "tadap_aashiq",
@@ -110,9 +110,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "❤️‍🔥",
-        geminiVoiceName = "Enceladus",
-        voiceDirection = "passionate, intensely yearning young Indian lover reciting romantic separation shayari with raw heartfelt ache",
-        emotionalStyleCue = "passionate romantic longing, heartfelt confession"
+        geminiVoiceName = "Gacrux",
+        voiceDirection = "a deeply emotional, grounded Indian lover speaking earnestly from the heart about missing his beloved",
+        emotionalStyleCue = "sincere heartfelt longing, conversational warmth turning deeply emotional on the final line"
     ),
     MEHFIL_SHAYAR(
         id = "mehfil_shayar",
@@ -121,9 +121,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🎙️",
-        geminiVoiceName = "Charon",
-        voiceDirection = "classic deep velvety male Indian mushaira poet baritone performing live on stage with soulful warmth",
-        emotionalStyleCue = "authentic mushaira elegance, warm poetic rhythm"
+        geminiVoiceName = "Algenib",
+        voiceDirection = "a soulful, rich-voiced Indian Urdu Mushaira shayar with a slightly gravelly lived-in baritone sharing wisdom with friends at midnight",
+        emotionalStyleCue = "authentic Mehfil soul, effortless lived-in conversational depth, landing the punchline with quiet weight"
     ),
     JOSH_SHAYAR(
         id = "josh_shayar",
@@ -132,9 +132,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🔥",
-        geminiVoiceName = "Fenrir",
-        voiceDirection = "bold, charismatic, commanding Indian stage poet baritone with proud conviction and sharp dramatic pauses",
-        emotionalStyleCue = "confident bold delivery, dramatic punchlines"
+        geminiVoiceName = "Alnilam",
+        voiceDirection = "a charismatic, self-assured Indian poet speaking with natural fire, quiet pride, and sharp punchline timing",
+        emotionalStyleCue = "confident bold charisma, real human conviction, crisp dramatic pause before the closing punchline"
     );
 
     companion object {
@@ -248,6 +248,10 @@ object ShayarVoiceEngine {
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<ShayarVoiceResult>>()
     private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    fun isInFallbackCooldown(): Boolean {
+        return System.currentTimeMillis() < fallbackCooldownUntilMs
+    }
+
     fun clearQuotaCooldown() {
         fallbackCooldownUntilMs = 0L
         fallbackCooldownMessage = ""
@@ -336,7 +340,7 @@ object ShayarVoiceEngine {
         val prompt = buildPoeticRecitationPrompt(cleanCouplet, persona)
         return try {
             val model = getModel(persona)
-            val response = withTimeout(45_000L) {
+            val response = withTimeout(30_000L) {
                 model.generateContent(prompt)
             }
 
@@ -345,7 +349,7 @@ object ShayarVoiceEngine {
                 .filterIsInstance<InlineDataPart>()
                 .firstOrNull { part ->
                     part.mimeType.startsWith("audio/", ignoreCase = true) &&
-                        part.inlineData.isNotEmpty()
+                        part.inlineData.size >= 1_600
                 }
 
             if (audioPart != null) {
@@ -355,17 +359,42 @@ object ShayarVoiceEngine {
                     "Shayar voice ready via $PRIMARY_TTS_MODEL (${persona.id}/${persona.geminiVoiceName}): mime=${audioPart.mimeType}, bytes=${audioPart.inlineData.size}"
                 )
                 val savedFile = withContext(Dispatchers.IO) {
-                    writePlayableAudioFile(
+                    val rawFile = writePlayableAudioFile(
                         targetBaseFile = cacheFile,
                         rawBytes = audioPart.inlineData,
                         mimeType = audioPart.mimeType
                     )
+                    if (rawFile.extension.equals("wav", ignoreCase = true)) {
+                        val masteredFile = File(rawFile.parentFile, "${rawFile.nameWithoutExtension}_m.wav")
+                        val ok = com.example.audio.StudioVocalMaster.masterGeminiVoiceWav(
+                            inputWav = rawFile,
+                            outputWav = masteredFile
+                        )
+                        if (ok && masteredFile.exists() && masteredFile.length() > 1024L) {
+                            if (!masteredFile.renameTo(rawFile)) {
+                                rawFile.writeBytes(masteredFile.readBytes())
+                                masteredFile.delete()
+                            }
+                            rawFile
+                        } else {
+                            masteredFile.delete()
+                            rawFile.delete()
+                            null
+                        }
+                    } else {
+                        rawFile
+                    }
                 }
-                ShayarVoiceResult.Ready(savedFile)
+                if (savedFile != null) {
+                    ShayarVoiceResult.Ready(savedFile)
+                } else {
+                    Log.w(TAG, "Gemini returned silent/unplayable WAV; triggering fallback.")
+                    ShayarVoiceResult.Error("ऑडियो साफ़ नहीं मिला — लोकल आवाज़ चालू")
+                }
             } else {
                 val partSummary = allParts.joinToString { it::class.simpleName ?: "Part" }
                 Log.e(TAG, "Model $PRIMARY_TTS_MODEL returned no audio InlineDataPart. Parts=[$partSummary]")
-                ShayarVoiceResult.Error("शायर आवाज़ लोड नहीं हो सकी — दोबारा टैप करें")
+                ShayarVoiceResult.Error("शायर आवाज़ लोड नहीं हो सकी — लोकल आवाज़ चालू")
             }
         } catch (e: CancellationException) {
             throw e
@@ -433,13 +462,52 @@ object ShayarVoiceEngine {
         couplet: String,
         persona: ShayarVoicePersona
     ): String {
-        val phrasedCouplet = couplet
+        val lines = couplet
             .replace("\r\n", "\n")
             .split("\n")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-            .joinToString("\n...\n")
-        return "You are performing live at an intimate late-night Indian Mushaira into a close studio microphone as a ${persona.voiceDirection} (${persona.emotionalStyleCue}). Speak like a real emotional human poet — natural Hindi-Urdu accent, gentle organic breaths, unhurried emotional pauses, subtle pitch rise and fall, never flat or robotic or newsreader-like. Speak ONLY the shayari lines below with zero intro or outro:\n$phrasedCouplet"
+
+        // Minimal, organic inline cues — NEVER use [slowly] or [deliberate] which make Hindi sound
+        // like a stretched audiobook narrator. Only natural human breath + pause before the heart-hitting final line.
+        val (openingCue, closingCue) = when (persona) {
+            ShayarVoicePersona.DARD_SHAYARA,
+            ShayarVoicePersona.DARD_SHAYAR -> "[sighs]" to "[pauses] [softly]"
+            ShayarVoicePersona.TADAP_SHAYARA,
+            ShayarVoicePersona.TADAP_AASHIQ -> "[softly]" to "[pauses] [sighs]"
+            ShayarVoicePersona.SUREELI_SHAYARA,
+            ShayarVoicePersona.ROMANTIC_SHAYARA -> "[softly]" to "[pauses]"
+            ShayarVoicePersona.MEHFIL_SHAYAR -> "" to "[pauses]"
+            ShayarVoicePersona.JOSH_SHAYAR -> "" to "[pauses]"
+        }
+
+        val taggedTranscript = buildString {
+            lines.forEachIndexed { idx, rawLine ->
+                val clean = rawLine.trimEnd('।', '.', ',', ' ')
+                val lineWithPunct = if (idx < lines.lastIndex) "$clean," else "$clean।"
+                val cue = when {
+                    idx == 0 -> openingCue
+                    idx == lines.lastIndex -> closingCue
+                    else -> "[pauses]"
+                }
+                if (idx > 0) append("\n")
+                if (cue.isNotEmpty()) {
+                    append(cue)
+                    append(" ")
+                }
+                append(lineWithPunct)
+            }
+        }
+
+        return buildString {
+            appendLine("Perform this Hindi-Urdu shayari as a real Indian person speaking spontaneously from the heart — NOT reading written text from a page.")
+            appendLine("Speaker: ${persona.voiceDirection}.")
+            appendLine("Emotion: ${persona.emotionalStyleCue}.")
+            appendLine("Style: Conversational, intimate late-night Hindustani/Urdu tone like a real Shayar on a viral heartfelt Reel — natural flowing everyday Indian pronunciation, organic breath, subtle rise on the first line, heartfelt emotional weight on the last line. Zero robotic narration, zero stiff word-by-word reading.")
+            appendLine()
+            appendLine("#### TRANSCRIPT")
+            append(taggedTranscript)
+        }
     }
 
     private fun resolveCacheFile(
