@@ -1,10 +1,12 @@
 package com.example.ui.screens
 
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.graphics.SurfaceTexture
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.net.Uri
+import android.util.Base64
 import android.view.Surface
 import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +29,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -61,6 +64,7 @@ import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -69,6 +73,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.VideoCall
 import androidx.compose.material.icons.rounded.VideoLibrary
@@ -84,6 +89,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -105,7 +111,9 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -152,15 +160,32 @@ data class UserCreatedReel(
     val id: String,
     val couplet: String,
     val poet: String,
-    val categoryId: String,
-    val tags: List<String>,
+    val categoryId: String = "",
+    val tags: List<String> = emptyList(),
     val videoUri: String? = null,
     val photoUri: String? = null,
     val backgroundDrawableName: String? = null,
     val voicePersonaId: String? = null,
     val bgmTrackId: String? = null,
+    val ownerUserId: String? = null,
+    val mediaType: String = "text",
+    val thumbnailBase64: String? = null,
+    val likeCount: Int = 0,
+    val isOnlineSynced: Boolean = false,
     val createdAtMs: Long = System.currentTimeMillis()
 )
+
+private val USER_HASHTAG_REGEX = Regex("#([\\p{L}\\p{M}\\p{N}_]{1,28})")
+
+fun extractUserHashtags(rawText: String): List<String> {
+    if (rawText.isBlank()) return emptyList()
+    return USER_HASHTAG_REGEX.findAll(rawText)
+        .map { it.groupValues[1].trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase() }
+        .take(10)
+        .toList()
+}
 
 private data class ReelBackdropPreset(
     val key: String,
@@ -217,9 +242,9 @@ private fun UserCreatedReel.toSyntheticShayariEntity(): ShayariEntity {
     val deterministicId = 9_000_000 + (id.hashCode() and 0x7FFFF)
     return ShayariEntity(
         id = deterministicId,
-        couplet = couplet.ifBlank { "🎬 मेरी शायरी Reel" },
+        couplet = couplet.ifBlank { "🎬 मेरी Reel" },
         poet = poet.ifBlank { "शायर दोस्त" },
-        categoryId = categoryId,
+        categoryId = categoryId.ifBlank { ShayariCategory.MOHABBAT.id },
         moodTag = tags.joinToString(", ")
     )
 }
@@ -239,7 +264,12 @@ fun ReelsScreen(
     onShowFeedback: (String) -> Unit,
     modifier: Modifier = Modifier,
     createSheetTrigger: Int = 0,
-    onDeleteUserReel: ((UserCreatedReel) -> Unit)? = null
+    onDeleteUserReel: ((UserCreatedReel) -> Unit)? = null,
+    currentUserId: String? = null,
+    onlineLikedReelIds: Set<String> = emptySet(),
+    isSignedInOnline: Boolean = false,
+    onToggleOnlineReelLike: ((reelId: String, currentlyLiked: Boolean) -> Unit)? = null,
+    onRequestGoogleSignIn: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -316,11 +346,15 @@ fun ReelsScreen(
         }
     }
 
-    val reelsList: List<ReelEntry> = remember(allShayari, popularShayari, userReels, selectedTab, activeTagFilter) {
+    val reelsList: List<ReelEntry> = remember(allShayari, popularShayari, userReels, selectedTab, activeTagFilter, currentUserId) {
         val base: List<ReelEntry> = when (selectedTab) {
-            ReelsFeedTab.MY_REELS -> userReels.map { ReelEntry.CustomReel(it) }
+            ReelsFeedTab.MY_REELS -> userReels
+                .filter { it.ownerUserId == null || it.ownerUserId == currentUserId }
+                .map { ReelEntry.CustomReel(it) }
             ReelsFeedTab.TRENDING -> {
-                val custom = userReels.map { ReelEntry.CustomReel(it) }
+                val custom = userReels
+                    .sortedByDescending { it.likeCount }
+                    .map { ReelEntry.CustomReel(it) }
                 val pool = popularShayari.ifEmpty { allShayari.take(120) }
                     .filterNot { ShayariCategory.fromId(it.categoryId).isJokeCategory }
                     .map { ReelEntry.ShayariReel(it) }
@@ -350,14 +384,16 @@ fun ReelsScreen(
         } else {
             val spec = ShayariTagMatcher.buildSearchSpec(tagQuery)
             base.filter { entry ->
-                ShayariTagMatcher.scoreMatch(
-                    spec = spec,
-                    primaryCategoryId = entry.categoryId,
-                    multiCategoryIds = null,
-                    normCouplet = ShayariTagMatcher.normalizeForSearch(entry.couplet),
-                    normPoet = ShayariTagMatcher.normalizeForSearch(entry.poet),
-                    normMoodTag = ShayariTagMatcher.normalizeForSearch(entry.tags.joinToString(", "))
-                ) > 0
+                entry.tags.any { it.equals(tagQuery, ignoreCase = true) } ||
+                    entry.couplet.contains(tagQuery, ignoreCase = true) ||
+                    ShayariTagMatcher.scoreMatch(
+                        spec = spec,
+                        primaryCategoryId = entry.categoryId.ifBlank { ShayariCategory.MOHABBAT.id },
+                        multiCategoryIds = null,
+                        normCouplet = ShayariTagMatcher.normalizeForSearch(entry.couplet),
+                        normPoet = ShayariTagMatcher.normalizeForSearch(entry.poet),
+                        normMoodTag = ShayariTagMatcher.normalizeForSearch(entry.tags.joinToString(", "))
+                    ) > 0
             }.ifEmpty { base }
         }
     }
@@ -377,7 +413,8 @@ fun ReelsScreen(
 
     val currentEntry = reelsList.getOrNull(pagerState.currentPage)
     val latestActiveKey by rememberUpdatedState(currentEntry?.stableKey)
-    val currentHasVideoAudio = currentEntry is ReelEntry.CustomReel && currentEntry.reel.videoUri != null
+    val currentHasVideoAudio = currentEntry is ReelEntry.CustomReel &&
+        (currentEntry.reel.videoUri != null || currentEntry.reel.mediaType == "video")
 
     fun resolvePersonaFor(entry: ReelEntry, pageIdx: Int): ShayarVoicePersona {
         return perReelPersonaOverrides[entry.stableKey]
@@ -661,7 +698,12 @@ fun ReelsScreen(
             ) { page ->
                 val entry = reelsList.getOrNull(page) ?: return@VerticalPager
                 val isCurrentPage = pagerState.currentPage == page && !showCreateSheet
-                val isLiked = entry.stableKey in likedReelKeys
+                val isOnlineCustomReel = entry is ReelEntry.CustomReel && entry.reel.isOnlineSynced
+                val isLiked = if (isOnlineCustomReel && onToggleOnlineReelLike != null && isSignedInOnline) {
+                    (entry as ReelEntry.CustomReel).reel.id in onlineLikedReelIds
+                } else {
+                    entry.stableKey in likedReelKeys
+                }
                 val isSaved = when (entry) {
                     is ReelEntry.ShayariReel -> entry.shayari.isFavorite
                     is ReelEntry.CustomReel -> entry.reel.id in savedCustomIds
@@ -674,6 +716,8 @@ fun ReelsScreen(
                 }
                 val commentCount = commentCounts[shayariCommentKey(commentEntity.id)] ?: 0
                 val isFollowed = entry.poet in followedPoets
+                val isOwnCustomReel = entry is ReelEntry.CustomReel &&
+                    (entry.reel.ownerUserId == null || entry.reel.ownerUserId == currentUserId)
 
                 ReelPageCard(
                     entry = entry,
@@ -692,14 +736,22 @@ fun ReelsScreen(
                     voiceState = if (isCurrentPage) voicePlaybackState else ShayarVoicePlaybackState.Idle,
                     activePersona = effectivePersona,
                     activeBgmTrack = effectiveBgmTrack,
-                    canDelete = selectedTab == ReelsFeedTab.MY_REELS && entry is ReelEntry.CustomReel && onDeleteUserReel != null,
+                    canDelete = isOwnCustomReel && onDeleteUserReel != null,
                     onToggleLike = {
-                        val next = if (isLiked) likedReelKeys - entry.stableKey else likedReelKeys + entry.stableKey
-                        updateLikedKeys(next)
+                        if (isOnlineCustomReel && onToggleOnlineReelLike != null && isSignedInOnline) {
+                            onToggleOnlineReelLike((entry as ReelEntry.CustomReel).reel.id, isLiked)
+                        } else {
+                            val next = if (isLiked) likedReelKeys - entry.stableKey else likedReelKeys + entry.stableKey
+                            updateLikedKeys(next)
+                        }
                     },
                     onLikeOnly = {
                         if (!isLiked) {
-                            updateLikedKeys(likedReelKeys + entry.stableKey)
+                            if (isOnlineCustomReel && onToggleOnlineReelLike != null && isSignedInOnline) {
+                                onToggleOnlineReelLike((entry as ReelEntry.CustomReel).reel.id, false)
+                            } else {
+                                updateLikedKeys(likedReelKeys + entry.stableKey)
+                            }
                         }
                     },
                     onToggleSave = {
@@ -722,9 +774,9 @@ fun ReelsScreen(
                     },
                     onToggleAudio = {
                         isAudioEnabled = !isAudioEnabled
-                        if (entry !is ReelEntry.CustomReel || entry.reel.videoUri == null) {
+                        if (entry !is ReelEntry.CustomReel || (entry.reel.videoUri == null && entry.reel.mediaType != "video")) {
                             onShowFeedback(
-                                if (isAudioEnabled) "🎙️ शायर आवाज़ व म्यूज़िक चालू" else "🔇 आवाज़ व म्यूज़िक बंद"
+                                if (isAudioEnabled) "🎙️ आवाज़ व म्यूज़िक चालू" else "🔇 आवाज़ व म्यूज़िक बंद"
                             )
                         }
                     },
@@ -746,9 +798,9 @@ fun ReelsScreen(
                         activeTagFilter = if (activeTagFilter == clickedTag) null else clickedTag
                         scope.launch { pagerState.scrollToPage(0) }
                     },
-                    onDeleteClick = if (entry is ReelEntry.CustomReel && onDeleteUserReel != null) {
+                    onDeleteClick = if (isOwnCustomReel && onDeleteUserReel != null) {
                         {
-                            onDeleteUserReel(entry.reel)
+                            onDeleteUserReel((entry as ReelEntry.CustomReel).reel)
                             onShowFeedback("Reel हटा दी गई")
                         }
                     } else {
@@ -938,6 +990,8 @@ fun ReelsScreen(
         if (showCreateSheet) {
             CreateReelBottomSheet(
                 defaultAuthor = authorName.ifBlank { "शायर दोस्त" },
+                isSignedInOnline = isSignedInOnline,
+                onRequestGoogleSignIn = onRequestGoogleSignIn,
                 onDismiss = { showCreateSheet = false },
                 onShowFeedback = onShowFeedback,
                 onPublishReel = { newReel ->
@@ -947,7 +1001,13 @@ fun ReelsScreen(
                     activeTagFilter = null
                     isAudioEnabled = true
                     scope.launch { pagerState.scrollToPage(0) }
-                    onShowFeedback("आपकी नई Reel शायर आवाज़ व म्यूज़िक के साथ लाइव हो गई ✨")
+                    onShowFeedback(
+                        if (isSignedInOnline) {
+                            "आपकी नई Reel ऑनलाइन लाइव हो गई 🌐✨"
+                        } else {
+                            "Reel पोस्ट हो गई ✨ (ऑनलाइन सिंक के लिए Google से जुड़ें)"
+                        }
+                    )
                 }
             )
         }
@@ -981,7 +1041,9 @@ private fun ReelPageCard(
     onTagClick: (String) -> Unit,
     onDeleteClick: (() -> Unit)?
 ) {
-    val category = remember(entry.categoryId) { ShayariCategory.fromId(entry.categoryId) }
+    val category = remember(entry.categoryId) {
+        ShayariCategory.fromId(entry.categoryId.ifBlank { ShayariCategory.MOHABBAT.id })
+    }
     val readingStyle = LocalShayariReadingStyle.current
     var showDoubleTapHeart by remember { mutableStateOf(false) }
     var showPausePulse by remember { mutableStateOf(false) }
@@ -991,11 +1053,24 @@ private fun ReelPageCard(
     val customReel = entry as? ReelEntry.CustomReel
     val videoUri = customReel?.reel?.videoUri?.takeUnless { videoPlaybackFailed }
     val photoUri = customReel?.reel?.photoUri
+    val thumbnailBase64 = customReel?.reel?.thumbnailBase64?.takeIf { it.isNotBlank() }
+    val decodedThumbBitmap: ImageBitmap? = remember(thumbnailBase64) {
+        if (thumbnailBase64 == null) {
+            null
+        } else {
+            runCatching {
+                val bytes = Base64.decode(thumbnailBase64, Base64.DEFAULT)
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    val isCustomMediaReel = customReel != null &&
+        (videoUri != null || photoUri != null || decodedThumbBitmap != null || customReel.reel.mediaType == "video" || customReel.reel.mediaType == "photo")
     val fallbackDrawable = remember(entry.stableKey) {
         when (entry) {
             is ReelEntry.ShayariReel -> resolveDiversePhotoForCard(entry.shayari, category)
             is ReelEntry.CustomReel -> resolvePresetBackdropRes(entry.reel.backgroundDrawableName)
-                ?: category.backgroundResId
+                ?: BUILT_IN_REEL_BACKDROPS.first().resId
         }
     }
 
@@ -1101,7 +1176,7 @@ private fun ReelPageCard(
                 )
             }
     ) {
-        // 1. Background Media Layer: Real Looping Video OR Cinematic Ken Burns Photo
+        // 1. Background Media Layer: Real Looping Video, Local Photo, Online Thumbnail, OR Preset Backdrop
         if (videoUri != null) {
             LoopingTextureVideoBackground(
                 uriString = videoUri,
@@ -1126,10 +1201,25 @@ private fun ReelPageCard(
                         }
                     }
             )
+        } else if (decodedThumbBitmap != null) {
+            Image(
+                bitmap = decodedThumbBitmap,
+                contentDescription = entry.poet,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        if (isActive && !isPaused) {
+                            scaleX = kenBurnsScale
+                            scaleY = kenBurnsScale
+                            translationX = kenBurnsShiftX
+                        }
+                    }
+            )
         } else {
             OptimizedDrawableImage(
                 resId = fallbackDrawable,
-                contentDescription = category.titleHi,
+                contentDescription = entry.poet,
                 widthPx = 1080,
                 heightPx = 1920,
                 contentScale = ContentScale.Crop,
@@ -1145,21 +1235,21 @@ private fun ReelPageCard(
             )
         }
 
-        // 2. Cinema Scrim + Subtle Floating Golden Dust Bokeh
+        // 2. Cinema Scrim + Subtle Floating Golden Dust Bokeh (clean light scrim on video/photo so media shines)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.44f),
-                        0.30f to Color.Black.copy(alpha = if (videoUri != null) 0.14f else 0.36f),
-                        0.68f to Color.Black.copy(alpha = if (videoUri != null) 0.28f else 0.56f),
+                        0.0f to Color.Black.copy(alpha = if (isCustomMediaReel) 0.34f else 0.44f),
+                        0.30f to Color.Black.copy(alpha = if (isCustomMediaReel) 0.06f else 0.36f),
+                        0.68f to Color.Black.copy(alpha = if (isCustomMediaReel) 0.24f else 0.56f),
                         1.0f to Color.Black.copy(alpha = 0.88f)
                     )
                 )
         )
 
-        if (videoUri == null && isActive && !isPaused) {
+        if (!isCustomMediaReel && isActive && !isPaused) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
@@ -1178,8 +1268,8 @@ private fun ReelPageCard(
             }
         }
 
-        // 3. Center Shayari Typography Showcase (clean & luminous, never obscured)
-        if (entry.couplet.isNotBlank()) {
+        // 3. Center Typography Showcase — ONLY for pure text Reels (never blocks user Video/Photo Reels!)
+        if (!isCustomMediaReel && entry.couplet.isNotBlank()) {
             val shayariFontSize = when {
                 entry.couplet.length > 140 -> 20.sp
                 entry.couplet.length > 90 -> 23.sp
@@ -1193,20 +1283,23 @@ private fun ReelPageCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = Color.Black.copy(alpha = 0.40f),
-                    border = BorderStroke(0.8.dp, Color(0xFFFFD580).copy(alpha = 0.52f))
-                ) {
-                    Text(
-                        text = "${category.emoji} ${category.titleHi}",
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            letterSpacing = 0.4.sp
-                        ),
-                        color = Color(0xFFFFE0A3),
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-                    )
+                // Show Shayari category pill ONLY on built-in curated Shayari Reels, never forced on user Reels
+                if (entry is ReelEntry.ShayariReel) {
+                    Surface(
+                        shape = RoundedCornerShape(50),
+                        color = Color.Black.copy(alpha = 0.40f),
+                        border = BorderStroke(0.8.dp, Color(0xFFFFD580).copy(alpha = 0.52f))
+                    ) {
+                        Text(
+                            text = "${category.emoji} ${category.titleHi}",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.4.sp
+                            ),
+                            color = Color(0xFFFFE0A3),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                        )
+                    }
                 }
 
                 Text(
@@ -1277,9 +1370,14 @@ private fun ReelPageCard(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            val displayLikesCount = when {
+                customReel?.reel?.isOnlineSynced == true -> customReel.reel.likeCount.coerceAtLeast(0)
+                customReel != null -> customReel.reel.likeCount + if (isLiked) 1 else 0
+                else -> simulatedLikesCount + if (isLiked) 1 else 0
+            }
             ReelRailAction(
                 icon = if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                label = formatCompactCount(simulatedLikesCount + if (isLiked) 1 else 0),
+                label = formatCompactCount(displayLikesCount),
                 tint = if (isLiked) Color(0xFFFF3057) else Color.White,
                 iconModifier = Modifier.scale(likeHeartScale),
                 testTag = "reel_like_button",
@@ -1418,35 +1516,87 @@ private fun ReelPageCard(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
-            }
 
-            // Clickable #Hashtags Row
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                items(entry.tags.take(4)) { tag ->
+                if (customReel?.reel?.isOnlineSynced == true) {
                     Surface(
-                        onClick = { onTagClick(tag) },
                         shape = RoundedCornerShape(50),
-                        color = Color.White.copy(alpha = 0.14f)
+                        color = Color(0xFF1DB954).copy(alpha = 0.28f),
+                        border = BorderStroke(0.8.dp, Color(0xFF7CE8A6).copy(alpha = 0.72f))
                     ) {
-                        Text(
-                            text = "#$tag",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = Color.White.copy(alpha = 0.94f),
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Public,
+                                contentDescription = null,
+                                tint = Color(0xFF9DF5BD),
+                                modifier = Modifier.size(11.dp)
+                            )
+                            Text(
+                                text = "ऑनलाइन",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
 
-            // Tappable Audio Attribution Line — opens Shayar Voice & BGM Mixer
+            // TikTok-style bottom-left free-form caption for Video / Photo Reels
+            if (isCustomMediaReel && entry.couplet.isNotBlank()) {
+                Text(
+                    text = entry.couplet,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.5.sp,
+                        lineHeight = 20.sp,
+                        fontWeight = FontWeight.Medium,
+                        shadow = Shadow(
+                            color = Color.Black.copy(alpha = 0.90f),
+                            offset = Offset(0f, 1.5f),
+                            blurRadius = 7f
+                        )
+                    ),
+                    color = Color.White,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Clickable #Hashtags Row (ONLY shown if user/reel actually has tags — never forced!)
+            if (entry.tags.isNotEmpty()) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(entry.tags.take(5)) { tag ->
+                        Surface(
+                            onClick = { onTagClick(tag) },
+                            shape = RoundedCornerShape(50),
+                            color = Color.White.copy(alpha = 0.14f)
+                        ) {
+                            Text(
+                                text = "#$tag",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = Color.White.copy(alpha = 0.94f),
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Tappable Audio Attribution Line — opens Voice & BGM Mixer for non-video Reels
+            val isVideoReel = videoUri != null || customReel?.reel?.mediaType == "video"
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = videoUri == null, onClick = onOpenSoundMixer)
+                    .clickable(enabled = !isVideoReel, onClick = onOpenSoundMixer)
                     .padding(vertical = 2.dp)
                     .testTag("reel_audio_attribution_row")
             ) {
@@ -1457,8 +1607,8 @@ private fun ReelPageCard(
                     modifier = Modifier.size(14.dp)
                 )
                 Text(
-                    text = if (videoUri != null) {
-                        "Original Video Audio • ${entry.poet}"
+                    text = if (isVideoReel) {
+                        "Original Audio • $cleanPoetName"
                     } else {
                         "${activeBgmTrack.emoji} ${activeBgmTrack.labelHi} • ${activePersona.emoji} ${activePersona.labelHi}"
                     },
@@ -1731,6 +1881,8 @@ private fun EmptyReelsPlaceholder(
 @Composable
 private fun CreateReelBottomSheet(
     defaultAuthor: String,
+    isSignedInOnline: Boolean,
+    onRequestGoogleSignIn: (() -> Unit)?,
     onDismiss: () -> Unit,
     onShowFeedback: (String) -> Unit,
     onPublishReel: (UserCreatedReel) -> Unit
@@ -1738,16 +1890,14 @@ private fun CreateReelBottomSheet(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var couplet by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf(ShayariCategory.MOHABBAT.id) }
-    var selectedTags by remember(selectedCategoryId) {
-        mutableStateOf(ShayariTagMatcher.autoTagsForCategory(selectedCategoryId))
-    }
+    var caption by remember { mutableStateOf("") }
     var pickedVideoUri by remember { mutableStateOf<Uri?>(null) }
     var pickedPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var selectedBackdropKey by remember { mutableStateOf<String?>(BUILT_IN_REEL_BACKDROPS.first().key) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var isPublishing by remember { mutableStateOf(false) }
+
+    val parsedHashtags = remember(caption) { extractUserHashtags(caption) }
 
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -1759,7 +1909,6 @@ private fun CreateReelBottomSheet(
         }
     }
 
-    // Storage Access Framework picker: finds videos in Downloads, WhatsApp, Telegram, Drive, Internal Storage (zero permissions)
     val videoFileBrowser = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -1770,7 +1919,6 @@ private fun CreateReelBottomSheet(
         }
     }
 
-    // System Camera Video Recorder via FileProvider (zero dangerous permissions; also works with Emulator virtual camera!)
     val cameraVideoRecorder = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CaptureVideo()
     ) { success ->
@@ -1795,10 +1943,6 @@ private fun CreateReelBottomSheet(
         }
     }
 
-    val suggestedTags = remember(selectedCategoryId) {
-        ShayariTagMatcher.suggestedTagsForCategory(selectedCategoryId).take(10)
-    }
-
     ModalBottomSheet(
         onDismissRequest = { if (!isPublishing) onDismiss() },
         sheetState = sheetState
@@ -1813,11 +1957,11 @@ private fun CreateReelBottomSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = "🎬 नई शायरी Reel बनाएँ",
+                text = "🎬 नई Reel बनाएँ",
                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
             )
 
-            // Row 1: Gallery Video + All Files / Downloads Video Browser
+            // Row 1: Gallery Video + All Files / WhatsApp
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1871,7 +2015,7 @@ private fun CreateReelBottomSheet(
                 }
             }
 
-            // Row 2: Record Live Video with Camera + Gallery Photo
+            // Row 2: Camera Record + Gallery Photo
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1933,14 +2077,7 @@ private fun CreateReelBottomSheet(
                 }
             }
 
-            // Helpful tip for virtual preview emulator vs real phone gallery
-            Text(
-                text = "💡 गैलरी खाली दिखने पर 'फ़ाइल / WhatsApp', 'कैमरा रिकॉर्ड', या नीचे से HD बैकग्राउंड चुनें (असली फ़ोन APK में आपकी पूरी गैलरी दिखेगी)।",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            // Picked Media Preview Strip with Remove Button
+            // Picked Media Preview Strip OR Optional Backdrop Carousel
             if (pickedPhotoUri != null || pickedVideoUri != null) {
                 Surface(
                     shape = RoundedCornerShape(16.dp),
@@ -1981,14 +2118,14 @@ private fun CreateReelBottomSheet(
 
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = if (pickedVideoUri != null) "वीडियो Reel तैयार है ✓" else "फ़ोटो Reel तैयार है ✓",
+                                text = if (pickedVideoUri != null) "वीडियो तैयार है ✓" else "फ़ोटो तैयार है ✓",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                             )
                             Text(
                                 text = if (pickedVideoUri != null) {
-                                    "फ़ुल-स्क्रीन लूपिंग वीडियो Reel बनेगी"
+                                    "फ़ुल-स्क्रीन वीडियो Reel"
                                 } else {
-                                    "Ken Burns सिनेमैटिक मोशन Reel बनेगी"
+                                    "फ़ुल-स्क्रीन फ़ोटो Reel"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2011,9 +2148,8 @@ private fun CreateReelBottomSheet(
                     }
                 }
             } else {
-                // Built-in HD Scenic Backgrounds Carousel (instant Reels even without gallery media!)
                 Text(
-                    text = "या HD सिनेमैटिक बैकग्राउंड चुनें",
+                    text = "बैकग्राउंड चुनें (या ऊपर से वीडियो/फ़ोटो लें)",
                     style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
                 )
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -2031,8 +2167,8 @@ private fun CreateReelBottomSheet(
                                 color = if (isSelected) Color(0xFFFF4D6D) else MaterialTheme.colorScheme.outlineVariant
                             ),
                             modifier = Modifier
-                                .width(76.dp)
-                                .height(102.dp)
+                                .width(72.dp)
+                                .height(94.dp)
                                 .testTag("reel_backdrop_${preset.key}")
                         ) {
                             Box(modifier = Modifier.fillMaxSize()) {
@@ -2094,169 +2230,90 @@ private fun CreateReelBottomSheet(
                 }
             }
 
+            // TikTok-Simple Free-Form Caption Input (write ANYTHING — funny video, शायरी, #tags — NO forced categories/tags!)
             OutlinedTextField(
-                value = couplet,
-                onValueChange = { if (it.length <= 280) couplet = it },
+                value = caption,
+                onValueChange = { if (it.length <= 360) caption = it },
                 enabled = !isPublishing,
-                label = { Text("Reel पर दिखने वाली शायरी / कैप्शन") },
-                placeholder = { Text("यहाँ अपनी 2 या 4 लाइनें लिखें…") },
+                label = { Text("कैप्शन लिखें") },
+                placeholder = { Text("कुछ भी लिखें… जैसे: funny video, शायरी, #funny #viral") },
+                supportingText = {
+                    Text("अपने हिसाब से कोई भी शब्द या #हैशटैग लिखें (वैकल्पिक)")
+                },
                 minLines = 3,
-                maxLines = 6,
+                maxLines = 5,
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("create_reel_couplet_input")
             )
 
-            Text(
-                text = "कैटेगरी चुनें",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(ShayariCategory.entries.filterNot { it.isJokeCategory }, key = { it.id }) { cat ->
-                    val selected = cat.id == selectedCategoryId
-                    Surface(
-                        onClick = { if (!isPublishing) selectedCategoryId = cat.id },
-                        shape = RoundedCornerShape(50),
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerLow
-                        },
-                        border = BorderStroke(
-                            1.dp,
-                            if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                        )
-                    ) {
-                        Text(
-                            text = "${cat.emoji} ${cat.titleHi}",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (selected) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.onSurface
-                            },
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = "ऑटो-टैग्स (टैप करके जोड़ें/हटाएँ)",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-            )
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(suggestedTags, key = { it }) { tag ->
-                    val active = selectedTags.any { it.equals(tag, ignoreCase = true) }
-                    Surface(
-                        onClick = {
-                            if (!isPublishing) {
-                                selectedTags = if (active) {
-                                    selectedTags.filterNot { it.equals(tag, ignoreCase = true) }
-                                } else {
-                                    selectedTags + tag
-                                }
-                            }
-                        },
-                        shape = RoundedCornerShape(50),
-                        color = if (active) {
-                            MaterialTheme.colorScheme.secondaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surface
-                        },
-                        border = BorderStroke(
-                            1.dp,
-                            if (active) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
-                        )
-                    ) {
-                        Text(
-                            text = if (active) "✓ #$tag" else "+ #$tag",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-
-            var selectedVoicePersona by remember(selectedCategoryId) {
-                mutableStateOf(ShayarVoicePersona.recommendedForCategory(selectedCategoryId))
-            }
-            var selectedBgmTrack by remember(selectedCategoryId) {
-                mutableStateOf(ReelBgmTrack.recommendedForCategory(selectedCategoryId))
-            }
-
-            if (pickedVideoUri == null) {
-                Text(
-                    text = "🎙️ शायर की आवाज़ चुनें",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-                )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ShayarVoicePersona.entries, key = { it.id }) { persona ->
-                        val active = selectedVoicePersona == persona
+            // Show live preview chips ONLY for #hashtags that the user themselves typed
+            if (parsedHashtags.isNotEmpty()) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(parsedHashtags, key = { it }) { tag ->
                         Surface(
-                            onClick = { if (!isPublishing) selectedVoicePersona = persona },
                             shape = RoundedCornerShape(50),
-                            color = if (active) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerLow
-                            },
-                            border = BorderStroke(
-                                1.dp,
-                                if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                            )
+                            color = MaterialTheme.colorScheme.secondaryContainer
                         ) {
                             Text(
-                                text = "${persona.emoji} ${persona.labelHi}",
+                                text = "#$tag",
                                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = if (active) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
-                            )
-                        }
-                    }
-                }
-
-                Text(
-                    text = "🎵 बैकग्राउंड म्यूज़िक चुनें",
-                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
-                )
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(ReelBgmTrack.entries, key = { it.id }) { track ->
-                        val active = selectedBgmTrack == track
-                        Surface(
-                            onClick = { if (!isPublishing) selectedBgmTrack = track },
-                            shape = RoundedCornerShape(50),
-                            color = if (active) {
-                                MaterialTheme.colorScheme.tertiaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surfaceContainerLow
-                            },
-                            border = BorderStroke(
-                                1.dp,
-                                if (active) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.outlineVariant
-                            )
-                        ) {
-                            Text(
-                                text = "${track.emoji} ${track.labelHi}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = if (active) {
-                                    MaterialTheme.colorScheme.onTertiaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurface
-                                },
-                                modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp)
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                             )
                         }
                     }
                 }
             }
 
-            val canPublish = !isPublishing && (couplet.trim().length >= 4 || pickedVideoUri != null || pickedPhotoUri != null)
+            // Online Publish Status Bar
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (isSignedInOnline) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isSignedInOnline) Icons.Rounded.CloudDone else Icons.Rounded.Public,
+                        contentDescription = null,
+                        tint = if (isSignedInOnline) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (isSignedInOnline) {
+                            "ऑनलाइन पब्लिश होगी — सभी यूज़र्स देख सकेंगे"
+                        } else {
+                            "ऑनलाइन पब्लिश के लिए Google से जुड़ें"
+                        },
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    if (!isSignedInOnline && onRequestGoogleSignIn != null) {
+                        TextButton(
+                            onClick = onRequestGoogleSignIn,
+                            enabled = !isPublishing
+                        ) {
+                            Text("लॉगिन", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+
+            val canPublish = !isPublishing && (caption.trim().isNotEmpty() || pickedVideoUri != null || pickedPhotoUri != null)
             Button(
                 onClick = {
                     if (isPublishing) return@Button
@@ -2268,21 +2325,42 @@ private fun CreateReelBottomSheet(
                         val savedPhotoUri = pickedPhotoUri?.let {
                             ReelsStorage.persistPickedMedia(context, it, isVideo = false)
                         }
+                        val mediaType = when {
+                            savedVideoUri != null -> "video"
+                            savedPhotoUri != null -> "photo"
+                            else -> "text"
+                        }
+                        val thumbBase64 = when (mediaType) {
+                            "video" -> ReelsStorage.extractCompressedThumbnailBase64(
+                                context = context,
+                                uriString = savedVideoUri,
+                                isVideo = true
+                            )
+                            "photo" -> ReelsStorage.extractCompressedThumbnailBase64(
+                                context = context,
+                                uriString = savedPhotoUri,
+                                isVideo = false
+                            )
+                            else -> null
+                        }
+                        val cleanCaption = caption.trim()
                         val newReel = UserCreatedReel(
                             id = "reel_${System.currentTimeMillis()}",
-                            couplet = couplet.trim(),
+                            couplet = cleanCaption,
                             poet = defaultAuthor,
-                            categoryId = selectedCategoryId,
-                            tags = selectedTags.ifEmpty { ShayariTagMatcher.autoTagsForCategory(selectedCategoryId) },
+                            categoryId = "",
+                            tags = extractUserHashtags(cleanCaption),
                             videoUri = savedVideoUri,
                             photoUri = savedPhotoUri,
-                            backgroundDrawableName = if (savedVideoUri == null && savedPhotoUri == null) {
+                            backgroundDrawableName = if (mediaType == "text") {
                                 selectedBackdropKey
                             } else {
                                 null
                             },
-                            voicePersonaId = if (savedVideoUri == null) selectedVoicePersona.id else null,
-                            bgmTrackId = if (savedVideoUri == null) selectedBgmTrack.id else null
+                            voicePersonaId = null,
+                            bgmTrackId = null,
+                            mediaType = mediaType,
+                            thumbnailBase64 = thumbBase64
                         )
                         isPublishing = false
                         onPublishReel(newReel)
@@ -2302,10 +2380,10 @@ private fun CreateReelBottomSheet(
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Reel तैयार हो रही है…")
+                    Text("Reel पोस्ट हो रही है…")
                 } else {
                     Text(
-                        text = "Reel पोस्ट करें ✨",
+                        text = if (isSignedInOnline) "ऑनलाइन पोस्ट करें ✨" else "Reel पोस्ट करें ✨",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 }

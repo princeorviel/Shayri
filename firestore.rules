@@ -210,6 +210,45 @@ service cloud.firestore {
              data.createdAt <= request.time;
     }
 
+    function isValidReelMediaType(mediaType) {
+      return mediaType is string && mediaType in ['text', 'photo', 'video'];
+    }
+
+    function isValidCommunityReel(data) {
+      return isValidId(data.userId) &&
+             data.authorName is string &&
+             data.authorName.size() >= 1 &&
+             data.authorName.size() <= 40 &&
+             data.caption is string &&
+             data.caption.size() <= 400 &&
+             data.tags is list &&
+             data.tags.size() <= 10 &&
+             isValidReelMediaType(data.mediaType) &&
+             data.backgroundPreset is string &&
+             data.backgroundPreset.size() <= 40 &&
+             data.thumbnailBase64 is string &&
+             data.thumbnailBase64.size() <= 650000 &&
+             data.voicePersonaId is string &&
+             data.voicePersonaId.size() <= 40 &&
+             data.bgmTrackId is string &&
+             data.bgmTrackId.size() <= 40 &&
+             data.likeCount is int &&
+             data.likeCount >= 0 &&
+             data.status == 'published' &&
+             (data.caption.size() > 0 || data.thumbnailBase64.size() > 0 || data.mediaType != 'text') &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time &&
+             data.updatedAt is timestamp &&
+             data.updatedAt <= request.time;
+    }
+
+    function isValidUserReelLike(data, reelId) {
+      return isValidId(data.reelId) &&
+             data.reelId == reelId &&
+             data.createdAt is timestamp &&
+             data.createdAt <= request.time;
+    }
+
     match /users/{userId} {
       allow get: if isSignedIn() && request.auth.uid == userId && isValidId(userId);
       allow list: if isSignedIn() && request.auth.uid == userId;
@@ -255,6 +294,36 @@ service cloud.firestore {
                            !exists(/databases/$(database)/documents/community_shayari/$(shayariId)) ||
                            getAfter(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount ==
                              get(/databases/$(database)/documents/community_shayari/$(shayariId)).data.wahCount - 1
+                         );
+      }
+
+      match /reel_likes/{reelId} {
+        allow get: if isSignedIn() && request.auth.uid == userId && isValidId(reelId);
+        allow list: if isSignedIn() && request.auth.uid == userId;
+
+        allow create: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(reelId) &&
+                         incoming().keys().hasAll(['reelId', 'createdAt']) &&
+                         incoming().keys().hasOnly(['reelId', 'createdAt']) &&
+                         isValidUserReelLike(incoming(), reelId) &&
+                         exists(/databases/$(database)/documents/community_reels/$(reelId)) &&
+                         getAfter(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount ==
+                           get(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount + 1;
+
+        allow update: if false;
+
+        allow delete: if isSignedIn() &&
+                         request.auth.uid == userId &&
+                         isValidId(reelId) &&
+                         (
+                           !exists(/databases/$(database)/documents/community_reels/$(reelId)) ||
+                           (
+                             get(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount == 0 &&
+                             getAfter(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount == 0
+                           ) ||
+                           getAfter(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount ==
+                             get(/databases/$(database)/documents/community_reels/$(reelId)).data.likeCount - 1
                          );
       }
 
@@ -541,6 +610,59 @@ service cloud.firestore {
                          isValidId(followerUserId) &&
                          (request.auth.uid == followerUserId || request.auth.uid == poetUserId);
       }
+    }
+
+    match /community_reels/{reelId} {
+      allow get: if isSignedIn() && isValidId(reelId) && existing().status == 'published';
+      allow list: if isSignedIn() && existing().status == 'published';
+
+      allow create: if isSignedIn() &&
+                       isValidId(reelId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'published' &&
+                       incoming().likeCount == 0 &&
+                       incoming().keys().hasAll([
+                         'userId', 'authorName', 'caption', 'tags', 'mediaType',
+                         'backgroundPreset', 'thumbnailBase64', 'voicePersonaId',
+                         'bgmTrackId', 'likeCount', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'authorName', 'caption', 'tags', 'mediaType',
+                         'backgroundPreset', 'thumbnailBase64', 'voicePersonaId',
+                         'bgmTrackId', 'likeCount', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidCommunityReel(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(reelId) &&
+                       isValidCommunityReel(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status == existing().status &&
+                       incoming().mediaType == existing().mediaType && (
+                         // Action 1: Owner edits caption or tags (cannot fake likeCount)
+                         (
+                           existing().userId == request.auth.uid &&
+                           incoming().likeCount == existing().likeCount &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'tags', 'updatedAt'])
+                         ) ||
+                         // Action 2: Any signed-in user likes (+1) atomically with /users/{uid}/reel_likes/{reelId}
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['likeCount']) &&
+                           incoming().likeCount == existing().likeCount + 1 &&
+                           !exists(/databases/$(database)/documents/users/$(request.auth.uid)/reel_likes/$(reelId)) &&
+                           existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/reel_likes/$(reelId))
+                         ) ||
+                         // Action 3: Any signed-in user unlikes (-1) atomically by deleting /users/{uid}/reel_likes/{reelId}
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['likeCount']) &&
+                           incoming().likeCount == existing().likeCount - 1 &&
+                           exists(/databases/$(database)/documents/users/$(request.auth.uid)/reel_likes/$(reelId)) &&
+                           !existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/reel_likes/$(reelId))
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(reelId) && existing().userId == request.auth.uid;
     }
   }
 }

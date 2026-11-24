@@ -402,6 +402,102 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "CommunityReel": {
+      "title": "CommunityReel",
+      "description": "Online Reel published by a signed-in user (free-form TikTok-style caption, optional user hashtags, photo/video thumbnail or preset backdrop).",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the Reel creator."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "Display name of the Reel creator."
+        },
+        "caption": {
+          "type": "string",
+          "description": "Free-form TikTok-style caption or Shayari text written by the user (0..400 chars)."
+        },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Optional user-typed hashtags (0..10 items, never forced)."
+        },
+        "mediaType": {
+          "type": "string",
+          "enum": ["text", "photo", "video"],
+          "description": "Media kind of the Reel."
+        },
+        "backgroundPreset": {
+          "type": "string",
+          "description": "Optional built-in backdrop key for text-only Reels."
+        },
+        "thumbnailBase64": {
+          "type": "string",
+          "description": "Optional compressed JPEG Base64 image or video poster frame for cross-device online display."
+        },
+        "voicePersonaId": {
+          "type": "string",
+          "description": "Optional preferred Shayar voice persona ID for text/photo Reels."
+        },
+        "bgmTrackId": {
+          "type": "string",
+          "description": "Optional preferred BGM track ID for text/photo Reels."
+        },
+        "likeCount": {
+          "type": "integer",
+          "description": "Atomic server-validated like count for the Reel."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["published"],
+          "description": "Publication status required for scoped listing."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when updated."
+        }
+      },
+      "required": [
+        "userId",
+        "authorName",
+        "caption",
+        "tags",
+        "mediaType",
+        "backgroundPreset",
+        "thumbnailBase64",
+        "voicePersonaId",
+        "bgmTrackId",
+        "likeCount",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserReelLike": {
+      "title": "UserReelLike",
+      "description": "Per-user Reel like marker atomically paired with community_reels.likeCount.",
+      "type": "object",
+      "properties": {
+        "reelId": {
+          "type": "string",
+          "description": "Document ID of the liked Reel in community_reels."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when liked."
+        }
+      },
+      "required": ["reelId", "createdAt"]
     }
   },
   "firestore": {
@@ -412,6 +508,10 @@
     "/users/{userId}/wahs/{shayariId}": {
       "schema": { "$ref": "#/entities/UserWah" },
       "description": "Per-user applause markers atomically linked to community_shayari.wahCount."
+    },
+    "/users/{userId}/reel_likes/{reelId}": {
+      "schema": { "$ref": "#/entities/UserReelLike" },
+      "description": "Per-user Reel like markers atomically linked to community_reels.likeCount."
     },
     "/users/{userId}/following/{targetUserId}": {
       "schema": { "$ref": "#/entities/UserFollowing" },
@@ -436,6 +536,10 @@
     "/community_shayari/{shayariId}": {
       "schema": { "$ref": "#/entities/CommunityShayari" },
       "description": "Shared community Shayari posts authored by signed-in poets."
+    },
+    "/community_reels/{reelId}": {
+      "schema": { "$ref": "#/entities/CommunityReel" },
+      "description": "Online Reels published by signed-in users with free-form captions and optional hashtags."
     },
     "/shayari_comments/{commentId}": {
       "schema": { "$ref": "#/entities/ShayariComment" },

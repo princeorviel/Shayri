@@ -650,3 +650,107 @@ test("Poet profile supports owner social links and blocks oversized or cross-use
   );
 });
 
+test("Community reels allow free-form TikTok captions, enforce auth/ownership, and atomic like/unlike", async () => {
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const now = new Date(Date.now() - 1000);
+
+  const validReel = (uid, overrides = {}) => ({
+    userId: uid,
+    authorName: "Prince Orviel",
+    caption: "cat fish funny reels video #funny #cat",
+    tags: ["funny", "cat"],
+    mediaType: "video",
+    backgroundPreset: "",
+    thumbnailBase64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB",
+    voicePersonaId: "",
+    bgmTrackId: "",
+    likeCount: 0,
+    status: "published",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  });
+
+  // Unauthenticated caller denied
+  await assertFails(
+    unauthDb.collection("community_reels").where("status", "==", "published").get()
+  );
+  await assertFails(
+    unauthDb.collection("community_reels").doc("reel_unauth").set(validReel(ALICE_UID))
+  );
+
+  // Spoofed userId, ghost field, inflated likeCount, invalid mediaType, or empty text reel rejected
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_spoof").set(validReel(BOB_UID))
+  );
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_ghost").set(validReel(ALICE_UID, { categoryId: "prakriti" }))
+  );
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_cheat").set(validReel(ALICE_UID, { likeCount: 10 }))
+  );
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_bad_media").set(validReel(ALICE_UID, { mediaType: "audio" }))
+  );
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_empty_text").set(
+      validReel(ALICE_UID, { mediaType: "text", caption: "", thumbnailBase64: "" })
+    )
+  );
+
+  // Valid video reel with free-form funny caption (no forced tags or categories) succeeds
+  await assertSucceeds(
+    aliceDb.collection("community_reels").doc("reel_1").set(validReel(ALICE_UID))
+  );
+  // Valid video reel with NO tags and empty caption also succeeds
+  await assertSucceeds(
+    aliceDb.collection("community_reels").doc("reel_2").set(
+      validReel(ALICE_UID, { caption: "", tags: [] })
+    )
+  );
+
+  // Unfiltered list fails; scoped published list succeeds
+  await assertFails(bobDb.collection("community_reels").get());
+  await assertSucceeds(
+    bobDb.collection("community_reels").where("status", "==", "published").get()
+  );
+
+  // Cross-user edit/delete and non-atomic like increment rejected
+  await assertFails(
+    bobDb.collection("community_reels").doc("reel_1").update({ caption: "hacked", updatedAt: new Date() })
+  );
+  await assertFails(bobDb.collection("community_reels").doc("reel_1").delete());
+  await assertFails(bobDb.collection("community_reels").doc("reel_1").update({ likeCount: 1 }));
+
+  // Atomic +1 like batch succeeds
+  const likeBatch = bobDb.batch();
+  likeBatch.set(bobDb.collection("users").doc(BOB_UID).collection("reel_likes").doc("reel_1"), {
+    reelId: "reel_1",
+    createdAt: new Date(Date.now() - 500),
+  });
+  likeBatch.update(bobDb.collection("community_reels").doc("reel_1"), { likeCount: 1 });
+  await assertSucceeds(likeBatch.commit());
+
+  // Cross-user cannot read Bob's reel_likes
+  await assertFails(aliceDb.collection("users").doc(BOB_UID).collection("reel_likes").get());
+
+  // Atomic -1 unlike batch succeeds
+  const unlikeBatch = bobDb.batch();
+  unlikeBatch.delete(bobDb.collection("users").doc(BOB_UID).collection("reel_likes").doc("reel_1"));
+  unlikeBatch.update(bobDb.collection("community_reels").doc("reel_1"), { likeCount: 0 });
+  await assertSucceeds(unlikeBatch.commit());
+
+  // Owner can edit caption & delete own reel
+  await assertSucceeds(
+    aliceDb.collection("community_reels").doc("reel_1").update({
+      caption: "Updated funny cat video #lol",
+      tags: ["lol"],
+      updatedAt: new Date(Date.now() - 200),
+    })
+  );
+  await assertSucceeds(aliceDb.collection("community_reels").doc("reel_1").delete());
+});
+
+

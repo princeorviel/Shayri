@@ -82,6 +82,7 @@ import com.example.data.local.LoginLocalResult
 import com.example.data.local.ShayariDatabase
 import com.example.data.local.ShayariRepository
 import com.example.data.local.UserPreferencesRepository
+import com.example.data.model.CommunityReel
 import com.example.data.model.CommunityShayari
 import com.example.data.model.LOCAL_GUEST_USER_ID
 import com.example.data.model.PersonalShayari
@@ -96,6 +97,7 @@ import com.example.data.model.ThemeModeOption
 import com.example.data.model.shayariCommentKey
 import com.example.data.model.toShayariEntity
 import com.example.data.remote.AdminDashboardRepository
+import com.example.data.remote.CommunityReelsRepository
 import com.example.data.remote.CommunityShayariRepository
 import com.example.data.remote.PersonalShayariRepository
 import com.example.data.remote.PostNotificationsRepository
@@ -298,6 +300,8 @@ private fun ShayariAppRoot(
     var isHomeSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchFocusTrigger by remember { mutableIntStateOf(0) }
     var userCreatedReels by remember { mutableStateOf<List<UserCreatedReel>>(emptyList()) }
+    var onlineCommunityReels by remember { mutableStateOf<List<CommunityReel>>(emptyList()) }
+    var onlineLikedReelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var reelsCreateTrigger by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(context) {
@@ -328,6 +332,9 @@ private fun ShayariAppRoot(
     }
     val notificationsRepository = remember(context, firebaseReady) {
         if (firebaseReady) PostNotificationsRepository(context.applicationContext) else null
+    }
+    val reelsRepository = remember(context, firebaseReady) {
+        if (firebaseReady) CommunityReelsRepository(context.applicationContext) else null
     }
     val localPersonalRepository = remember(context) {
         LocalPersonalShayariRepository(
@@ -405,6 +412,8 @@ private fun ShayariAppRoot(
             postNotifications = emptyList()
             notificationsLoading = false
             notificationsError = null
+            onlineCommunityReels = emptyList()
+            onlineLikedReelIds = emptySet()
         } else {
             launch {
                 runCatching {
@@ -448,6 +457,81 @@ private fun ShayariAppRoot(
                             snackbarHostState.showSnackbar(
                                 "आपकी $syncedOnlineCount शायरी ऑनलाइन कुल पोस्ट में जुड़ गईं 🌐✨"
                             )
+                        }
+                    }
+                }
+            }
+            if (reelsRepository != null) {
+                launch {
+                    reelsRepository.observePublishedReels()
+                        .catch { /* Keep previous reels on transient failure */ }
+                        .collect { onlineCommunityReels = it }
+                }
+                launch {
+                    reelsRepository.observeUserLikedReelIds()
+                        .catch { /* Keep previous likes on transient failure */ }
+                        .collect { onlineLikedReelIds = it }
+                }
+                // Auto-sync all existing local Reels online so every user Reel goes online!
+                launch {
+                    runCatching {
+                        val localReels = ReelsStorage.loadUserReels(context)
+                        val unsynced = localReels.filter { !it.isOnlineSynced }
+                        if (unsynced.isNotEmpty()) {
+                            var changed = false
+                            val updatedList = localReels.map { localReel ->
+                                if (localReel.isOnlineSynced) {
+                                    localReel
+                                } else {
+                                    val thumb = localReel.thumbnailBase64?.takeIf { it.isNotBlank() }
+                                        ?: when {
+                                            localReel.videoUri != null -> ReelsStorage.extractCompressedThumbnailBase64(
+                                                context = context,
+                                                uriString = localReel.videoUri,
+                                                isVideo = true
+                                            )
+                                            localReel.photoUri != null -> ReelsStorage.extractCompressedThumbnailBase64(
+                                                context = context,
+                                                uriString = localReel.photoUri,
+                                                isVideo = false
+                                            )
+                                            else -> null
+                                        }
+                                    val mediaType = when {
+                                        localReel.videoUri != null -> "video"
+                                        localReel.photoUri != null -> "photo"
+                                        else -> localReel.mediaType.ifBlank { "text" }
+                                    }
+                                    val res = reelsRepository.publishReel(
+                                        reelId = localReel.id,
+                                        authorName = localReel.poet.ifBlank {
+                                            currentUser?.displayName?.trim()?.takeIf { it.isNotBlank() } ?: "शायर दोस्त"
+                                        },
+                                        caption = localReel.couplet,
+                                        tags = localReel.tags,
+                                        mediaType = mediaType,
+                                        backgroundPreset = localReel.backgroundDrawableName.orEmpty(),
+                                        thumbnailBase64 = thumb.orEmpty(),
+                                        voicePersonaId = localReel.voicePersonaId.orEmpty(),
+                                        bgmTrackId = localReel.bgmTrackId.orEmpty()
+                                    )
+                                    if (res.isSuccess) {
+                                        changed = true
+                                        localReel.copy(
+                                            ownerUserId = uid,
+                                            mediaType = mediaType,
+                                            thumbnailBase64 = thumb,
+                                            isOnlineSynced = true
+                                        )
+                                    } else {
+                                        localReel
+                                    }
+                                }
+                            }
+                            if (changed) {
+                                userCreatedReels = updatedList
+                                ReelsStorage.saveUserReels(context, updatedList)
+                            }
                         }
                     }
                 }
@@ -1187,28 +1271,87 @@ private fun ShayariAppRoot(
                         }
 
                         composable(ROUTE_REELS) {
+                            val mergedOnlineAndLocalReels = remember(onlineCommunityReels, userCreatedReels) {
+                                val localById = userCreatedReels.associateBy { it.id }
+                                val onlineMapped = onlineCommunityReels.map { remote ->
+                                    val localMatch = localById[remote.id]
+                                    UserCreatedReel(
+                                        id = remote.id,
+                                        couplet = remote.caption,
+                                        poet = remote.authorName.ifBlank { "शायर दोस्त" },
+                                        categoryId = "",
+                                        tags = remote.tags,
+                                        videoUri = localMatch?.videoUri,
+                                        photoUri = localMatch?.photoUri,
+                                        backgroundDrawableName = remote.backgroundPreset.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.backgroundDrawableName,
+                                        voicePersonaId = remote.voicePersonaId.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.voicePersonaId,
+                                        bgmTrackId = remote.bgmTrackId.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.bgmTrackId,
+                                        ownerUserId = remote.userId.takeIf { it.isNotBlank() },
+                                        mediaType = remote.mediaType.ifBlank { localMatch?.mediaType ?: "text" },
+                                        thumbnailBase64 = remote.thumbnailBase64.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.thumbnailBase64,
+                                        likeCount = remote.likeCount,
+                                        isOnlineSynced = true,
+                                        createdAtMs = remote.createdAtMillis.takeIf { it > 0L }
+                                            ?: localMatch?.createdAtMs
+                                            ?: System.currentTimeMillis()
+                                    )
+                                }
+                                val onlineIds = onlineMapped.mapTo(HashSet()) { it.id }
+                                val localOnly = userCreatedReels.filterNot { it.id in onlineIds }
+                                (onlineMapped + localOnly).sortedByDescending { it.createdAtMs }
+                            }
                             ReelsScreen(
                                 allShayari = uiState.allShayari,
                                 popularShayari = uiState.popularShayari,
-                                userReels = userCreatedReels,
+                                userReels = mergedOnlineAndLocalReels,
                                 commentCounts = commentCounts,
                                 authorName = resolvedAuthorName,
                                 onToggleFavorite = ::handleToggleFavorite,
                                 onComment = ::openCommentsForShayari,
                                 onShare = ::handleShareShayari,
                                 onCreateUserReel = { newReel ->
-                                    val updated = listOf(newReel) + userCreatedReels
+                                    val signedInUid = currentUser?.uid
+                                    val enrichedReel = newReel.copy(
+                                        ownerUserId = signedInUid,
+                                        isOnlineSynced = signedInUid != null && reelsRepository != null
+                                    )
+                                    val updated = listOf(enrichedReel) + userCreatedReels.filterNot { it.id == enrichedReel.id }
                                     userCreatedReels = updated
                                     scope.launch {
                                         ReelsStorage.saveUserReels(context, updated)
+                                        if (signedInUid != null && reelsRepository != null) {
+                                            val result = reelsRepository.publishReel(
+                                                reelId = enrichedReel.id,
+                                                authorName = enrichedReel.poet.ifBlank { resolvedAuthorName },
+                                                caption = enrichedReel.couplet,
+                                                tags = enrichedReel.tags,
+                                                mediaType = enrichedReel.mediaType,
+                                                backgroundPreset = enrichedReel.backgroundDrawableName.orEmpty(),
+                                                thumbnailBase64 = enrichedReel.thumbnailBase64.orEmpty(),
+                                                voicePersonaId = enrichedReel.voicePersonaId.orEmpty(),
+                                                bgmTrackId = enrichedReel.bgmTrackId.orEmpty()
+                                            )
+                                            if (result.isFailure) {
+                                                val fallbackList = userCreatedReels.map {
+                                                    if (it.id == enrichedReel.id) it.copy(isOnlineSynced = false) else it
+                                                }
+                                                userCreatedReels = fallbackList
+                                                ReelsStorage.saveUserReels(context, fallbackList)
+                                                showFeedback("ऑनलाइन सिंक में समस्या आई — लोकल सेव है, इंटरनेट पर फिर सिंक होगी")
+                                            }
+                                        }
                                     }
-                                    if (newReel.couplet.trim().length >= 4) {
+                                    if (enrichedReel.mediaType == "text" && enrichedReel.couplet.trim().length >= 8) {
                                         viewModel.upsertUserPostToCatalog(
-                                            personalId = newReel.id,
-                                            couplet = newReel.couplet.trim(),
-                                            authorName = newReel.poet.ifBlank { "शायर दोस्त" },
+                                            personalId = enrichedReel.id,
+                                            couplet = enrichedReel.couplet.trim(),
+                                            authorName = enrichedReel.poet.ifBlank { "शायर दोस्त" },
                                             title = "",
-                                            themeTag = newReel.tags.joinToString(" ")
+                                            themeTag = enrichedReel.tags.joinToString(" ")
                                         )
                                     }
                                 },
@@ -1221,7 +1364,38 @@ private fun ShayariAppRoot(
                                         ReelsStorage.deleteLocalMediaIfOwned(context, target.videoUri)
                                         ReelsStorage.deleteLocalMediaIfOwned(context, target.photoUri)
                                         ReelsStorage.saveUserReels(context, updated)
+                                        if (currentUser != null && reelsRepository != null &&
+                                            (target.ownerUserId == null || target.ownerUserId == currentUser?.uid)
+                                        ) {
+                                            reelsRepository.deleteReel(target.id)
+                                        }
                                     }
+                                },
+                                currentUserId = currentUser?.uid,
+                                onlineLikedReelIds = onlineLikedReelIds,
+                                isSignedInOnline = currentUser != null && firebaseReady,
+                                onToggleOnlineReelLike = { reelId, currentlyLiked ->
+                                    scope.launch {
+                                        reelsRepository?.toggleLike(reelId, currentlyLiked)
+                                    }
+                                },
+                                onRequestGoogleSignIn = if (firebaseReady) {
+                                    {
+                                        onGoogleSignInClicked(
+                                            context = context,
+                                            credentialManager = credentialManager,
+                                            scope = scope,
+                                            onAuthSuccess = {
+                                                showFeedback("Google से जुड़ गए! अब आपकी सभी Reels ऑनलाइन होंगी 🌐✨")
+                                            },
+                                            onAuthError = { err ->
+                                                showFeedback(err)
+                                            },
+                                            onAuthCancelled = {}
+                                        )
+                                    }
+                                } else {
+                                    null
                                 }
                             )
                         }
