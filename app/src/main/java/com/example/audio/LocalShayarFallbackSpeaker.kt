@@ -25,7 +25,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "LocalShayarSpeaker"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
-private const val MASTERED_CACHE_DIR = "local_shayar_master_v5"
+private const val MASTERED_CACHE_DIR = "local_shayar_master_v6"
 private const val NETWORK_VOICE_COOLDOWN_MS = 90_000L
 
 /**
@@ -490,7 +490,8 @@ class LocalShayarFallbackSpeaker(context: Context) {
             val res = engine.speak(text, queueMode, params, "${token}_line_$idx")
             if (idx == 0) firstResult = res
             if (idx < spokenLines.lastIndex) {
-                engine.playSilentUtterance(560L, TextToSpeech.QUEUE_ADD, "${token}_pause_$idx")
+                val pauseMs = if (idx == spokenLines.lastIndex - 1) 1_080L else 820L
+                engine.playSilentUtterance(pauseMs, TextToSpeech.QUEUE_ADD, "${token}_pause_$idx")
             }
         }
 
@@ -558,30 +559,62 @@ class LocalShayarFallbackSpeaker(context: Context) {
     private fun applyPoeticLineCadence(line: String, isLastLine: Boolean): String {
         val trimmed = line.trim().trimEnd(' ', '-', '—', '–')
         if (trimmed.isEmpty()) return ""
-        val lastChar = trimmed.last()
+        val withBreath = insertMidLineBreathComma(trimmed)
+        val lastChar = withBreath.last()
         return if (isLastLine) {
-            if (lastChar in charArrayOf('।', '.', '!', '?')) trimmed else "$trimmed।"
+            if (lastChar in charArrayOf('।', '.', '!', '?')) withBreath else "$withBreath।"
         } else {
             // Keep gentle comma cadence at end of non-final poetic lines so Hindi neural TTS
             // uses natural rising-sustained intonation instead of flat mechanical full stops!
             when (lastChar) {
-                '।', '.' -> trimmed.dropLast(1).trimEnd() + ","
-                ',', '!', '?' -> trimmed
-                else -> "$trimmed,"
+                '।', '.' -> withBreath.dropLast(1).trimEnd() + ","
+                ',', '!', '?' -> withBreath
+                else -> "$withBreath,"
             }
         }
     }
 
+    private fun insertMidLineBreathComma(line: String): String {
+        if (line.contains(',') || line.contains(';') || line.contains("...")) return line
+        val words = line.split(" ").filter { it.isNotBlank() }
+        if (words.size < 6) return line
+        val pivotsBefore = setOf(
+            "कि", "पर", "मगर", "लेकिन", "और", "फिर", "जब", "वरना", "जैसे",
+            "ki", "par", "magar", "lekin", "aur", "phir", "jab"
+        )
+        val pivotsAfter = setOf("तो", "बस", "हाँ", "सुनो", "यार", "दोस्त", "सनम", "toh", "bas")
+        var splitIdx = -1
+        for (i in 2..(words.size - 3)) {
+            val w = words[i].lowercase().trim(',', '।', '.', '!', '?')
+            if (w in pivotsBefore) {
+                splitIdx = i
+                break
+            }
+            if (w in pivotsAfter && i + 1 <= words.size - 2) {
+                splitIdx = i + 1
+                break
+            }
+        }
+        if (splitIdx == -1 && words.size >= 7) {
+            splitIdx = words.size / 2
+        }
+        if (splitIdx !in 2..(words.size - 2)) return line
+        return words.subList(0, splitIdx).joinToString(" ") + ", " +
+            words.subList(splitIdx, words.size).joinToString(" ")
+    }
+
     private fun naturalProsodyFor(persona: ShayarVoicePersona): Pair<Float, Float> {
+        // Calibrated unhurried poetic speech rates (0.75f-0.85f) so Android Hindi TTS
+        // recites with Mushaira calm instead of sounding like hurried text reading.
         return when (persona) {
-            ShayarVoicePersona.DARD_SHAYARA -> 0.83f to 0.96f
-            ShayarVoicePersona.SUREELI_SHAYARA -> 0.98f to 1.07f
-            ShayarVoicePersona.TADAP_SHAYARA -> 0.93f to 1.03f
-            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.87f to 1.01f
-            ShayarVoicePersona.DARD_SHAYAR -> 0.82f to 0.91f
-            ShayarVoicePersona.TADAP_AASHIQ -> 0.95f to 1.00f
-            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.86f to 0.89f
-            ShayarVoicePersona.JOSH_SHAYAR -> 1.01f to 0.95f
+            ShayarVoicePersona.DARD_SHAYARA -> 0.76f to 0.96f
+            ShayarVoicePersona.SUREELI_SHAYARA -> 0.84f to 1.05f
+            ShayarVoicePersona.TADAP_SHAYARA -> 0.80f to 1.01f
+            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.78f to 1.00f
+            ShayarVoicePersona.DARD_SHAYAR -> 0.75f to 0.91f
+            ShayarVoicePersona.TADAP_AASHIQ -> 0.81f to 0.98f
+            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.77f to 0.89f
+            ShayarVoicePersona.JOSH_SHAYAR -> 0.85f to 0.94f
         }
     }
 

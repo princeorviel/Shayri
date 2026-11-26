@@ -29,7 +29,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v11"
+private const val VOICE_CACHE_DIR = "shayar_voices_v12"
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 private const val QUOTA_COOLDOWN_MS = 15_000L
 private const val APP_CHECK_COOLDOWN_MS = 20_000L
@@ -45,7 +45,7 @@ enum class ShayarVoicePersona(
     val voiceDirection: String,
     val emotionalStyleCue: String
 ) {
-    // 4 Strongly Contrasting Female Shayara Voices
+    // 4 Strongly Contrasting Female Shayara Voices — all unhurried, deeply human poetic delivery
     DARD_SHAYARA(
         id = "dard_shayara",
         labelHi = "दर्द भरी शायरा",
@@ -54,8 +54,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "💔",
         geminiVoiceName = "Vindemiatrix",
-        voiceDirection = "a fragile, tearful young North Indian woman speaking slowly with a quivering heartbroken voice",
-        emotionalStyleCue = "slow, misty, aching heartbreak as if holding back tears"
+        voiceDirection = "a fragile, tearful young North Indian poetess speaking very slowly from the heart with a soft quivering voice and lingering emotional pauses",
+        emotionalStyleCue = "very slow, misty, aching heartbreak as if holding back tears"
     ),
     SUREELI_SHAYARA(
         id = "sureeli_shayara",
@@ -65,8 +65,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🎶",
         geminiVoiceName = "Leda",
-        voiceDirection = "a bright, cheerful, melodious young Indian poetess speaking at a lively warm tempo with a natural smile",
-        emotionalStyleCue = "light, sweet, musical charm with playful affectionate sparkle"
+        voiceDirection = "a sweet, melodious young Indian poetess speaking softly and unhurriedly with a gentle affectionate smile and musical Hindi-Urdu phrasing",
+        emotionalStyleCue = "unhurried sweet musical charm with tender affectionate warmth"
     ),
     TADAP_SHAYARA(
         id = "tadap_shayara",
@@ -76,8 +76,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🥺",
         geminiVoiceName = "Kore",
-        voiceDirection = "a clear, emotionally fierce, expressive Indian woman with dramatic intensity and strong vocal presence",
-        emotionalStyleCue = "bold poignant emotion, sharp dramatic tension, powerful closing punch"
+        voiceDirection = "an expressive, emotionally intense North Indian poetess speaking with deliberate dramatic poise, unhurried cadence, and deep vocal presence",
+        emotionalStyleCue = "measured dramatic emotion, deep lingering tension, powerful closing punch"
     ),
     ROMANTIC_SHAYARA(
         id = "romantic_shayara",
@@ -87,11 +87,11 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🌹",
         geminiVoiceName = "Aoede",
-        voiceDirection = "a warm, silky, breezy young Indian woman speaking romantically with dreamy velvety charm",
-        emotionalStyleCue = "warm affectionate closeness, lyrical flow, dreamy romantic glow"
+        voiceDirection = "a warm, velvety young Indian poetess speaking very softly and slowly in an intimate dreamy whisper",
+        emotionalStyleCue = "slow affectionate closeness, soft lyrical flow, dreamy romantic glow"
     ),
 
-    // 4 Strongly Contrasting Male Shayar Voices
+    // 4 Strongly Contrasting Male Shayar Voices — all unhurried, soulful Mushaira delivery
     DARD_SHAYAR(
         id = "dard_shayar",
         labelHi = "दर्द-ए-दिल शायर",
@@ -100,8 +100,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🥀",
         geminiVoiceName = "Enceladus",
-        voiceDirection = "a deep, husky, breathy North Indian man speaking slowly with heavy late-night grief",
-        emotionalStyleCue = "deep gravelly ache, slow lingering emotional weight"
+        voiceDirection = "a deep, husky, late-night North Indian shayar speaking very slowly with heavy quiet grief and lingering sighs",
+        emotionalStyleCue = "deep gravelly ache, very slow lingering late-night emotional weight"
     ),
     TADAP_AASHIQ(
         id = "tadap_aashiq",
@@ -111,8 +111,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "❤️‍🔥",
         geminiVoiceName = "Puck",
-        voiceDirection = "an energetic, passionate young Indian man speaking with intense heartfelt urgency and rising emotion",
-        emotionalStyleCue = "lively passionate longing, rising emotional crescendo on the last line"
+        voiceDirection = "a heartfelt young Indian shayar speaking slowly and earnestly from memory with deep aching longing, letting every word breathe",
+        emotionalStyleCue = "soulful heartfelt longing, unhurried build-up to an emotional closing line"
     ),
     MEHFIL_SHAYAR(
         id = "mehfil_shayar",
@@ -122,8 +122,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🎙️",
         geminiVoiceName = "Algenib",
-        voiceDirection = "a commanding, seasoned Lucknow Mushaira poet in his 40s with a rich resonant baritone and royal theatrical cadence",
-        emotionalStyleCue = "poised regal Mushaira storytelling, dramatic pause before landing the sher punchline"
+        voiceDirection = "a seasoned Lucknow Mushaira ustad in his 40s with a rich resonant baritone, reciting very slowly with royal tehzeeb and theatrical pauses",
+        emotionalStyleCue = "slow regal Mushaira storytelling, suspenseful silence before landing the sher punchline"
     ),
     JOSH_SHAYAR(
         id = "josh_shayar",
@@ -133,8 +133,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🔥",
         geminiVoiceName = "Fenrir",
-        voiceDirection = "a bold, fearless, high-energy Indian stage poet with powerful chest voice and sharp North Indian swagger",
-        emotionalStyleCue = "confident punchy pace, fiery bold authority, hard-hitting closing line"
+        voiceDirection = "a bold, commanding Indian stage shayar with a powerful chest voice, speaking slowly and deliberately with calm fearless swagger and heavy pauses",
+        emotionalStyleCue = "slow commanding authority, calm fearless swagger, hard-hitting unhurried closing punch"
     );
 
     companion object {
@@ -607,6 +607,52 @@ object ShayarVoiceEngine {
             .trim()
     }
 
+    /**
+     * Inserts a gentle poetic mid-line breathing pause (अर्ध-विराम / caesura) into longer
+     * shayari lines that lack internal punctuation, preventing TTS models from rushing
+     * through an entire misra in one hurried breath like reading a news sentence.
+     */
+    private fun applyPoeticCaesura(cleanLine: String): String {
+        if (cleanLine.contains(',') || cleanLine.contains("...") || cleanLine.contains(';') || cleanLine.contains('—')) {
+            return cleanLine
+        }
+        val words = cleanLine.split(" ").filter { it.isNotBlank() }
+        if (words.size < 6) return cleanLine
+
+        val beforeBreakWords = setOf(
+            "कि", "पर", "मगर", "लेकिन", "और", "फिर", "जब", "वरना", "क्योंकि", "जैसे", "चाहे",
+            "ki", "par", "magar", "lekin", "aur", "phir", "jab", "varna", "jaise"
+        )
+        val afterBreakWords = setOf(
+            "तो", "बस", "हाँ", "सुनो", "जान", "यार", "दोस्त", "सनम", "मियाँ", "दिल",
+            "toh", "to", "bas", "haan", "suno", "yaar", "dost", "sanam"
+        )
+
+        val minIdx = 2
+        val maxIdx = words.size - 3
+        var splitIndex = -1
+
+        for (i in minIdx..maxIdx) {
+            val w = words[i].lowercase().trim(',', '।', '.', '!', '?')
+            if (w in beforeBreakWords) {
+                splitIndex = i
+                break
+            }
+            if (w in afterBreakWords && i + 1 <= maxIdx + 1) {
+                splitIndex = i + 1
+                break
+            }
+        }
+        if (splitIndex == -1 && words.size >= 7) {
+            splitIndex = words.size / 2
+        }
+        if (splitIndex !in 2..(words.size - 2)) return cleanLine
+
+        val firstHalf = words.subList(0, splitIndex).joinToString(" ")
+        val secondHalf = words.subList(splitIndex, words.size).joinToString(" ")
+        return "$firstHalf... $secondHalf"
+    }
+
     internal fun buildPoeticRecitationPrompt(
         couplet: String,
         persona: ShayarVoicePersona,
@@ -620,75 +666,86 @@ object ShayarVoiceEngine {
 
         val emotion = detectCoupletEmotion(couplet, categoryId, persona)
 
-        // Concise, sharply contrasting "Say ...:" directives so every persona & mood has a
-        // distinct tempo, pitch contour, and emotional energy (and generates faster!).
+        // Core Mushaira anti-rushing rule shared across every mood:
+        // Perform slowly from memory (~70% reading speed) with true poetic thehrav (ठहराव),
+        // lingering on key Urdu/Hindi words and pausing deeply — NEVER reading hurriedly off a script.
+        val mushairaCadenceRule =
+            "Recite slowly from memory like a live Hindi-Urdu Mushaira artist (never fast or rushed like reading written text aloud); linger gently on emotional words, breathe softly at every '...' pause, and let each line sink in."
+
         val styleDirective = when (emotion) {
             CoupletEmotion.DEEP_HEARTBREAK ->
-                "Say this Hindi-Urdu shayari slowly and emotionally as ${persona.voiceDirection}, with fragile raw heartbreak and voice trembling softly on the closing line:"
+                "Perform this Hindi-Urdu shayari very slowly and soulfully as ${persona.voiceDirection}. $mushairaCadenceRule Let your voice feel tender, broken, and softly trembling on the final line:"
             CoupletEmotion.PASSIONATE_YEARNING ->
-                "Say this Hindi-Urdu shayari passionately as ${persona.voiceDirection}, with expressive intensity, rising heartfelt longing, and emotional weight on the last line:"
+                "Perform this Hindi-Urdu shayari slowly and passionately as ${persona.voiceDirection}. $mushairaCadenceRule Build heartfelt aching emotion across the lines and linger deeply on the closing line:"
             CoupletEmotion.PLAYFUL_ROMANCE ->
-                "Say this Hindi-Urdu shayari warmly at a lively, smiling conversational pace as ${persona.voiceDirection}, with sweet musical lilt and bright affectionate joy:"
+                "Perform this Hindi-Urdu shayari softly and unhurriedly as ${persona.voiceDirection}. $mushairaCadenceRule Speak with a warm affectionate smile, gentle musical lilt, and unhurried poetic charm:"
             CoupletEmotion.INTIMATE_ROMANTIC ->
-                "Say this Hindi-Urdu shayari tenderly as ${persona.voiceDirection}, with velvety romantic warmth, gentle intimacy, and soft lingering charm:"
+                "Perform this Hindi-Urdu shayari very slowly and tenderly as ${persona.voiceDirection}. $mushairaCadenceRule Keep it close-mic, velvety, dreamy, and unhurried like a late-night confession:"
             CoupletEmotion.WITTY_LIGHTHEARTED ->
-                "Say this Hindi-Urdu piece cheerfully at an upbeat, playful pace as ${persona.voiceDirection}, with a warm smile and amused lighthearted timing:"
+                "Perform this Hindi-Urdu shayari in a relaxed, unhurried storytelling cadence as ${persona.voiceDirection}. $mushairaCadenceRule Smile naturally through the words and pause with comic Mushaira timing before the punchline:"
             CoupletEmotion.BOLD_ATTITUDE ->
-                "Say this Hindi-Urdu shayari boldly at a crisp, energetic stage pace as ${persona.voiceDirection}, with fearless swagger and a sharp punch on the final line:"
+                "Perform this Hindi-Urdu shayari slowly and commandingly as ${persona.voiceDirection}. $mushairaCadenceRule Use calm, fearless swagger — never rush; pause heavily before delivering the final line with crisp authority:"
             CoupletEmotion.ROYAL_MEHFIL ->
-                "Recite this Hindi-Urdu sher with classic Lucknow Mushaira poise as ${persona.voiceDirection}, building regal suspense on line one and landing the punchline with resonant authority:"
+                "Perform this Hindi-Urdu sher slowly with classic Lucknow Mushaira tehzeeb as ${persona.voiceDirection}. $mushairaCadenceRule Hold regal suspense after the opening line and land the closing punchline with resonant weight:"
             CoupletEmotion.SOULFUL_SUFI ->
-                "Say this Hindi-Urdu shayari calmly and deeply as ${persona.voiceDirection}, with grounded Sufi serenity, warm conversational wisdom, and peaceful gravity:"
+                "Perform this Hindi-Urdu shayari very slowly and calmly as ${persona.voiceDirection}. $mushairaCadenceRule Deliver it with deep Sufi stillness, warm philosophical wisdom, and peaceful unhurried pauses:"
         }
 
         val taggedTranscript = buildString {
             lines.forEachIndexed { idx, rawLine ->
                 val isFirst = idx == 0
                 val isLast = idx == lines.lastIndex
-                val clean = rawLine.trimEnd('।', '.', ',', ' ', '—', '-')
+                val clean = applyPoeticCaesura(rawLine.trimEnd('।', '.', ',', ' ', '—', '-'))
                 val endingPunct = when {
                     rawLine.endsWith("?") -> "?"
                     rawLine.endsWith("!") -> "!"
                     emotion == CoupletEmotion.BOLD_ATTITUDE && isLast -> "!"
                     isLast -> "।"
-                    else -> ","
+                    else -> "..."
                 }
 
                 if (idx > 0) append("\n")
 
                 val prefixTag = when (emotion) {
                     CoupletEmotion.DEEP_HEARTBREAK -> when {
-                        isLast && lines.size >= 2 -> "[medium pause] [sigh] "
+                        isLast && lines.size >= 2 -> "[long pause] [sigh] "
                         isFirst -> ""
-                        else -> "[short pause] "
+                        else -> "[medium pause] "
                     }
                     CoupletEmotion.PASSIONATE_YEARNING -> when {
-                        isLast && lines.size >= 2 -> "[short pause] "
-                        else -> ""
+                        isLast && lines.size >= 2 -> "[long pause] "
+                        isFirst -> ""
+                        else -> "[medium pause] "
                     }
                     CoupletEmotion.PLAYFUL_ROMANCE -> when {
+                        isLast && lines.size >= 2 -> "[medium pause] "
                         isFirst -> ""
-                        else -> "[short pause] "
+                        else -> "[medium pause] "
                     }
                     CoupletEmotion.INTIMATE_ROMANTIC -> when {
+                        isLast && lines.size >= 2 -> "[long pause] "
                         isFirst -> ""
-                        else -> "[short pause] "
+                        else -> "[medium pause] "
                     }
                     CoupletEmotion.WITTY_LIGHTHEARTED -> when {
-                        isLast && lines.size >= 2 -> "[short pause] [chuckle] "
-                        else -> ""
-                    }
-                    CoupletEmotion.BOLD_ATTITUDE -> when {
-                        isLast && lines.size >= 2 -> "[medium pause] "
-                        else -> ""
-                    }
-                    CoupletEmotion.ROYAL_MEHFIL -> when {
-                        isLast && lines.size >= 2 -> "[medium pause] "
-                        else -> ""
-                    }
-                    CoupletEmotion.SOULFUL_SUFI -> when {
+                        isLast && lines.size >= 2 -> "[medium pause] [chuckle] "
                         isFirst -> ""
                         else -> "[short pause] "
+                    }
+                    CoupletEmotion.BOLD_ATTITUDE -> when {
+                        isLast && lines.size >= 2 -> "[long pause] "
+                        isFirst -> ""
+                        else -> "[medium pause] "
+                    }
+                    CoupletEmotion.ROYAL_MEHFIL -> when {
+                        isLast && lines.size >= 2 -> "[long pause] "
+                        isFirst -> ""
+                        else -> "[medium pause] "
+                    }
+                    CoupletEmotion.SOULFUL_SUFI -> when {
+                        isLast && lines.size >= 2 -> "[long pause] "
+                        isFirst -> ""
+                        else -> "[medium pause] "
                     }
                 }
 

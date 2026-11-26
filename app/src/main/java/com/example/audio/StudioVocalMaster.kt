@@ -26,28 +26,28 @@ enum class VocalMoodProfile(
     val silkCutoffHz: Double
 ) {
     HEARTBREAK_SOFT(
-        pauseBetweenLinesMs = 680,
+        pauseBetweenLinesMs = 960,
         reverbWet = 0.07f,
         warmCutoffHz = 230.0,
         warmGain = 0.16f,
         silkCutoffHz = 7_400.0
     ),
     MELODIOUS_ROMANTIC(
-        pauseBetweenLinesMs = 600,
+        pauseBetweenLinesMs = 860,
         reverbWet = 0.06f,
         warmCutoffHz = 250.0,
         warmGain = 0.13f,
         silkCutoffHz = 8_200.0
     ),
     MEHFIL_BARITONE(
-        pauseBetweenLinesMs = 640,
+        pauseBetweenLinesMs = 920,
         reverbWet = 0.06f,
         warmCutoffHz = 195.0,
         warmGain = 0.20f,
         silkCutoffHz = 7_600.0
     ),
     STAGE_BOLD(
-        pauseBetweenLinesMs = 500,
+        pauseBetweenLinesMs = 780,
         reverbWet = 0.04f,
         warmCutoffHz = 185.0,
         warmGain = 0.17f,
@@ -118,8 +118,15 @@ object StudioVocalMaster {
                 }
             }
 
+            // Add a gentle 160ms breathing lead-in and 260ms soft tail so background music sets
+            // the mood for a beat before the Shayar starts speaking (feels cinematic, never rushed).
+            val leadPad = (0.160 * decoded.sampleRate).toInt()
+            val tailPad = (0.260 * decoded.sampleRate).toInt()
+            val padded = FloatArray(leadPad + samples.size + tailPad)
+            System.arraycopy(samples, 0, padded, leadPad, samples.size)
+
             val tmp = File(outputWav.parentFile, "${outputWav.name}.tmp")
-            writeNormalizedStereoWav(tmp, samples, samples, decoded.sampleRate, targetPeak = 0.93f)
+            writeNormalizedStereoWav(tmp, padded, padded, decoded.sampleRate, targetPeak = 0.93f)
             if (!tmp.renameTo(outputWav)) {
                 outputWav.writeBytes(tmp.readBytes())
                 tmp.delete()
@@ -176,13 +183,17 @@ object StudioVocalMaster {
             if (normalizedLines.isEmpty()) return false
 
             val pauseSamples = ((effectivePauseMs / 1000.0) * sampleRate).toInt().coerceAtLeast(0)
-            val leadInSamples = (0.045 * sampleRate).toInt()
-            val tailSamples = (0.35 * sampleRate).toInt()
+            val punchlineExtraPause = (0.320 * sampleRate).toInt()
+            val leadInSamples = (0.160 * sampleRate).toInt()
+            val tailSamples = (0.380 * sampleRate).toInt()
 
             var totalSamples = leadInSamples + tailSamples
             normalizedLines.forEachIndexed { idx, arr ->
                 totalSamples += arr.size
-                if (idx < normalizedLines.lastIndex) totalSamples += pauseSamples
+                if (idx < normalizedLines.lastIndex) {
+                    totalSamples += pauseSamples
+                    if (idx == normalizedLines.lastIndex - 1) totalSamples += punchlineExtraPause
+                }
             }
             if (totalSamples <= sampleRate / 12) return false
 
@@ -199,7 +210,10 @@ object StudioVocalMaster {
                     mono[cursor + i] = s
                 }
                 cursor += arr.size
-                if (idx < normalizedLines.lastIndex) cursor += pauseSamples
+                if (idx < normalizedLines.lastIndex) {
+                    cursor += pauseSamples
+                    if (idx == normalizedLines.lastIndex - 1) cursor += punchlineExtraPause
+                }
             }
 
             // Step 1: DC / sub-rumble filter (55 Hz)
