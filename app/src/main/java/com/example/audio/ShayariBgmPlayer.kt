@@ -14,6 +14,7 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.max
+import kotlin.math.round
 import kotlin.math.sin
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +27,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private const val TAG = "ShayariBgmPlayer"
-private const val BGM_CACHE_DIR = "bgm_loops_v3"
+private const val BGM_CACHE_DIR = "bgm_loops_v5"
 private const val SAMPLE_RATE = 24_000
 private const val TWO_PI = 2.0 * PI
 
@@ -36,34 +37,52 @@ enum class ReelBgmTrack(
     val subtitleHi: String,
     val emoji: String
 ) {
+    SUFI_BANSURI_MEHFIL(
+        id = "sufi_bansuri_mehfil",
+        labelHi = "सूफ़ी बाँसुरी व तबला",
+        subtitleHi = "राग यमन बाँसुरी + हल्का तबला ताल",
+        emoji = "🪈"
+    ),
     TIKTOK_SAD_GUITAR(
         id = "tiktok_sad_guitar",
-        labelHi = "टिकटॉक दर्द गिटार",
-        subtitleHi = "सॉफ्ट अकॉस्टिक सैड गिटार धुन",
+        labelHi = "दर्द अकॉस्टिक गिटार",
+        subtitleHi = "साफ़ स्पैनिश गिटार फिंगरपिकिंग",
         emoji = "🎸"
-    ),
-    TIKTOK_VIRAL_PIANO(
-        id = "tiktok_viral_piano",
-        labelHi = "वायरल स्लो पियानो",
-        subtitleHi = "Slowed + Reverb इमोशनल पियानो",
-        emoji = "🎹"
     ),
     TIKTOK_ROMANTIC_STRINGS(
         id = "tiktok_romantic_strings",
-        labelHi = "इश्क़ रोमांटिक धुन",
-        subtitleHi = "रोमांटिक गिटार और सॉफ्ट वायलिन",
+        labelHi = "इश्क़ रोमांटिक वायलिन",
+        subtitleHi = "खिलता मेजर स्केल वायलिन व हार्प",
         emoji = "🎻"
+    ),
+    RAINY_NIGHT_SITAR(
+        id = "rainy_night_sitar",
+        labelHi = "बारिश और सितार",
+        subtitleHi = "रिमझिम बारिश + राग भैरवी सितार",
+        emoji = "🌧️"
+    ),
+    TIKTOK_VIRAL_PIANO(
+        id = "tiktok_viral_piano",
+        labelHi = "स्लो इमोशनल पियानो",
+        subtitleHi = "Slowed + Reverb ग्रैंड पियानो",
+        emoji = "🎹"
     ),
     TIKTOK_LOFI_BEAT(
         id = "tiktok_lofi_beat",
-        labelHi = "टिकटॉक लो-फ़ाई बीट",
-        subtitleHi = "मखमली रोड्स + हल्का लो-फ़ाई बेस",
+        labelHi = "चिल लो-फ़ाई रोड्स",
+        subtitleHi = "मॉडर्न रोड्स + सॉफ्ट लो-फ़ाई बीट",
         emoji = "🎧"
+    ),
+    CINEMATIC_CELLO_DRAMA(
+        id = "cinematic_cello_drama",
+        labelHi = "शायरी सेलो ऑर्केस्ट्रा",
+        subtitleHi = "गहरा सेलो और दिल की धड़कन",
+        emoji = "🎼"
     ),
     TIKTOK_ATTITUDE_BEAT(
         id = "tiktok_attitude_beat",
-        labelHi = "एटीट्यूड स्वैग बीट",
-        subtitleHi = "क्लीन 808 बेस और डार्क रिफ़",
+        labelHi = "एटीट्यूड स्वैग ट्रैप",
+        subtitleHi = "पंच 808 बेस + हाई-हैट व डार्क रिफ़",
         emoji = "🔥"
     ),
     OFF(
@@ -77,10 +96,10 @@ enum class ReelBgmTrack(
         fun fromId(id: String?): ReelBgmTrack {
             return when (id) {
                 "emotional_piano" -> TIKTOK_VIRAL_PIANO
-                "dard_strings" -> TIKTOK_SAD_GUITAR
-                "rain_lofi" -> TIKTOK_LOFI_BEAT
-                "sufi_flute" -> TIKTOK_ROMANTIC_STRINGS
-                else -> entries.firstOrNull { it.id == id } ?: TIKTOK_SAD_GUITAR
+                "dard_strings" -> CINEMATIC_CELLO_DRAMA
+                "rain_lofi" -> RAINY_NIGHT_SITAR
+                "sufi_flute" -> SUFI_BANSURI_MEHFIL
+                else -> entries.firstOrNull { it.id == id } ?: SUFI_BANSURI_MEHFIL
             }
         }
 
@@ -93,54 +112,82 @@ enum class ReelBgmTrack(
             pageIndex: Int,
             stableKey: String
         ): ReelBgmTrack {
-            val pool = when (ShayariCategory.fromId(categoryId)) {
-                ShayariCategory.DARD,
-                ShayariCategory.BEWAFAI,
-                ShayariCategory.AANSU,
-                ShayariCategory.TANHAI,
-                ShayariCategory.MAUT_JANAZA -> listOf(
+            // Broad contrasting musical styles per mood, rotated strictly by pageIndex so
+            // consecutive Reels ALWAYS change instrument, scale (सुर / राग), and rhythm!
+            val cat = ShayariCategory.fromId(categoryId)
+            val pool = when {
+                cat == ShayariCategory.DARD ||
+                    cat == ShayariCategory.BEWAFAI ||
+                    cat == ShayariCategory.AANSU ||
+                    cat == ShayariCategory.TANHAI ||
+                    cat == ShayariCategory.MAUT_JANAZA -> listOf(
+                    RAINY_NIGHT_SITAR,
                     TIKTOK_SAD_GUITAR,
+                    CINEMATIC_CELLO_DRAMA,
                     TIKTOK_VIRAL_PIANO,
-                    TIKTOK_LOFI_BEAT
+                    SUFI_BANSURI_MEHFIL
                 )
 
-                ShayariCategory.MOHABBAT,
-                ShayariCategory.ROMANTIC,
-                ShayariCategory.SECRET_LOVE,
-                ShayariCategory.TAREEF -> listOf(
+                cat == ShayariCategory.MOHABBAT ||
+                    cat == ShayariCategory.ROMANTIC ||
+                    cat == ShayariCategory.SECRET_LOVE ||
+                    cat == ShayariCategory.TAREEF -> listOf(
                     TIKTOK_ROMANTIC_STRINGS,
-                    TIKTOK_VIRAL_PIANO,
+                    SUFI_BANSURI_MEHFIL,
                     TIKTOK_LOFI_BEAT,
+                    TIKTOK_SAD_GUITAR,
+                    TIKTOK_VIRAL_PIANO
+                )
+
+                cat == ShayariCategory.ATTITUDE ||
+                    cat == ShayariCategory.HAUSLA ||
+                    cat == ShayariCategory.DESHPREM -> listOf(
+                    TIKTOK_ATTITUDE_BEAT,
+                    CINEMATIC_CELLO_DRAMA,
+                    TIKTOK_LOFI_BEAT,
+                    SUFI_BANSURI_MEHFIL
+                )
+
+                cat == ShayariCategory.KHUDA_RAB ||
+                    cat == ShayariCategory.ZINDAGI ||
+                    cat == ShayariCategory.WAQT ||
+                    cat == ShayariCategory.MUSAFIR -> listOf(
+                    SUFI_BANSURI_MEHFIL,
+                    RAINY_NIGHT_SITAR,
+                    CINEMATIC_CELLO_DRAMA,
                     TIKTOK_SAD_GUITAR
                 )
 
-                ShayariCategory.ATTITUDE,
-                ShayariCategory.HAUSLA,
-                ShayariCategory.DESHPREM -> listOf(
+                cat.isJokeCategory || cat == ShayariCategory.GEN_Z || cat == ShayariCategory.NIBBA_NIBBI -> listOf(
+                    TIKTOK_LOFI_BEAT,
+                    TIKTOK_ROMANTIC_STRINGS,
                     TIKTOK_ATTITUDE_BEAT,
-                    TIKTOK_LOFI_BEAT
+                    SUFI_BANSURI_MEHFIL
                 )
 
                 else -> listOf(
-                    TIKTOK_LOFI_BEAT,
+                    SUFI_BANSURI_MEHFIL,
                     TIKTOK_SAD_GUITAR,
+                    TIKTOK_ROMANTIC_STRINGS,
+                    RAINY_NIGHT_SITAR,
+                    TIKTOK_LOFI_BEAT,
+                    CINEMATIC_CELLO_DRAMA,
                     TIKTOK_VIRAL_PIANO,
-                    TIKTOK_ROMANTIC_STRINGS
+                    TIKTOK_ATTITUDE_BEAT
                 )
             }
-            val pick = abs(pageIndex + (stableKey.hashCode() and 0x7)) % pool.size
+            val pick = abs(pageIndex) % pool.size
             return pool[pick]
         }
     }
 }
 
 /**
- * Zero-Noise Studio-Normalized TikTok/Reels Background Music Player.
+ * Multi-Genre Studio-Normalized Reels Background Music Player.
  *
- * Pre-renders each seamless 16-second stereo WAV loop ONCE offline with exact peak normalization
- * (-7.5 dBFS — mathematically impossible to clip or distort), circular reverb tail wrap-around
- * (zero loop-seam click), and plays it through Android's native hardware-mixed MediaPlayer
- * (zero AudioTrack CPU underruns/crackling even on virtual emulators).
+ * Pre-renders each seamless stereo WAV loop ONCE offline with distinct Indian & Western
+ * scales, percussion/melodic timbres, circular reverb tail wrap-around (zero loop-seam click),
+ * and plays through Android's hardware-mixed MediaPlayer.
  */
 class ShayariBgmPlayer(context: Context) {
     private val appContext = context.applicationContext
@@ -148,12 +195,19 @@ class ShayariBgmPlayer(context: Context) {
 
     private var mediaPlayer: MediaPlayer? = null
     private var loadedTrack: ReelBgmTrack? = null
-    private var desiredTrack: ReelBgmTrack = ReelBgmTrack.TIKTOK_SAD_GUITAR
+    private var desiredTrack: ReelBgmTrack = ReelBgmTrack.SUFI_BANSURI_MEHFIL
     private var isPlayingDesired: Boolean = false
     private var isDucked: Boolean = false
-    private var currentVolume: Float = 0.78f
+    private var currentVolume: Float = 0.68f
     private var switchJob: Job? = null
     private var fadeJob: Job? = null
+
+    fun prewarmTrack(track: ReelBgmTrack) {
+        if (track == ReelBgmTrack.OFF) return
+        scope.launch(Dispatchers.Default) {
+            BgmLoopRenderer.getOrRenderLoopWav(appContext, track)
+        }
+    }
 
     fun setTrack(track: ReelBgmTrack) {
         if (desiredTrack == track) return
@@ -206,21 +260,21 @@ class ShayariBgmPlayer(context: Context) {
     }
 
     private fun targetVolume(): Float {
-        // Warm studio glue: soft music gently hugs the Shayar's voice instead of exposing dry silence
-        return if (isDucked) 0.32f else 0.72f
+        // Gentle cinematic ducking so every soft human breath, sigh, and vocal nuance shines clearly above the BGM
+        return if (isDucked) 0.22f else 0.68f
     }
 
     private fun smoothFadeTo(target: Float) {
         fadeJob?.cancel()
         fadeJob = scope.launch {
-            val steps = 14
+            val steps = 12
             val start = currentVolume
             for (step in 1..steps) {
                 if (!isActive) return@launch
                 val v = start + (target - start) * (step.toFloat() / steps.toFloat())
                 currentVolume = v
                 runCatching { mediaPlayer?.setVolume(v, v) }
-                delay(23L)
+                delay(20L)
             }
         }
     }
@@ -293,10 +347,8 @@ class ShayariBgmPlayer(context: Context) {
 }
 
 /**
- * Pure, artifact-free offline stereo WAV loop synthesizer for the 5 TikTok-style BGM tracks.
- * Every track uses pure smooth additive waveforms, circular reverb tail wrap-around,
- * gentle warm low-pass polish, and exact peak normalization so there is NEVER clipping,
- * crackling, white noise, or loop-boundary popping.
+ * Pure, click-free offline stereo WAV loop synthesizer for 8 genuinely distinct musical genres,
+ * scales (Indian Raags + Major + Minor + Jazz + Phrygian Trap), rhythms, and instruments.
  */
 private object BgmLoopRenderer {
 
@@ -317,7 +369,6 @@ private object BgmLoopRenderer {
             return runCatching {
                 val (left, right) = renderTrackBuffers(track)
                 val tmp = File(dir, "${track.id}_24k.wav.tmp")
-                // Normalize cleanly to -1.5 dBFS (zero clipping, full warm loudness on phone speakers)
                 writeNormalizedStereoWav(tmp, left, right, targetPeak = 0.84f)
                 if (!tmp.renameTo(target)) {
                     target.writeBytes(tmp.readBytes())
@@ -332,73 +383,196 @@ private object BgmLoopRenderer {
 
     private fun renderTrackBuffers(track: ReelBgmTrack): Pair<FloatArray, FloatArray> {
         val bpm = when (track) {
-            ReelBgmTrack.TIKTOK_SAD_GUITAR -> 74.0
-            ReelBgmTrack.TIKTOK_VIRAL_PIANO -> 66.0
-            ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS -> 70.0
-            ReelBgmTrack.TIKTOK_LOFI_BEAT -> 76.0
-            ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 88.0
+            ReelBgmTrack.SUFI_BANSURI_MEHFIL -> 82.0
+            ReelBgmTrack.TIKTOK_SAD_GUITAR -> 72.0
+            ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS -> 78.0
+            ReelBgmTrack.RAINY_NIGHT_SITAR -> 68.0
+            ReelBgmTrack.TIKTOK_VIRAL_PIANO -> 60.0
+            ReelBgmTrack.TIKTOK_LOFI_BEAT -> 86.0
+            ReelBgmTrack.CINEMATIC_CELLO_DRAMA -> 64.0
+            ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 98.0
             ReelBgmTrack.OFF -> 72.0
         }
-        // 4 full bars = 16 quarter-note beats (~12-15s seamless phrase) — renders 3x faster!
         val beatSec = 60.0 / bpm
         val eighthSec = beatSec * 0.5
         val totalEighths = 32
         val loopSamples = (totalEighths * eighthSec * SAMPLE_RATE).toInt()
-        // Extra 3.0s tail folded seamlessly onto start of loop for click-free circular looping
-        val tailSamples = (3.0 * SAMPLE_RATE).toInt()
+        val tailSamples = (2.8 * SAMPLE_RATE).toInt()
         val bufL = FloatArray(loopSamples + tailSamples)
         val bufR = FloatArray(loopSamples + tailSamples)
+
+        // Pre-layer authentic ambient/drone beds for distinct Indian classical tracks
+        when (track) {
+            ReelBgmTrack.SUFI_BANSURI_MEHFIL -> {
+                addTanpuraDrone(bufL, bufR, loopSamples, rootFreq = 146.83, amp = 0.16f) // D3 Sa-Pa Tanpura
+            }
+            ReelBgmTrack.RAINY_NIGHT_SITAR -> {
+                addSoftRainBed(bufL, bufR, loopSamples, amp = 0.14f)
+                addTanpuraDrone(bufL, bufR, loopSamples, rootFreq = 130.81, amp = 0.11f) // C3 Bhairavi drone
+            }
+            else -> Unit
+        }
 
         for (step in 0 until totalEighths) {
             val startSample = (step * eighthSec * SAMPLE_RATE).toInt()
             val bar = (step / 8) % 4
-            val phraseHalf = step / 32
             val beat = step % 8
 
             when (track) {
-                ReelBgmTrack.TIKTOK_SAD_GUITAR -> {
-                    // Iconic TikTok Sad Acoustic Guitar: Am -> F -> C -> G
-                    val chord = when (bar) {
-                        0 -> doubleArrayOf(110.00, 164.81, 220.00, 261.63, 329.63)
-                        1 -> doubleArrayOf(87.31, 174.61, 220.00, 261.63, 349.23)
-                        2 -> doubleArrayOf(130.81, 196.00, 261.63, 329.63, 392.00)
-                        else -> doubleArrayOf(98.00, 196.00, 246.94, 293.66, 392.00)
+                ReelBgmTrack.SUFI_BANSURI_MEHFIL -> {
+                    // Authentic Raag Yaman (D E F# G# A B C# D) Bansuri + Soft Keherwa Tabla Groove
+                    // Tabla Bayan (low Dha/Ghe) + Dayan (crisp Na/Tin)
+                    when (beat) {
+                        0 -> {
+                            addTablaBayan(bufL, bufR, startSample, startFreq = 132.0, endFreq = 86.0, amp = 0.34f)
+                            addTablaDayan(bufL, bufR, startSample, freq = 293.66, amp = 0.22f)
+                        }
+                        2 -> addTablaDayan(bufL, bufR, startSample, freq = 329.63, amp = 0.16f)
+                        3 -> addTablaBayan(bufL, bufR, startSample, startFreq = 115.0, endFreq = 92.0, amp = 0.24f)
+                        4 -> addTablaDayan(bufL, bufR, startSample, freq = 293.66, amp = 0.20f)
+                        6 -> {
+                            addTablaBayan(bufL, bufR, startSample, startFreq = 128.0, endFreq = 88.0, amp = 0.28f)
+                            addTablaDayan(bufL, bufR, startSample, freq = 369.99, amp = 0.14f)
+                        }
                     }
-                    if (beat == 0) {
-                        addWarmPadNote(bufL, bufR, startSample, chord[0], beatSec * 4.0, amp = 0.24f, pan = 0f)
-                        addWarmPadNote(bufL, bufR, startSample, chord[2], beatSec * 3.8, amp = 0.10f, pan = -0.25f)
+                    // Expressive Raag Yaman Bansuri phrases with authentic Indian meend glides
+                    val bansuriPhrase: Pair<Double, Double>? = when {
+                        bar == 0 && beat == 0 -> 369.99 to beatSec * 1.6 // Ga (F#4)
+                        bar == 0 && beat == 3 -> 415.30 to beatSec * 1.1 // Teevra Ma (G#4)
+                        bar == 0 && beat == 5 -> 440.00 to beatSec * 1.7 // Pa (A4)
+                        bar == 1 && beat == 1 -> 493.88 to beatSec * 1.5 // Dha (B4)
+                        bar == 1 && beat == 4 -> 554.37 to beatSec * 1.8 // Ni (C#5)
+                        bar == 2 && beat == 0 -> 587.33 to beatSec * 1.6 // Upper Sa (D5)
+                        bar == 2 && beat == 4 -> 493.88 to beatSec * 1.6 // Dha (B4)
+                        bar == 3 && beat == 0 -> 440.00 to beatSec * 1.5 // Pa (A4)
+                        bar == 3 && beat == 3 -> 369.99 to beatSec * 1.3 // Ga (F#4)
+                        bar == 3 && beat == 6 -> 329.63 to beatSec * 1.2 // Re (E4)
+                        else -> null
+                    }
+                    if (bansuriPhrase != null) {
+                        addBansuriNote(
+                            bufL, bufR, startSample,
+                            freq = bansuriPhrase.first,
+                            durSec = bansuriPhrase.second,
+                            amp = 0.30f,
+                            pan = if (bar % 2 == 0) 0.12f else -0.10f
+                        )
+                    }
+                }
+
+                ReelBgmTrack.TIKTOK_SAD_GUITAR -> {
+                    // Clean Spanish/Bollywood Acoustic Guitar Fingerpicking (Em -> C -> Am -> B7) — bright, crisp, zero muddy pad
+                    val chord = when (bar) {
+                        0 -> doubleArrayOf(82.41, 164.81, 246.94, 329.63, 392.00)  // Em
+                        1 -> doubleArrayOf(130.81, 196.00, 261.63, 329.63, 392.00) // C
+                        2 -> doubleArrayOf(110.00, 164.81, 220.00, 261.63, 329.63) // Am
+                        else -> doubleArrayOf(123.47, 185.00, 246.94, 311.13, 369.99) // B7
                     }
                     val fingerIdx = when (beat) {
-                        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 4; 4 -> 3; 5 -> 2; 6 -> 3; else -> 1
+                        0 -> 0; 1 -> 2; 2 -> 3; 3 -> 4; 4 -> 2; 5 -> 3; 6 -> 4; else -> 1
                     }
-                    addNylonGuitarNote(
+                    addCrispAcousticGuitarNote(
                         bufL, bufR, startSample,
                         freq = chord[fingerIdx],
-                        durSec = 2.6,
-                        amp = if (beat == 0) 0.34f else 0.24f,
-                        pan = -0.22f + fingerIdx * 0.11f
+                        durSec = 2.1,
+                        amp = if (beat == 0) 0.36f else 0.24f,
+                        pan = -0.24f + fingerIdx * 0.12f
                     )
+                    // Expressive soulful high Spanish guitar hook
                     val lead: Double? = when {
-                        bar == 0 && beat == 0 -> 523.25
-                        bar == 0 && beat == 3 -> 493.88
-                        bar == 0 && beat == 6 -> 440.00
-                        bar == 1 && beat == 0 -> 440.00
-                        bar == 1 && beat == 4 -> 392.00
-                        bar == 2 && beat == 0 -> 523.25
-                        bar == 2 && beat == 3 -> 587.33
-                        bar == 2 && beat == 5 -> 659.25
-                        bar == 3 && beat == 0 -> 587.33
-                        bar == 3 && beat == 4 -> 493.88
-                        bar == 3 && beat == 6 && phraseHalf == 1 -> 440.00
+                        bar == 0 && beat == 2 -> 659.25
+                        bar == 0 && beat == 5 -> 587.33
+                        bar == 1 && beat == 0 -> 523.25
+                        bar == 1 && beat == 4 -> 493.88
+                        bar == 2 && beat == 2 -> 523.25
+                        bar == 2 && beat == 5 -> 493.88
+                        bar == 3 && beat == 0 -> 493.88
+                        bar == 3 && beat == 4 -> 466.16
                         else -> null
                     }
                     if (lead != null) {
-                        addNylonGuitarNote(bufL, bufR, startSample, lead, durSec = 2.8, amp = 0.20f, pan = 0.22f)
+                        addCrispAcousticGuitarNote(bufL, bufR, startSample, lead, durSec = 2.4, amp = 0.25f, pan = 0.24f)
+                    }
+                }
+
+                ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS -> {
+                    // BRIGHT, UPLIFTING G MAJOR Bollywood Romance (G -> D -> Em7 -> Cmaj7) + Sparkling Harp
+                    val chord = when (bar) {
+                        0 -> doubleArrayOf(196.00, 246.94, 293.66, 392.00, 493.88) // G maj
+                        1 -> doubleArrayOf(146.83, 220.00, 293.66, 369.99, 440.00) // D maj
+                        2 -> doubleArrayOf(164.81, 246.94, 293.66, 392.00, 493.88) // Em7
+                        else -> doubleArrayOf(130.81, 196.00, 246.94, 329.63, 392.00) // Cmaj7
+                    }
+                    if (beat == 0) {
+                        addWarmPadNote(bufL, bufR, startSample, chord[0] * 0.5, durSec = beatSec * 3.8, amp = 0.16f, pan = -0.16f)
+                    }
+                    // Sparkling rising major harp shimmer
+                    val harpIdx = when (beat) {
+                        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3; 4 -> 4; 5 -> 3; 6 -> 2; else -> 4
+                    }
+                    addHarpPluckNote(
+                        bufL, bufR, startSample,
+                        freq = chord[harpIdx],
+                        durSec = 2.0,
+                        amp = 0.18f,
+                        pan = -0.28f + harpIdx * 0.14f
+                    )
+                    // Soaring joyful G-major romantic violin theme
+                    val violin: Pair<Double, Double>? = when {
+                        bar == 0 && beat == 0 -> 587.33 to beatSec * 1.8 // D5
+                        bar == 0 && beat == 4 -> 659.25 to beatSec * 1.0 // E5
+                        bar == 0 && beat == 6 -> 783.99 to beatSec * 1.2 // G5
+                        bar == 1 && beat == 0 -> 739.99 to beatSec * 2.0 // F#5
+                        bar == 1 && beat == 4 -> 587.33 to beatSec * 1.8 // D5
+                        bar == 2 && beat == 0 -> 659.25 to beatSec * 1.8 // E5
+                        bar == 2 && beat == 4 -> 783.99 to beatSec * 1.8 // G5
+                        bar == 3 && beat == 0 -> 739.99 to beatSec * 1.4 // F#5
+                        bar == 3 && beat == 3 -> 659.25 to beatSec * 1.4 // E5
+                        bar == 3 && beat == 6 -> 587.33 to beatSec * 1.2 // D5
+                        else -> null
+                    }
+                    if (violin != null) {
+                        addSilkyViolinNote(bufL, bufR, startSample, violin.first, violin.second, amp = 0.28f, pan = 0.14f)
+                    }
+                }
+
+                ReelBgmTrack.RAINY_NIGHT_SITAR -> {
+                    // Melancholic Raag Bhairavi (C Db Eb F G Ab Bb C) Sitar & Santoor in evening rain
+                    val sitarNote: Double? = when {
+                        bar == 0 && beat == 0 -> 311.13 // Komal Ga (Eb4)
+                        bar == 0 && beat == 2 -> 277.18 // Komal Re (Db4)
+                        bar == 0 && beat == 4 -> 261.63 // Sa (C4)
+                        bar == 0 && beat == 6 -> 349.23 // Ma (F4)
+                        bar == 1 && beat == 0 -> 392.00 // Pa (G4)
+                        bar == 1 && beat == 3 -> 415.30 // Komal Dha (Ab4)
+                        bar == 1 && beat == 5 -> 392.00 // Pa (G4)
+                        bar == 2 && beat == 0 -> 466.16 // Komal Ni (Bb4)
+                        bar == 2 && beat == 2 -> 523.25 // Sa (C5)
+                        bar == 2 && beat == 5 -> 415.30 // Komal Dha (Ab4)
+                        bar == 3 && beat == 0 -> 392.00 // Pa (G4)
+                        bar == 3 && beat == 2 -> 349.23 // Ma (F4)
+                        bar == 3 && beat == 4 -> 311.13 // Komal Ga (Eb4)
+                        bar == 3 && beat == 6 -> 277.18 // Komal Re (Db4)
+                        else -> null
+                    }
+                    if (sitarNote != null) {
+                        addSitarPluckNote(
+                            bufL, bufR, startSample,
+                            freq = sitarNote,
+                            durSec = 2.6,
+                            amp = 0.30f,
+                            pan = if (beat % 2 == 0) -0.16f else 0.18f
+                        )
+                    }
+                    // Subtle shimmering Santoor response on off-beats
+                    if (beat == 1 || beat == 7) {
+                        val santoor = if (bar % 2 == 0) 523.25 else 392.00
+                        addHarpPluckNote(bufL, bufR, startSample, santoor, durSec = 1.6, amp = 0.13f, pan = 0.25f)
                     }
                 }
 
                 ReelBgmTrack.TIKTOK_VIRAL_PIANO -> {
-                    // Viral TikTok Slowed + Reverb Felt Grand Piano: Dm -> Bb -> F -> C
+                    // Slowed + Reverb Felt Grand Piano (Dm -> Bb -> F -> C) — spacious and ethereal
                     val chord = when (bar) {
                         0 -> doubleArrayOf(146.83, 220.00, 293.66, 349.23, 440.00)
                         1 -> doubleArrayOf(116.54, 174.61, 233.08, 293.66, 349.23)
@@ -406,150 +580,131 @@ private object BgmLoopRenderer {
                         else -> doubleArrayOf(130.81, 196.00, 261.63, 329.63, 392.00)
                     }
                     if (beat == 0) {
-                        addFeltPianoNote(bufL, bufR, startSample, chord[0] * 0.5, durSec = 3.8, amp = 0.26f, pan = -0.20f)
-                        addFeltPianoNote(bufL, bufR, startSample, chord[0], durSec = 3.6, amp = 0.22f, pan = -0.10f)
-                        addWarmPadNote(bufL, bufR, startSample, chord[1], durSec = beatSec * 4.0, amp = 0.13f, pan = 0.15f)
+                        addFeltPianoNote(bufL, bufR, startSample, chord[0] * 0.5, durSec = 4.2, amp = 0.30f, pan = -0.20f)
+                        addFeltPianoNote(bufL, bufR, startSample, chord[0], durSec = 3.8, amp = 0.22f, pan = -0.10f)
                     }
-                    val arpIdx = when (beat) {
-                        0 -> 2; 1 -> 3; 2 -> 4; 3 -> 3; 4 -> 2; 5 -> 3; 6 -> 4; else -> 2
+                    if (beat == 0 || beat == 2 || beat == 4 || beat == 6) {
+                        val idx = (beat / 2 + 1).coerceAtMost(chord.lastIndex)
+                        addFeltPianoNote(bufL, bufR, startSample, chord[idx], durSec = 3.2, amp = 0.18f, pan = -0.15f + idx * 0.08f)
                     }
-                    addFeltPianoNote(
-                        bufL, bufR, startSample,
-                        freq = chord[arpIdx],
-                        durSec = 2.9,
-                        amp = if (beat == 0 || beat == 4) 0.20f else 0.14f,
-                        pan = -0.18f + arpIdx * 0.09f
-                    )
                     val melody: Double? = when {
-                        bar == 0 && beat == 0 -> 587.33
-                        bar == 0 && beat == 2 -> 659.25
-                        bar == 0 && beat == 4 -> 698.46
-                        bar == 0 && beat == 6 -> 659.25
-                        bar == 1 && beat == 0 -> 587.33
-                        bar == 1 && beat == 3 -> 523.25
+                        bar == 0 && beat == 1 -> 587.33
+                        bar == 0 && beat == 5 -> 698.46
+                        bar == 1 && beat == 1 -> 659.25
                         bar == 1 && beat == 5 -> 587.33
-                        bar == 2 && beat == 0 -> 698.46
-                        bar == 2 && beat == 2 -> 659.25
-                        bar == 2 && beat == 4 -> 587.33
-                        bar == 2 && beat == 6 -> 523.25
-                        bar == 3 && beat == 0 -> 659.25
-                        bar == 3 && beat == 4 -> 587.33
-                        bar == 3 && beat == 6 && phraseHalf == 1 -> 523.25
+                        bar == 2 && beat == 1 -> 698.46
+                        bar == 2 && beat == 5 -> 523.25
+                        bar == 3 && beat == 1 -> 659.25
+                        bar == 3 && beat == 5 -> 587.33
                         else -> null
                     }
                     if (melody != null) {
-                        addFeltPianoNote(bufL, bufR, startSample, melody, durSec = 3.1, amp = 0.24f, pan = 0.20f)
-                    }
-                }
-
-                ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS -> {
-                    // Romantic Ishq Guitar + Expressive Silky Violin: Em -> C -> G -> D
-                    val chord = when (bar) {
-                        0 -> doubleArrayOf(164.81, 246.94, 329.63, 392.00, 493.88)
-                        1 -> doubleArrayOf(130.81, 196.00, 261.63, 329.63, 392.00)
-                        2 -> doubleArrayOf(196.00, 246.94, 293.66, 392.00, 493.88)
-                        else -> doubleArrayOf(146.83, 220.00, 293.66, 369.99, 440.00)
-                    }
-                    if (beat == 0) {
-                        addWarmPadNote(bufL, bufR, startSample, chord[0] * 0.5, durSec = beatSec * 4.0, amp = 0.22f, pan = -0.15f)
-                        addWarmPadNote(bufL, bufR, startSample, chord[1], durSec = beatSec * 4.0, amp = 0.14f, pan = 0.20f)
-                    }
-                    val gIdx = when (beat) {
-                        0 -> 0; 1 -> 1; 2 -> 2; 3 -> 3; 4 -> 4; 5 -> 3; 6 -> 2; else -> 1
-                    }
-                    addNylonGuitarNote(
-                        bufL, bufR, startSample,
-                        freq = chord[gIdx],
-                        durSec = 2.2,
-                        amp = 0.18f,
-                        pan = -0.24f + gIdx * 0.10f
-                    )
-                    // Soaring warm legato violin phrases (smooth attack/release, gentle safe vibrato)
-                    val violinSpec: Pair<Double, Double>? = when {
-                        bar == 0 && beat == 0 -> 493.88 to beatSec * 2.0
-                        bar == 0 && beat == 4 -> 587.33 to beatSec * 1.1
-                        bar == 0 && beat == 6 -> 659.25 to beatSec * 1.2
-                        bar == 1 && beat == 0 -> 587.33 to beatSec * 2.0
-                        bar == 1 && beat == 4 -> 523.25 to beatSec * 2.0
-                        bar == 2 && beat == 0 -> 493.88 to beatSec * 1.6
-                        bar == 2 && beat == 3 -> 587.33 to beatSec * 1.6
-                        bar == 2 && beat == 6 -> 739.99 to beatSec * 1.2
-                        bar == 3 && beat == 0 -> 659.25 to beatSec * 2.0
-                        bar == 3 && beat == 4 -> 587.33 to beatSec * 2.0
-                        else -> null
-                    }
-                    if (violinSpec != null) {
-                        addSilkyViolinNote(bufL, bufR, startSample, violinSpec.first, violinSpec.second, amp = 0.22f, pan = 0.12f)
+                        addFeltPianoNote(bufL, bufR, startSample, melody, durSec = 3.4, amp = 0.26f, pan = 0.22f)
                     }
                 }
 
                 ReelBgmTrack.TIKTOK_LOFI_BEAT -> {
-                    // Clean Velvet TikTok Lo-Fi Rhodes + Warm 808 Sub (zero static/vinyl crackle!)
+                    // Modern Jazzy Neo-Soul Lo-Fi (Fmaj7 -> Em7 -> Dm9 -> Cmaj7) + Crisp Snare & Hi-Hat Groove
                     val chord = when (bar) {
-                        0 -> doubleArrayOf(164.81, 196.00, 246.94, 293.66, 369.99) // Em9
-                        1 -> doubleArrayOf(130.81, 196.00, 246.94, 329.63, 392.00) // Cmaj7
-                        2 -> doubleArrayOf(110.00, 164.81, 220.00, 261.63, 329.63) // Am7
-                        else -> doubleArrayOf(123.47, 185.00, 246.94, 311.13, 369.99) // B7
+                        0 -> doubleArrayOf(174.61, 220.00, 261.63, 329.63) // Fmaj7
+                        1 -> doubleArrayOf(164.81, 196.00, 246.94, 293.66) // Em7
+                        2 -> doubleArrayOf(146.83, 220.00, 261.63, 329.63) // Dm9
+                        else -> doubleArrayOf(130.81, 196.00, 246.94, 329.63) // Cmaj7
                     }
                     if (beat == 0) {
                         for (k in chord.indices) {
-                            addRhodesNote(bufL, bufR, startSample, chord[k], durSec = beatSec * 3.4, amp = 0.14f, pan = -0.25f + k * 0.12f)
+                            addRhodesNote(bufL, bufR, startSample, chord[k], durSec = beatSec * 3.0, amp = 0.15f, pan = -0.24f + k * 0.16f)
                         }
-                        addCleanSub808(bufL, bufR, startSample, startFreq = chord[0] * 0.5, endFreq = chord[0] * 0.5, durSec = beatSec * 2.5, amp = 0.28f)
+                        addCleanSub808(bufL, bufR, startSample, chord[0] * 0.5, chord[0] * 0.5, durSec = beatSec * 1.8, amp = 0.26f)
                     } else if (beat == 5) {
                         for (k in 1..3) {
-                            addRhodesNote(bufL, bufR, startSample, chord[k], durSec = beatSec * 1.5, amp = 0.10f, pan = 0.10f)
+                            addRhodesNote(bufL, bufR, startSample, chord[k], durSec = beatSec * 1.2, amp = 0.11f, pan = 0.12f)
                         }
                     }
-                    // Gentle deep warm sub-kick pulse (smooth pure sine drop, zero click!)
-                    if (beat == 0 || beat == 3 || (bar % 2 == 1 && beat == 6)) {
-                        addCleanSub808(bufL, bufR, startSample, startFreq = 105.0, endFreq = 46.0, durSec = 0.26, amp = 0.26f)
+                    // Authentic chill lo-fi drum pattern: kick on 0, 5; soft brush snare on 2, 6; ticks on every eighth
+                    if (beat == 0 || beat == 5) {
+                        addCleanSub808(bufL, bufR, startSample, startFreq = 112.0, endFreq = 48.0, durSec = 0.22, amp = 0.30f)
                     }
-                    val bell: Double? = when {
-                        bar == 0 && beat == 2 -> 659.25
-                        bar == 0 && beat == 6 -> 587.33
-                        bar == 1 && beat == 2 -> 493.88
-                        bar == 1 && beat == 5 -> 587.33
-                        bar == 2 && beat == 2 -> 523.25
-                        bar == 2 && beat == 6 -> 493.88
-                        bar == 3 && beat == 2 -> 440.00
-                        bar == 3 && beat == 6 -> 493.88
+                    if (beat == 2 || beat == 6) {
+                        addCrispSnareClap(bufL, bufR, startSample, amp = 0.17f, bright = false)
+                    }
+                    addSoftHiHat(bufL, bufR, startSample, amp = if (beat % 2 == 0) 0.08f else 0.045f, pan = 0.18f)
+                }
+
+                ReelBgmTrack.CINEMATIC_CELLO_DRAMA -> {
+                    // Deep Dramatic Solo Cello + Sweeping Orchestral Swells + Timpani Heartbeat (Cm -> Ab -> Fm -> G)
+                    val root = when (bar) {
+                        0 -> 130.81 // C3
+                        1 -> 103.83 // Ab2
+                        2 -> 87.31  // F2
+                        else -> 98.00 // G2
+                    }
+                    val fifth = root * 1.5
+                    if (beat == 0) {
+                        addWarmPadNote(bufL, bufR, startSample, root, durSec = beatSec * 4.2, amp = 0.24f, pan = -0.20f)
+                        addWarmPadNote(bufL, bufR, startSample, fifth, durSec = beatSec * 4.2, amp = 0.18f, pan = 0.20f)
+                    }
+                    // Dramatic double heartbeat timpani pulse (lub-dub)
+                    if (beat == 0 || beat == 1 || beat == 4) {
+                        addCleanSub808(
+                            bufL, bufR, startSample,
+                            startFreq = if (beat == 1) 74.0 else 92.0,
+                            endFreq = 46.0,
+                            durSec = 0.38,
+                            amp = if (beat == 0) 0.30f else 0.18f
+                        )
+                    }
+                    // Deep expressive solo Cello melody
+                    val cello: Pair<Double, Double>? = when {
+                        bar == 0 && beat == 0 -> 196.00 to beatSec * 2.2 // G3
+                        bar == 0 && beat == 5 -> 233.08 to beatSec * 1.6 // Bb3
+                        bar == 1 && beat == 0 -> 207.65 to beatSec * 2.4 // Ab3
+                        bar == 1 && beat == 5 -> 196.00 to beatSec * 1.6 // G3
+                        bar == 2 && beat == 0 -> 174.61 to beatSec * 2.2 // F3
+                        bar == 2 && beat == 4 -> 207.65 to beatSec * 1.8 // Ab3
+                        bar == 3 && beat == 0 -> 196.00 to beatSec * 2.4 // G3
+                        bar == 3 && beat == 5 -> 146.83 to beatSec * 1.5 // D3
                         else -> null
                     }
-                    if (bell != null) {
-                        addRhodesNote(bufL, bufR, startSample, bell, durSec = 1.6, amp = 0.14f, pan = 0.24f)
+                    if (cello != null) {
+                        addRichCelloNote(bufL, bufR, startSample, cello.first, cello.second, amp = 0.32f, pan = 0f)
                     }
                 }
 
                 ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> {
-                    // Clean Punchy TikTok Attitude 808 + Dark Plucked Hook (Fm -> Db -> Bbm -> C)
+                    // Hard-Hitting 98 BPM Dark Trap Attitude (F Phrygian: F Gb Ab Bb C Db Eb)
                     val bassRoot = when (bar) {
                         0 -> 87.31  // F2
-                        1 -> 69.30  // Db2
-                        2 -> 116.54 // Bb2
+                        1 -> 92.50  // Gb2 (Phrygian tension!)
+                        2 -> 69.30  // Db2
                         else -> 65.41 // C2
                     }
-                    val riff = when (bar) {
-                        0 -> doubleArrayOf(349.23, 415.30, 523.25, 415.30)
-                        1 -> doubleArrayOf(277.18, 349.23, 415.30, 349.23)
-                        2 -> doubleArrayOf(233.08, 277.18, 349.23, 277.18)
-                        else -> doubleArrayOf(261.63, 329.63, 392.00, 523.25)
+                    val darkRiff = when (bar) {
+                        0 -> doubleArrayOf(349.23, 369.99, 415.30, 369.99) // F - Gb - Ab - Gb
+                        1 -> doubleArrayOf(369.99, 349.23, 311.13, 349.23) // Gb - F - Eb - F
+                        2 -> doubleArrayOf(277.18, 349.23, 415.30, 369.99) // Db - F - Ab - Gb
+                        else -> doubleArrayOf(261.63, 311.13, 349.23, 523.25) // C - Eb - F - C5
                     }
-                    if (beat == 0 || beat == 3 || beat == 5) {
+                    // Heavy trap 808 pattern
+                    if (beat == 0 || beat == 3 || beat == 6) {
                         addCleanSub808(
                             bufL, bufR, startSample,
-                            startFreq = bassRoot * 1.4,
+                            startFreq = bassRoot * 1.75,
                             endFreq = bassRoot,
-                            durSec = 0.55,
-                            amp = if (beat == 0) 0.36f else 0.28f
+                            durSec = 0.45,
+                            amp = if (beat == 0) 0.42f else 0.30f
                         )
                     }
-                    if (beat % 2 == 0) {
-                        val note = riff[(beat / 2) % riff.size]
-                        addNylonGuitarNote(bufL, bufR, startSample, note, durSec = 1.1, amp = 0.24f, pan = if (beat % 4 == 0) -0.15f else 0.15f)
+                    // Snappy trap clap on beat 2 and 6
+                    if (beat == 2 || beat == 6) {
+                        addCrispSnareClap(bufL, bufR, startSample, amp = 0.24f, bright = true)
                     }
-                    if (beat == 0) {
-                        addWarmPadNote(bufL, bufR, startSample, riff[0] * 0.5, durSec = beatSec * 3.8, amp = 0.18f, pan = 0f)
+                    // Fast trap hi-hat ticks
+                    addSoftHiHat(bufL, bufR, startSample, amp = if (beat % 2 == 0) 0.11f else 0.07f, pan = if (beat % 2 == 0) -0.15f else 0.15f)
+                    // Exotic plucked Eastern attitude riff
+                    if (beat % 2 == 0) {
+                        val note = darkRiff[(beat / 2) % darkRiff.size]
+                        addSitarPluckNote(bufL, bufR, startSample, note, durSec = 0.85, amp = 0.24f, pan = if (beat % 4 == 0) -0.20f else 0.20f)
                     }
                 }
 
@@ -570,27 +725,204 @@ private object BgmLoopRenderer {
             loopR[wrapIdx] += bufR[loopSamples + i]
         }
 
-        // Apply clean gentle stereo hall reverb (low feedback 0.28 — ZERO muddy/noisy buildup!)
         val wetAmount = when (track) {
-            ReelBgmTrack.TIKTOK_VIRAL_PIANO -> 0.34f
+            ReelBgmTrack.TIKTOK_VIRAL_PIANO -> 0.36f
+            ReelBgmTrack.CINEMATIC_CELLO_DRAMA -> 0.34f
             ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS -> 0.30f
-            ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 0.16f
-            else -> 0.26f
+            ReelBgmTrack.RAINY_NIGHT_SITAR,
+            ReelBgmTrack.SUFI_BANSURI_MEHFIL -> 0.28f
+            ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 0.14f
+            else -> 0.22f
         }
         applyCleanStereoHallReverb(loopL, loopR, wet = wetAmount)
 
-        // Gentle warm analog low-pass polish (removes any harsh upper harmonics)
-        applyGentleLowPass(loopL, alpha = 0.42f)
-        applyGentleLowPass(loopR, alpha = 0.42f)
+        // Per-genre tonal shaping so every track keeps its own authentic acoustic color!
+        val lpAlpha = when (track) {
+            ReelBgmTrack.TIKTOK_SAD_GUITAR,
+            ReelBgmTrack.RAINY_NIGHT_SITAR,
+            ReelBgmTrack.TIKTOK_ATTITUDE_BEAT -> 0.72f
+            ReelBgmTrack.TIKTOK_ROMANTIC_STRINGS,
+            ReelBgmTrack.SUFI_BANSURI_MEHFIL -> 0.62f
+            ReelBgmTrack.CINEMATIC_CELLO_DRAMA -> 0.56f
+            else -> 0.48f
+        }
+        applyGentleLowPass(loopL, alpha = lpAlpha)
+        applyGentleLowPass(loopR, alpha = lpAlpha)
 
         return loopL to loopR
     }
 
     // -------------------------------------------------------------------------
-    // Pure, Click-Free Additive Studio Instrument Voices
+    // Distinct Indian Classical & Modern Studio Instrument Voices
     // -------------------------------------------------------------------------
 
-    private fun addNylonGuitarNote(
+    private fun addTanpuraDrone(bufL: FloatArray, bufR: FloatArray, loopSamples: Int, rootFreq: Double, amp: Float) {
+        val freqs = doubleArrayOf(rootFreq, rootFreq * 1.5, rootFreq * 2.0)
+        val gains = floatArrayOf(0.55f, 0.28f, 0.17f)
+        for (i in 0 until loopSamples) {
+            val frac = i.toDouble() / loopSamples.toDouble()
+            val swell = 0.84 + 0.16 * sin(TWO_PI * frac)
+            var sL = 0.0
+            var sR = 0.0
+            for (k in freqs.indices) {
+                val cycles = round(freqs[k] * loopSamples / SAMPLE_RATE).coerceAtLeast(1.0)
+                val p = TWO_PI * cycles * frac
+                val h = sin(p) * 0.76 + sin(2.0 * p) * 0.18 + sin(3.0 * p) * 0.06
+                sL += h * gains[k] * (0.85 - k * 0.1)
+                sR += h * gains[k] * (0.65 + k * 0.1)
+            }
+            bufL[i] += (sL * swell * amp).toFloat()
+            bufR[i] += (sR * swell * amp).toFloat()
+        }
+    }
+
+    private fun addSoftRainBed(bufL: FloatArray, bufR: FloatArray, loopSamples: Int, amp: Float) {
+        var seed = 0x4B1D9A7L
+        fun nextWhite(): Float {
+            seed = seed * 6364136223846793005L + 1442695040888963407L
+            return ((seed ushr 33).toInt() / 2147483648.0f) - 0.5f
+        }
+        val rawL = FloatArray(loopSamples)
+        val rawR = FloatArray(loopSamples)
+        var b0L = 0f; var b1L = 0f
+        var b0R = 0f; var b1R = 0f
+        for (i in 0 until loopSamples) {
+            val wL = nextWhite()
+            val wR = nextWhite()
+            b0L = 0.992f * b0L + wL * 0.06f
+            b1L = 0.940f * b1L + wL * 0.10f
+            b0R = 0.992f * b0R + wR * 0.06f
+            b1R = 0.940f * b1R + wR * 0.10f
+            rawL[i] = (b0L + b1L) * amp
+            rawR[i] = (b0R + b1R) * amp
+        }
+        val xfade = (0.4 * SAMPLE_RATE).toInt().coerceAtMost(loopSamples / 4)
+        for (i in 0 until xfade) {
+            val f = i.toFloat() / xfade.toFloat()
+            val tailIdx = loopSamples - xfade + i
+            rawL[tailIdx] = rawL[tailIdx] * (1f - f) + rawL[i] * f
+            rawR[tailIdx] = rawR[tailIdx] * (1f - f) + rawR[i] * f
+        }
+        for (i in 0 until loopSamples) {
+            bufL[i] += rawL[i]
+            bufR[i] += rawR[i]
+        }
+    }
+
+    private fun addBansuriNote(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        freq: Double,
+        durSec: Double,
+        amp: Float,
+        pan: Float
+    ) {
+        val len = (durSec * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val gL = amp * (0.5f - pan * 0.4f)
+        val gR = amp * (0.5f + pan * 0.4f)
+        var phase = 0.0
+        for (i in start until end) {
+            val n = i - start
+            val frac = n.toDouble() / len.coerceAtLeast(1).toDouble()
+            val env = sin(PI * frac).let { it * it }
+            val t = n.toDouble() / SAMPLE_RATE
+            val meend = 1.0 - 0.016 * exp(-t * 8.5)
+            val vib = 1.0 + 0.005 * sin(TWO_PI * 4.8 * t) * env
+            val instFreq = freq * meend * vib
+            phase = (phase + TWO_PI * instFreq / SAMPLE_RATE) % TWO_PI
+            val wave = sin(phase) * 0.82 + sin(phase * 2.0) * 0.14 + sin(phase * 3.0) * 0.04
+            val s = (wave * env).toFloat()
+            bufL[i] += s * gL
+            bufR[i] += s * gR
+        }
+    }
+
+    private fun addSitarPluckNote(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        freq: Double,
+        durSec: Double,
+        amp: Float,
+        pan: Float
+    ) {
+        val len = (durSec * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val gL = amp * (0.5f - pan * 0.4f)
+        val gR = amp * (0.5f + pan * 0.4f)
+        var phase = 0.0
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            val attack = 1.0 - exp(-t * 220.0)
+            val decay = exp(-t * 1.45)
+            val tailFade = if (n > len - 1600) ((len - n).toDouble() / 1600.0).coerceIn(0.0, 1.0) else 1.0
+            // Subtle jawari pitch bend + rich metallic Indian sitar overtones
+            val bend = 1.0 + 0.009 * exp(-t * 11.0)
+            phase = (phase + TWO_PI * freq * bend / SAMPLE_RATE) % TWO_PI
+            val shimmer = 0.85 + 0.15 * sin(TWO_PI * 5.2 * t)
+            val wave = (
+                sin(phase) * 0.48 +
+                    sin(phase * 2.0) * 0.25 * exp(-t * 1.1) +
+                    sin(phase * 3.0) * 0.16 * exp(-t * 1.6) +
+                    sin(phase * 4.0) * 0.08 * exp(-t * 2.4) +
+                    sin(phase * 5.0) * 0.04 * exp(-t * 3.2)
+                ) * shimmer
+            val s = (wave * attack * decay * tailFade).toFloat()
+            bufL[i] += s * gL
+            bufR[i] += s * gR
+        }
+    }
+
+    private fun addTablaBayan(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        startFreq: Double,
+        endFreq: Double,
+        amp: Float
+    ) {
+        val len = (0.34 * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        var phase = 0.0
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            val curFreq = endFreq + (startFreq - endFreq) * exp(-t * 14.0)
+            phase = (phase + TWO_PI * curFreq / SAMPLE_RATE) % TWO_PI
+            val attack = 1.0 - exp(-t * 180.0)
+            val decay = exp(-t * 9.5)
+            val s = ((sin(phase) * 0.82 + sin(phase * 1.98) * 0.18) * attack * decay * amp).toFloat()
+            bufL[i] += s * 0.62f
+            bufR[i] += s * 0.45f
+        }
+    }
+
+    private fun addTablaDayan(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        freq: Double,
+        amp: Float
+    ) {
+        val len = (0.18 * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val w = TWO_PI * freq / SAMPLE_RATE
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            val attack = 1.0 - exp(-t * 420.0)
+            val decay = exp(-t * 20.0)
+            val wave = sin(w * n) * 0.62 + sin(w * 2.02 * n) * 0.28 + sin(w * 3.05 * n) * 0.10
+            val s = (wave * attack * decay * amp).toFloat()
+            bufL[i] += s * 0.42f
+            bufR[i] += s * 0.65f
+        }
+    }
+
+    private fun addCrispAcousticGuitarNote(
         bufL: FloatArray,
         bufR: FloatArray,
         start: Int,
@@ -607,16 +939,124 @@ private object BgmLoopRenderer {
         for (i in start until end) {
             val n = i - start
             val t = n.toDouble() / SAMPLE_RATE
-            val attack = (1.0 - exp(-t * 140.0)) // smooth 7ms nylon pluck, zero click
-            val decay = exp(-t * 1.45)
-            val tailFade = if (n > len - 1600) ((len - n).toDouble() / 1600.0).coerceIn(0.0, 1.0) else 1.0
+            val attack = 1.0 - exp(-t * 220.0)
+            val decay = exp(-t * 1.55)
+            val tailFade = if (n > len - 1400) ((len - n).toDouble() / 1400.0).coerceIn(0.0, 1.0) else 1.0
             val p = w * n
-            // Warm nylon classical guitar harmonic profile (higher harmonics decay faster)
-            val wave = sin(p) * 0.66 +
-                sin(2.0 * p) * 0.24 * exp(-t * 1.8) +
-                sin(3.0 * p) * 0.08 * exp(-t * 3.4) +
-                sin(4.0 * p) * 0.03 * exp(-t * 5.2)
+            val wave = sin(p) * 0.58 +
+                sin(2.0 * p) * 0.26 * exp(-t * 1.6) +
+                sin(3.0 * p) * 0.11 * exp(-t * 2.8) +
+                sin(4.0 * p) * 0.05 * exp(-t * 4.2)
             val s = (wave * attack * decay * tailFade).toFloat()
+            bufL[i] += s * gL
+            bufR[i] += s * gR
+        }
+    }
+
+    private fun addHarpPluckNote(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        freq: Double,
+        durSec: Double,
+        amp: Float,
+        pan: Float
+    ) {
+        val len = (durSec * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val gL = amp * (0.5f - pan * 0.4f)
+        val gR = amp * (0.5f + pan * 0.4f)
+        val w = TWO_PI * freq / SAMPLE_RATE
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            val attack = 1.0 - exp(-t * 260.0)
+            val decay = exp(-t * 1.85)
+            val p = w * n
+            val wave = sin(p) * 0.78 + sin(2.0 * p) * 0.17 * exp(-t * 2.4) + sin(3.0 * p) * 0.05 * exp(-t * 4.5)
+            val s = (wave * attack * decay).toFloat()
+            bufL[i] += s * gL
+            bufR[i] += s * gR
+        }
+    }
+
+    private fun addRichCelloNote(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        freq: Double,
+        durSec: Double,
+        amp: Float,
+        pan: Float
+    ) {
+        val len = (durSec * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val gL = amp * (0.5f - pan * 0.4f)
+        val gR = amp * (0.5f + pan * 0.4f)
+        var phase = 0.0
+        for (i in start until end) {
+            val n = i - start
+            val frac = n.toDouble() / len.coerceAtLeast(1).toDouble()
+            val env = sin(PI * frac).let { it * it }
+            val t = n.toDouble() / SAMPLE_RATE
+            val instFreq = freq * (1.0 + 0.004 * sin(TWO_PI * 4.2 * t) * env)
+            phase = (phase + TWO_PI * instFreq / SAMPLE_RATE) % TWO_PI
+            // Warm resonant woody cello overtones
+            val wave = sin(phase) * 0.56 + sin(phase * 2.0) * 0.28 + sin(phase * 3.0) * 0.12 + sin(phase * 4.0) * 0.04
+            val s = (wave * env).toFloat()
+            bufL[i] += s * gL
+            bufR[i] += s * gR
+        }
+    }
+
+    private fun addCrispSnareClap(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        amp: Float,
+        bright: Boolean
+    ) {
+        val len = (0.14 * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        var seed = (start.toLong() * 0x5DEECE66DL) xor 0x13579BDFL
+        var prev = 0f
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            seed = seed * 6364136223846793005L + 1442695040888963407L
+            val white = ((seed ushr 33).toInt() / 2147483648.0f) - 0.5f
+            val filtered = if (bright) white - prev * 0.55f else prev * 0.5f + white * 0.5f
+            prev = white
+            val env = exp(-t * (if (bright) 28.0 else 22.0)).toFloat()
+            val body = (sin(TWO_PI * 195.0 * t) * exp(-t * 36.0)).toFloat() * 0.45f
+            val s = (filtered * env + body) * amp
+            bufL[i] += s
+            bufR[i] += s
+        }
+    }
+
+    private fun addSoftHiHat(
+        bufL: FloatArray,
+        bufR: FloatArray,
+        start: Int,
+        amp: Float,
+        pan: Float
+    ) {
+        val len = (0.045 * SAMPLE_RATE).toInt()
+        val end = (start + len).coerceAtMost(bufL.size)
+        val gL = amp * (0.5f - pan * 0.4f)
+        val gR = amp * (0.5f + pan * 0.4f)
+        var seed = (start.toLong() * 0x517CC1B727220A95L) xor 0x2468ACEL
+        var prev = 0f
+        for (i in start until end) {
+            val n = i - start
+            val t = n.toDouble() / SAMPLE_RATE
+            seed = seed * 6364136223846793005L + 1442695040888963407L
+            val white = ((seed ushr 33).toInt() / 2147483648.0f) - 0.5f
+            val hp = white - prev
+            prev = white
+            val env = exp(-t * 75.0).toFloat()
+            val s = hp * env
             bufL[i] += s * gL
             bufR[i] += s * gR
         }
@@ -640,14 +1080,11 @@ private object BgmLoopRenderer {
         for (i in start until end) {
             val n = i - start
             val t = n.toDouble() / SAMPLE_RATE
-            val attack = (1.0 - exp(-t * 85.0)) // soft felt hammer
+            val attack = 1.0 - exp(-t * 85.0)
             val decay = exp(-t * 0.88)
-            val tailFade = if (n > len - 2400) ((len - n).toDouble() / 2400.0).coerceIn(0.0, 1.0) else 1.0
+            val tailFade = if (n > len - 2200) ((len - n).toDouble() / 2200.0).coerceIn(0.0, 1.0) else 1.0
             val p = w1 * n
-            val wave = sin(p) * 0.62 +
-                sin(wDet * n) * 0.22 +
-                sin(2.0 * p) * 0.14 * exp(-t * 1.9) +
-                sin(3.0 * p) * 0.04 * exp(-t * 3.8)
+            val wave = sin(p) * 0.62 + sin(wDet * n) * 0.22 + sin(2.0 * p) * 0.14 * exp(-t * 1.9) + sin(3.0 * p) * 0.04 * exp(-t * 3.8)
             val s = (wave * attack * decay * tailFade).toFloat()
             bufL[i] += s * gL
             bufR[i] += s * gR
@@ -671,11 +1108,11 @@ private object BgmLoopRenderer {
         for (i in start until end) {
             val n = i - start
             val t = n.toDouble() / SAMPLE_RATE
-            val attack = (1.0 - exp(-t * 110.0))
+            val attack = 1.0 - exp(-t * 110.0)
             val decay = exp(-t * 0.95)
-            val tailFade = if (n > len - 2000) ((len - n).toDouble() / 2000.0).coerceIn(0.0, 1.0) else 1.0
+            val tailFade = if (n > len - 1800) ((len - n).toDouble() / 1800.0).coerceIn(0.0, 1.0) else 1.0
             val p = w * n
-            val trem = 0.92 + 0.08 * sin(TWO_PI * 2.4 * t)
+            val trem = 0.90 + 0.10 * sin(TWO_PI * 2.6 * t)
             val wave = (sin(p) * 0.80 + sin(2.0 * p) * 0.14 * exp(-t * 3.5) + sin(3.0 * p) * 0.04 * exp(-t * 6.0)) * trem
             val s = (wave * attack * decay * tailFade).toFloat()
             bufL[i] += s * gL
@@ -700,13 +1137,11 @@ private object BgmLoopRenderer {
         for (i in start until end) {
             val n = i - start
             val frac = n.toDouble() / len.coerceAtLeast(1).toDouble()
-            // Raised-cosine silky bow swell (zero harsh entry/exit)
             val env = sin(PI * frac).let { it * it }
             val t = n.toDouble() / SAMPLE_RATE
-            // Phase-integrated gentle vibrato (ZERO siren pitch drift!)
-            val instFreq = freq * (1.0 + 0.0038 * sin(TWO_PI * 4.8 * t) * env)
+            val instFreq = freq * (1.0 + 0.004 * sin(TWO_PI * 5.0 * t) * env)
             phase = (phase + TWO_PI * instFreq / SAMPLE_RATE) % TWO_PI
-            val wave = sin(phase) * 0.76 + sin(phase * 2.0) * 0.18 + sin(phase * 3.0) * 0.05
+            val wave = sin(phase) * 0.72 + sin(phase * 2.0) * 0.21 + sin(phase * 3.0) * 0.06
             val s = (wave * env).toFloat()
             bufL[i] += s * gL
             bufR[i] += s * gR
@@ -731,7 +1166,7 @@ private object BgmLoopRenderer {
         for (i in start until end) {
             val n = i - start
             val frac = n.toDouble() / len.coerceAtLeast(1).toDouble()
-            val env = 0.5 - 0.5 * cos(TWO_PI * frac) // smooth Hann bell swell
+            val env = 0.5 - 0.5 * cos(TWO_PI * frac)
             val sL = (sin(wL * n) * 0.85 + sin(2.0 * wL * n) * 0.15) * env
             val sR = (sin(wR * n) * 0.85 + sin(2.0 * wR * n) * 0.15) * env
             bufL[i] += (sL * gL).toFloat()
@@ -756,10 +1191,10 @@ private object BgmLoopRenderer {
             val t = n.toDouble() / SAMPLE_RATE
             val curFreq = endFreq + (startFreq - endFreq) * exp(-t * 24.0)
             phase = (phase + TWO_PI * curFreq / SAMPLE_RATE) % TWO_PI
-            val attack = (1.0 - exp(-t * 120.0))
+            val attack = 1.0 - exp(-t * 130.0)
             val decay = exp(-t * (2.4 / durSec.coerceAtLeast(0.2)))
-            val tailFade = if (n > len - 1200) ((len - n).toDouble() / 1200.0).coerceIn(0.0, 1.0) else 1.0
-            val s = ((sin(phase) * 0.88 + sin(phase * 2.0) * 0.12) * attack * decay * tailFade * amp).toFloat()
+            val tailFade = if (n > len - 1000) ((len - n).toDouble() / 1000.0).coerceIn(0.0, 1.0) else 1.0
+            val s = ((sin(phase) * 0.86 + sin(phase * 2.0) * 0.14) * attack * decay * tailFade * amp).toFloat()
             bufL[i] += s
             bufR[i] += s
         }
@@ -767,7 +1202,6 @@ private object BgmLoopRenderer {
 
     private fun applyCleanStereoHallReverb(bufL: FloatArray, bufR: FloatArray, wet: Float) {
         val len = bufL.size
-        // 3 gentle stereo multi-tap delays wrapped circularly so loop seam stays 100% seamless
         val tapsL = intArrayOf((SAMPLE_RATE * 0.11).toInt(), (SAMPLE_RATE * 0.23).toInt(), (SAMPLE_RATE * 0.37).toInt())
         val tapsR = intArrayOf((SAMPLE_RATE * 0.14).toInt(), (SAMPLE_RATE * 0.28).toInt(), (SAMPLE_RATE * 0.43).toInt())
         val gains = floatArrayOf(0.45f, 0.28f, 0.16f)
@@ -782,7 +1216,6 @@ private object BgmLoopRenderer {
             for (t in 0 until 3) {
                 val idxL = (i - tapsL[t] + len) % len
                 val idxR = (i - tapsR[t] + len) % len
-                // Slight cross-stereo width for lush hall feel
                 rL += (srcL[idxL] * 0.72f + srcR[idxL] * 0.28f) * gains[t]
                 rR += (srcR[idxR] * 0.72f + srcL[idxR] * 0.28f) * gains[t]
             }
@@ -793,7 +1226,6 @@ private object BgmLoopRenderer {
 
     private fun applyGentleLowPass(buf: FloatArray, alpha: Float) {
         if (buf.isEmpty()) return
-        // Initialize state from end of loop so loop seam has zero discontinuity
         var state = buf[buf.size - 1]
         for (i in buf.indices) {
             state += (buf[i] - state) * alpha
@@ -814,15 +1246,15 @@ private object BgmLoopRenderer {
         }
         val scale = (targetPeak / maxPeak) * Short.MAX_VALUE
 
-        val dataSize = frames * 4 // 2 channels * 2 bytes
+        val dataSize = frames * 4
         val header = ByteBuffer.allocate(44).order(ByteOrder.LITTLE_ENDIAN).apply {
             put("RIFF".toByteArray(Charsets.US_ASCII))
             putInt(36 + dataSize)
             put("WAVE".toByteArray(Charsets.US_ASCII))
             put("fmt ".toByteArray(Charsets.US_ASCII))
             putInt(16)
-            putShort(1) // PCM
-            putShort(2) // Stereo
+            putShort(1)
+            putShort(2)
             putInt(SAMPLE_RATE)
             putInt(SAMPLE_RATE * 4)
             putShort(4)

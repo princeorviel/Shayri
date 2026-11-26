@@ -269,5 +269,25 @@
     <string name="profile_saved_snackbar">प्रोफ़ाइल सेव हो गई ✨</string>
     <string name="profile_photo_error_snackbar">फ़ोटो लोड नहीं हो सकी, कृपया कोई दूसरी फ़ोटो चुनें</string>
     <string name="profile_social_links_optional">सोशल मीडिया लिंक जोड़ें (वैकल्पिक)</string>
+
+    <string name="reading_music_cd">पढ़ते समय सुकून भरा म्यूज़िक</string>
+    <string name="reading_music_title">शायरी माहौल म्यूज़िक</string>
+    <string name="reading_music_subtitle">पढ़ते समय धीमा व सुकून भरा इंस्ट्रूमेंटल म्यूज़िक</string>
+    <string name="reading_music_playing_badge">चल रहा है</string>
+    <string name="reading_music_paused_badge">बंद है</string>
+    <string name="reading_music_play_cd">बैकग्राउंड म्यूज़िक चलाएँ</string>
+    <string name="reading_music_pause_cd">बैकग्राउंड म्यूज़िक रोकें</string>
+    <string name="reading_music_stop_cd">बैकग्राउंड म्यूज़िक बंद करें</string>
+    <string name="reading_music_volume_label">आवाज़ (वॉल्यूम)</string>
+    <string name="reading_music_volume_subtle_hint">धीमा व सुकून भरा</string>
+    <string name="reading_music_volume_balanced_hint">संतुलित</string>
+    <string name="reading_music_volume_rich_hint">गहरा माहौल</string>
+    <string name="reading_music_auto_mood_title">भाव के अनुसार धुन (Auto-Mood)</string>
+    <string name="reading_music_auto_mood_subtitle">शायरी के दर्द, इश्क़ या सूफ़ी भाव के हिसाब से धुन बदले</string>
+    <string name="reading_music_tracks_heading">सॉफ्ट इंस्ट्रूमेंटल व एम्बिएंट धुनें</string>
+    <string name="reading_music_timer_heading">स्लीप टाइमर (अपने आप धीमा होकर बंद)</string>
+    <string name="reading_music_timer_remaining">%1$d मि. बाकी</string>
+    <string name="reading_music_pill_off">म्यूज़िक</string>
+    <string name="reading_music_timer_finished">स्लीप टाइमर पूरा हुआ — म्यूज़िक धीरे से बंद हो गया 🌙</string>
 </resources>
 

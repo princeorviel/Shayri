@@ -7,9 +7,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.audio.ReadingAmbientTrack
 import com.example.data.model.CardStyle
 import com.example.data.model.FontScaleOption
 import com.example.data.model.LocalShayarAccount
@@ -39,7 +41,11 @@ data class UserPreferences(
     val dailyNotificationMinute: Int = 0,
     val authorPenName: String = "",
     val localAccount: LocalShayarAccount = LocalShayarAccount(),
-    val ownerStatsEnabled: Boolean = false
+    val ownerStatsEnabled: Boolean = false,
+    val readingBgmEnabled: Boolean = false,
+    val readingBgmTrackId: String = ReadingAmbientTrack.SOFT_PIANO.id,
+    val readingBgmVolume: Float = 0.38f,
+    val readingBgmAutoMood: Boolean = true
 )
 
 class UserPreferencesRepository(context: Context) {
@@ -74,6 +80,10 @@ class UserPreferencesRepository(context: Context) {
         val SOCIAL_YOUTUBE = stringPreferencesKey("social_youtube")
         val LOCAL_PROFILE_PHOTO_URI = stringPreferencesKey("local_profile_photo_uri")
         val OWNER_STATS_ENABLED = booleanPreferencesKey("owner_stats_enabled")
+        val READING_BGM_ENABLED = booleanPreferencesKey("reading_bgm_enabled")
+        val READING_BGM_TRACK_ID = stringPreferencesKey("reading_bgm_track_id")
+        val READING_BGM_VOLUME = floatPreferencesKey("reading_bgm_volume")
+        val READING_BGM_AUTO_MOOD = booleanPreferencesKey("reading_bgm_auto_mood")
     }
 
     /**
@@ -122,7 +132,14 @@ class UserPreferencesRepository(context: Context) {
             dailyNotificationMinute = syncPrefs.getInt(SYNC_DAILY_NOTIF_MINUTE, 0).coerceIn(0, 59),
             authorPenName = syncPrefs.getString(SYNC_AUTHOR_PEN_NAME, "").orEmpty(),
             localAccount = localAccount,
-            ownerStatsEnabled = syncPrefs.getBoolean(SYNC_OWNER_STATS_ENABLED, false)
+            ownerStatsEnabled = syncPrefs.getBoolean(SYNC_OWNER_STATS_ENABLED, false),
+            readingBgmEnabled = syncPrefs.getBoolean(SYNC_READING_BGM_ENABLED, false),
+            readingBgmTrackId = syncPrefs.getString(
+                SYNC_READING_BGM_TRACK_ID,
+                ReadingAmbientTrack.SOFT_PIANO.id
+            ) ?: ReadingAmbientTrack.SOFT_PIANO.id,
+            readingBgmVolume = syncPrefs.getFloat(SYNC_READING_BGM_VOLUME, 0.38f).coerceIn(0.05f, 1.0f),
+            readingBgmAutoMood = syncPrefs.getBoolean(SYNC_READING_BGM_AUTO_MOOD, true)
         )
     }
 
@@ -242,7 +259,11 @@ class UserPreferencesRepository(context: Context) {
                         if (localAccount.isLoggedIn) localAccount.fullName else ""
                     },
                 localAccount = localAccount,
-                ownerStatsEnabled = prefs[Keys.OWNER_STATS_ENABLED] ?: cached.ownerStatsEnabled
+                ownerStatsEnabled = prefs[Keys.OWNER_STATS_ENABLED] ?: cached.ownerStatsEnabled,
+                readingBgmEnabled = prefs[Keys.READING_BGM_ENABLED] ?: cached.readingBgmEnabled,
+                readingBgmTrackId = prefs[Keys.READING_BGM_TRACK_ID] ?: cached.readingBgmTrackId,
+                readingBgmVolume = (prefs[Keys.READING_BGM_VOLUME] ?: cached.readingBgmVolume).coerceIn(0.05f, 1.0f),
+                readingBgmAutoMood = prefs[Keys.READING_BGM_AUTO_MOOD] ?: cached.readingBgmAutoMood
             )
         }
 
@@ -306,6 +327,44 @@ class UserPreferencesRepository(context: Context) {
         }
         appContext.shayariDataStore.edit { prefs ->
             prefs[Keys.AUTHOR_PEN_NAME] = clean
+        }
+    }
+
+    suspend fun setReadingBgmEnabled(enabled: Boolean) {
+        withContext(Dispatchers.IO) {
+            syncPrefs.edit().putBoolean(SYNC_READING_BGM_ENABLED, enabled).apply()
+        }
+        appContext.shayariDataStore.edit { prefs ->
+            prefs[Keys.READING_BGM_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setReadingBgmTrackId(trackId: String) {
+        val safeId = ReadingAmbientTrack.fromId(trackId).id
+        withContext(Dispatchers.IO) {
+            syncPrefs.edit().putString(SYNC_READING_BGM_TRACK_ID, safeId).apply()
+        }
+        appContext.shayariDataStore.edit { prefs ->
+            prefs[Keys.READING_BGM_TRACK_ID] = safeId
+        }
+    }
+
+    suspend fun setReadingBgmVolume(volume: Float) {
+        val safeVol = volume.coerceIn(0.05f, 1.0f)
+        withContext(Dispatchers.IO) {
+            syncPrefs.edit().putFloat(SYNC_READING_BGM_VOLUME, safeVol).apply()
+        }
+        appContext.shayariDataStore.edit { prefs ->
+            prefs[Keys.READING_BGM_VOLUME] = safeVol
+        }
+    }
+
+    suspend fun setReadingBgmAutoMood(autoMood: Boolean) {
+        withContext(Dispatchers.IO) {
+            syncPrefs.edit().putBoolean(SYNC_READING_BGM_AUTO_MOOD, autoMood).apply()
+        }
+        appContext.shayariDataStore.edit { prefs ->
+            prefs[Keys.READING_BGM_AUTO_MOOD] = autoMood
         }
     }
 
@@ -620,6 +679,10 @@ class UserPreferencesRepository(context: Context) {
         const val SYNC_SOCIAL_TELEGRAM = "social_telegram"
         const val SYNC_SOCIAL_YOUTUBE = "social_youtube"
         const val SYNC_LOCAL_PROFILE_PHOTO_URI = "local_profile_photo_uri"
+        const val SYNC_READING_BGM_ENABLED = "reading_bgm_enabled"
+        const val SYNC_READING_BGM_TRACK_ID = "reading_bgm_track_id"
+        const val SYNC_READING_BGM_VOLUME = "reading_bgm_volume"
+        const val SYNC_READING_BGM_AUTO_MOOD = "reading_bgm_auto_mood"
     }
 }
 

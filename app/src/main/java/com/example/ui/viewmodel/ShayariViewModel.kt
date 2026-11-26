@@ -3,6 +3,7 @@ package com.example.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.audio.ReadingAmbientTrack
 import com.example.data.local.ShayariRepository
 import com.example.data.local.ShayariSeedData
 import com.example.data.local.UserPreferences
@@ -440,6 +441,34 @@ class ShayariViewModel(
     fun setAuthorPenName(name: String) {
         viewModelScope.launch {
             preferencesRepository.setAuthorPenName(name)
+        }
+    }
+
+    fun setReadingBgmEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setReadingBgmEnabled(enabled)
+        }
+    }
+
+    fun setReadingBgmTrack(track: ReadingAmbientTrack, enablePlayback: Boolean = true) {
+        viewModelScope.launch {
+            preferencesRepository.setReadingBgmTrackId(track.id)
+            if (enablePlayback) {
+                preferencesRepository.setReadingBgmAutoMood(false)
+                preferencesRepository.setReadingBgmEnabled(true)
+            }
+        }
+    }
+
+    fun setReadingBgmVolume(volume: Float) {
+        viewModelScope.launch {
+            preferencesRepository.setReadingBgmVolume(volume)
+        }
+    }
+
+    fun setReadingBgmAutoMood(autoMood: Boolean) {
+        viewModelScope.launch {
+            preferencesRepository.setReadingBgmAutoMood(autoMood)
         }
     }
 

@@ -82,12 +82,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.audio.ReadingAmbientTrack
 import com.example.data.model.CardStyle
 import com.example.data.model.FontScaleOption
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.ShayariFontStyle
 import com.example.ui.components.OptimizedDrawableImage
+import com.example.ui.components.ReaderAmbientMusicPill
 import com.example.ui.theme.LocalShayariReadingStyle
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
@@ -108,6 +110,11 @@ fun ShayariReaderScreen(
     onDownloadImage: (ShayariEntity) -> Unit,
     onCollab: (ShayariEntity) -> Unit = {},
     onWriteNew: (ShayariEntity) -> Unit = {},
+    isAmbientMusicPlaying: Boolean = false,
+    activeAmbientTrack: ReadingAmbientTrack = ReadingAmbientTrack.SOFT_PIANO,
+    onToggleAmbientMusic: () -> Unit = {},
+    onOpenAmbientMusicConfig: () -> Unit = {},
+    onCurrentCategoryChanged: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBack)
@@ -129,6 +136,9 @@ fun ShayariReaderScreen(
         snapPositionalThreshold = 0.22f
     )
     val currentShayari = shayariList[pagerState.currentPage.coerceIn(0, shayariList.lastIndex)]
+    LaunchedEffect(currentShayari.categoryId) {
+        onCurrentCategoryChanged(currentShayari.categoryId)
+    }
     var actionMenuShayari by remember { mutableStateOf<ShayariEntity?>(null) }
     var doubleTapHeartTick by remember { mutableIntStateOf(0) }
     var showHeartBurst by remember { mutableStateOf(false) }
@@ -405,7 +415,7 @@ fun ShayariReaderScreen(
             )
         }
 
-        // Minimal Pinned Top Overlay: Back & Favorite only (bottom stays 100% free for Reels scrolling)
+        // Minimal Pinned Top Overlay: Back, Subtle Ambient Music Pill, & Favorite (bottom stays 100% free for Reels scrolling)
         Row(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -435,6 +445,16 @@ fun ShayariReaderScreen(
                 }
             }
 
+            ReaderAmbientMusicPill(
+                isPlaying = isAmbientMusicPlaying,
+                activeTrack = activeAmbientTrack,
+                accentColor = selectedCardStyle.accentColor,
+                textColor = selectedCardStyle.textColor,
+                onTogglePlay = onToggleAmbientMusic,
+                onOpenConfig = onOpenAmbientMusicConfig,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
+
             if (showFavoriteAction) {
                 Surface(
                     shape = CircleShape,
@@ -462,6 +482,8 @@ fun ShayariReaderScreen(
                         )
                     }
                 }
+            } else {
+                Spacer(modifier = Modifier.size(48.dp))
             }
         }
 

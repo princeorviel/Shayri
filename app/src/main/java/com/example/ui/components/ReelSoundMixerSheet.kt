@@ -414,7 +414,7 @@ fun ReelSoundMixerSheet(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "टिकटॉक स्टाइल बैकग्राउंड म्यूज़िक",
+                        text = "अलग-अलग राग व स्टाइल बैकग्राउंड म्यूज़िक",
                         style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                         color = Color.White.copy(alpha = 0.92f)
                     )
@@ -439,7 +439,7 @@ fun ReelSoundMixerSheet(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "✨ ऑटो-टिकटॉक म्यूज़िक (भाव के हिसाब से)",
+                                text = "✨ ऑटो म्यूज़िक (हर शायरी पर नया राग/धुन)",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
                                 color = Color.White
                             )
@@ -522,7 +522,7 @@ fun ReelSoundMixerSheet(
                                 modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = "Google Android हिंदी आवाज़ सक्रिय 🎙️",
+                                text = "इमोशनल ह्यूमन शायर आवाज़ सक्रिय ✨",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -594,15 +594,15 @@ fun ReelSoundMixerSheet(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Text(
-                                text = "फ़ोन की लोकल आवाज़ (फ़ॉलबैक)",
+                                text = "ऑफ़लाइन फ़ोन आवाज़ (फ़ॉलबैक)",
                                 style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
                                 color = Color.White
                             )
                             Text(
                                 text = if (allowLocalTtsFallback) {
-                                    "Gemini न चलने पर फ़ोन की लोकल हिंदी आवाज़ बजेगी"
+                                    "इंटरनेट न होने पर ही फ़ोन की लोकल आवाज़ बजेगी"
                                 } else {
-                                    "सिर्फ़ इमोशनल म्यूज़िक (जब Gemini उपलब्ध न हो)"
+                                    "बंद: सिर्फ़ असली इमोशनल आवाज़ या बैकग्राउंड म्यूज़िक"
                                 },
                                 style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                 color = Color.White.copy(alpha = 0.68f)

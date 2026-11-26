@@ -574,14 +574,14 @@ class LocalShayarFallbackSpeaker(context: Context) {
 
     private fun naturalProsodyFor(persona: ShayarVoicePersona): Pair<Float, Float> {
         return when (persona) {
-            ShayarVoicePersona.DARD_SHAYARA -> 0.88f to 0.99f
-            ShayarVoicePersona.SUREELI_SHAYARA -> 0.92f to 1.02f
-            ShayarVoicePersona.TADAP_SHAYARA -> 0.88f to 1.00f
-            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.90f to 1.01f
-            ShayarVoicePersona.DARD_SHAYAR -> 0.88f to 0.97f
-            ShayarVoicePersona.TADAP_AASHIQ -> 0.90f to 0.99f
-            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.89f to 0.96f
-            ShayarVoicePersona.JOSH_SHAYAR -> 0.94f to 1.00f
+            ShayarVoicePersona.DARD_SHAYARA -> 0.83f to 0.96f
+            ShayarVoicePersona.SUREELI_SHAYARA -> 0.98f to 1.07f
+            ShayarVoicePersona.TADAP_SHAYARA -> 0.93f to 1.03f
+            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.87f to 1.01f
+            ShayarVoicePersona.DARD_SHAYAR -> 0.82f to 0.91f
+            ShayarVoicePersona.TADAP_AASHIQ -> 0.95f to 1.00f
+            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.86f to 0.89f
+            ShayarVoicePersona.JOSH_SHAYAR -> 1.01f to 0.95f
         }
     }
 

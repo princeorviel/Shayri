@@ -51,6 +51,7 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
@@ -109,6 +110,7 @@ import com.example.R
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.shayariCommentKey
+import com.example.ui.components.AmbientWaveBars
 import com.example.ui.components.CategoryChipStrip
 import com.example.ui.components.FeedCardStyleMode
 import com.example.ui.components.FloatingScrollButtons
@@ -147,6 +149,8 @@ fun MehfilScreen(
     showCounts: Boolean = isOwner,
     onTripleTapOwnerToggle: (() -> Unit)? = null,
     onOpenAdminDashboard: (() -> Unit)? = null,
+    isReadingMusicPlaying: Boolean = false,
+    onOpenReadingMusic: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -880,6 +884,49 @@ fun MehfilScreen(
                                     tint = iconTint,
                                     modifier = Modifier.size(18.dp)
                                 )
+                            }
+                        }
+
+                        Surface(
+                            onClick = onOpenReadingMusic,
+                            shape = CircleShape,
+                            color = if (isReadingMusicPlaying) {
+                                lerp(
+                                    Color(0xFFFFB74D).copy(alpha = 0.28f),
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    effectiveBarProgress
+                                )
+                            } else {
+                                iconBgColor
+                            },
+                            border = BorderStroke(
+                                width = if (isReadingMusicPlaying) 1.1.dp else 0.75.dp,
+                                color = if (isReadingMusicPlaying) {
+                                    lerp(Color(0xFFFFD580), primaryColor, effectiveBarProgress)
+                                } else {
+                                    iconBorderColor
+                                }
+                            ),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(36.dp)
+                                .testTag("mehfil_reading_music_button")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (isReadingMusicPlaying) {
+                                    AmbientWaveBars(
+                                        isPlaying = true,
+                                        color = lerp(Color(0xFFFFD580), primaryColor, effectiveBarProgress),
+                                        barCount = 3
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.MusicNote,
+                                        contentDescription = stringResource(R.string.reading_music_cd),
+                                        tint = iconTint,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
                             }
                         }
 

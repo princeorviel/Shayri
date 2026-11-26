@@ -128,7 +128,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.example.R
+import com.example.ai.ShayarVoiceEngine
 import com.example.ai.ShayarVoicePersona
+import com.example.ai.ShayarVoiceResult
 import com.example.audio.LocalShayarFallbackSpeaker
 import com.example.audio.ReelBgmTrack
 import com.example.audio.ShayariBgmPlayer
@@ -138,6 +140,7 @@ import com.example.data.model.ShayariTagMatcher
 import com.example.data.model.shayariCommentKey
 import com.example.ui.components.OptimizedDrawableImage
 import com.example.ui.components.ReelSoundMixerSheet
+import com.example.ui.components.ReelVoiceStatusPill
 import com.example.ui.components.ShayarVoicePlaybackState
 import com.example.ui.components.resolveDiversePhotoForCard
 import com.example.ui.theme.LocalShayariReadingStyle
@@ -298,6 +301,9 @@ fun ReelsScreen(
     }
     var voicePlaybackState by remember { mutableStateOf<ShayarVoicePlaybackState>(ShayarVoicePlaybackState.Idle) }
     var voiceRetryTick by remember { mutableIntStateOf(0) }
+    var allowLocalTtsFallback by remember(context) {
+        mutableStateOf(ReelsStorage.loadAllowLocalTtsFallback(context))
+    }
 
     var likedReelKeys by remember(context) {
         mutableStateOf(ReelsStorage.loadLikedReelKeys(context))
@@ -447,11 +453,11 @@ fun ReelsScreen(
 
     val effectiveBgmTrack = remember(currentEntry?.stableKey, pagerState.currentPage, currentSelectedBgmOverride) {
         currentEntry?.let { resolveBgmFor(it, pagerState.currentPage) }
-            ?: ReelBgmTrack.TIKTOK_SAD_GUITAR
+            ?: ReelBgmTrack.SUFI_BANSURI_MEHFIL
     }
 
-    // 1. Instant Zero-Noise TikTok Background Music sync
-    LaunchedEffect(isAudioEnabled, isCurrentReelPaused, showCreateSheet, effectiveBgmTrack, currentHasVideoAudio, currentEntry?.stableKey) {
+    // 1. Instant Zero-Noise Multi-Genre Background Music sync + Next-Reel BGM Pre-warm
+    LaunchedEffect(isAudioEnabled, isCurrentReelPaused, showCreateSheet, effectiveBgmTrack, currentHasVideoAudio, currentEntry?.stableKey, pagerState.currentPage) {
         bgmPlayer.setTrack(effectiveBgmTrack)
         val shouldPlayBgm = isAudioEnabled &&
             !isCurrentReelPaused &&
@@ -460,9 +466,25 @@ fun ReelsScreen(
             !currentHasVideoAudio &&
             effectiveBgmTrack != ReelBgmTrack.OFF
         bgmPlayer.setPlaying(shouldPlayBgm)
+
+        // Silently pre-render the next Reel's distinct musical loop so swiping has 0ms BGM lag
+        if (shouldPlayBgm) {
+            val nextIdx = pagerState.currentPage + 1
+            val nextEntry = reelsList.getOrNull(nextIdx)
+            if (nextEntry != null) {
+                val nextHasVideo = nextEntry is ReelEntry.CustomReel &&
+                    (nextEntry.reel.videoUri != null || nextEntry.reel.mediaType == "video")
+                if (!nextHasVideo) {
+                    val nextBgm = resolveBgmFor(nextEntry, nextIdx)
+                    if (nextBgm != ReelBgmTrack.OFF && nextBgm != effectiveBgmTrack) {
+                        bgmPlayer.prewarmTrack(nextBgm)
+                    }
+                }
+            }
+        }
     }
 
-    // 2. Sync Pause/Resume on currently loaded Google Android Shayar Voice MediaPlayer & live speaker
+    // 2. Sync Pause/Resume on currently loaded Shayar Voice MediaPlayer & live fallback speaker
     LaunchedEffect(isCurrentReelPaused, showCreateSheet, isAudioEnabled) {
         val shouldPause = isCurrentReelPaused || showCreateSheet || !isAudioEnabled
         val wasPaused = wasPausedRef[0]
@@ -484,23 +506,83 @@ fun ReelsScreen(
                     bgmPlayer.setDucked(true)
                 }
             }
-        } else if (!shouldPause && wasPaused && voicePlaybackState is ShayarVoicePlaybackState.Speaking) {
-            // Only restart live TTS when explicitly resuming from a paused state
+        } else if (!shouldPause && wasPaused) {
             val entry = currentEntry
             if (entry != null && entry.couplet.isNotBlank() && !currentHasVideoAudio) {
-                localFallbackSpeaker.speak(
-                    couplet = entry.couplet,
-                    persona = effectivePersona,
-                    onSpeakingChanged = { speaking ->
-                        bgmPlayer.setDucked(speaking)
+                when (voicePlaybackState) {
+                    is ShayarVoicePlaybackState.Speaking -> {
+                        // Replay cached Gemini human audio cleanly via MediaPlayer
+                        voiceRetryTick++
                     }
-                )
+                    is ShayarVoicePlaybackState.QuotaFallback -> {
+                        if (allowLocalTtsFallback) {
+                            localFallbackSpeaker.speak(
+                                couplet = entry.couplet,
+                                persona = effectivePersona,
+                                onSpeakingChanged = { speaking ->
+                                    bgmPlayer.setDucked(speaking)
+                                }
+                            )
+                        }
+                    }
+                    else -> Unit
+                }
             }
         }
     }
 
-    // 3. Instant Google Android Hindi Shayar Voice (0ms cache playback + next-2-Reels background pre-warm + zero-silence backup)
-    LaunchedEffect(currentEntry?.stableKey, effectivePersona, isAudioEnabled, showCreateSheet, voiceRetryTick) {
+    fun scheduleNextReelPrewarm(nextPageIndex: Int) {
+        prewarmJobRef[0]?.cancel()
+        prewarmJobRef[0] = null
+        val nextEntry = reelsList.getOrNull(nextPageIndex) ?: return
+        if (nextEntry.couplet.isBlank()) return
+        val nextHasVideo = nextEntry is ReelEntry.CustomReel &&
+            (nextEntry.reel.videoUri != null || nextEntry.reel.mediaType == "video")
+        if (nextHasVideo) return
+
+        val nextPersona = resolvePersonaFor(nextEntry, nextPageIndex)
+        val nextBgm = resolveBgmFor(nextEntry, nextPageIndex)
+
+        // Sequential look-ahead: wait 1s after current Reel starts playing, then quietly cache
+        // ONLY the single next Reel (page + 1) so the user's next swipe plays in 0ms without quota bursts.
+        prewarmJobRef[0] = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            delay(1_000L)
+            if (latestIsPaused || !isAudioEnabled || showCreateSheet) return@launch
+            if (nextBgm != ReelBgmTrack.OFF) {
+                bgmPlayer.prewarmTrack(nextBgm)
+            }
+            if (!ShayarVoiceEngine.isInFallbackCooldown()) {
+                ShayarVoiceEngine.prewarmVoiceIfSafe(
+                    context = context,
+                    couplet = nextEntry.couplet,
+                    categoryId = nextEntry.categoryId,
+                    persona = nextPersona
+                )
+            } else if (allowLocalTtsFallback) {
+                val alreadyLocal = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
+                    couplet = nextEntry.couplet,
+                    persona = nextPersona
+                )
+                if (alreadyLocal == null) {
+                    localFallbackSpeaker.synthesizeMasteredVoice(
+                        couplet = nextEntry.couplet,
+                        persona = nextPersona,
+                        isPrewarm = true
+                    )
+                }
+            }
+        }
+    }
+
+    // 3. Expressive Human Shayar Voice via Gemini 3.1 Flash TTS (0ms cache + next-Reel pre-warm + graceful offline fallback)
+    LaunchedEffect(
+        currentEntry?.stableKey,
+        effectivePersona,
+        isAudioEnabled,
+        showCreateSheet,
+        allowLocalTtsFallback,
+        voiceRetryTick
+    ) {
         releaseVoicePlayer()
         val entry = currentEntry
         if (!isAudioEnabled || showCreateSheet || entry == null || entry.couplet.isBlank() || currentHasVideoAudio) {
@@ -509,10 +591,14 @@ fun ReelsScreen(
         }
 
         val activeReelKey = entry.stableKey
+        val activePageSnapshot = pagerState.currentPage
         val activePersonaSnapshot = effectivePersona
         val speakingState = ShayarVoicePlaybackState.Speaking(activePersonaSnapshot)
 
-        suspend fun playWavFileInMediaPlayer(audioFile: File): Boolean {
+        suspend fun playWavFileInMediaPlayer(
+            audioFile: File,
+            targetPlaybackState: ShayarVoicePlaybackState
+        ): Boolean {
             val mp = MediaPlayer()
             val prepared = try {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -549,13 +635,13 @@ fun ReelsScreen(
                 bgmPlayer.setDucked(false)
                 scope.launch {
                     // Natural breathing pause while emotional music swells softly before reciting again
-                    delay(3_000L)
+                    delay(3_200L)
                     if (voicePlayerRef[0] === completedPlayer && !latestIsPaused && isAudioEnabled && !showCreateSheet) {
                         runCatching {
                             completedPlayer.seekTo(0)
                             completedPlayer.start()
                             bgmPlayer.setDucked(true)
-                            voicePlaybackState = speakingState
+                            voicePlaybackState = targetPlaybackState
                         }
                     }
                 }
@@ -565,80 +651,103 @@ fun ReelsScreen(
                 runCatching {
                     mp.start()
                     bgmPlayer.setDucked(true)
-                    voicePlaybackState = speakingState
+                    voicePlaybackState = targetPlaybackState
                 }
             }
             return true
         }
 
-        fun scheduleNextReelsPrewarm() {
-            val basePage = pagerState.currentPage
-            prewarmJobRef[0]?.cancel()
-            prewarmJobRef[0] = scope.launch {
-                delay(350L)
-                for (offset in 1..2) {
-                    if (latestActiveKey != activeReelKey || !isAudioEnabled || latestIsPaused || showCreateSheet) {
-                        break
-                    }
-                    val nextPage = basePage + offset
-                    val nextEntry = reelsList.getOrNull(nextPage) ?: break
-                    if (nextEntry.couplet.isBlank() ||
-                        (nextEntry is ReelEntry.CustomReel && nextEntry.reel.videoUri != null)
-                    ) {
-                        continue
-                    }
-                    val nextPersona = resolvePersonaFor(nextEntry, nextPage)
-                    if (localFallbackSpeaker.getCachedMasteredVoiceOrNull(nextEntry.couplet, nextPersona) == null) {
-                        localFallbackSpeaker.synthesizeMasteredVoice(
-                            couplet = nextEntry.couplet,
-                            persona = nextPersona,
-                            isPrewarm = true
-                        )
-                    }
-                }
-            }
-        }
-
-        // Fast-path: 0ms instant start if already cached in disk cache!
-        val cachedWav = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
+        // Fast-path: 0ms instant playback if Gemini human Shayar audio is already cached on disk!
+        val cachedGeminiAudio = ShayarVoiceEngine.getCachedVoiceOrNull(
+            context = context,
             couplet = entry.couplet,
+            categoryId = entry.categoryId,
             persona = activePersonaSnapshot
         )
 
-        val readyWav = if (cachedWav != null) {
+        val geminiResult: ShayarVoiceResult = if (cachedGeminiAudio != null) {
             hasSwipedOnceRef[0] = true
-            cachedWav
+            ShayarVoiceResult.Ready(cachedGeminiAudio)
         } else {
-            val settleMs = if (!hasSwipedOnceRef[0]) 0L else 80L
+            // Brief 120ms settle delay on swipe so flick-scrolling skips wasted calls while staying snappy
+            val settleMs = if (!hasSwipedOnceRef[0]) 0L else 120L
             hasSwipedOnceRef[0] = true
             if (settleMs > 0L) delay(settleMs)
+            if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
+                return@LaunchedEffect
+            }
             voicePlaybackState = ShayarVoicePlaybackState.Loading
-            localFallbackSpeaker.synthesizeMasteredVoice(
+            ShayarVoiceEngine.getOrGenerateVoice(
+                context = context,
                 couplet = entry.couplet,
-                persona = activePersonaSnapshot,
-                isPrewarm = false
+                categoryId = entry.categoryId,
+                persona = activePersonaSnapshot
             )
         }
 
-        if (readyWav != null &&
+        if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
+            return@LaunchedEffect
+        }
+
+        if (geminiResult is ShayarVoiceResult.Ready) {
+            if (!latestIsPaused) {
+                val started = playWavFileInMediaPlayer(geminiResult.audioFile, speakingState)
+                if (started) {
+                    scheduleNextReelPrewarm(activePageSnapshot + 1)
+                    return@LaunchedEffect
+                }
+            } else {
+                voicePlaybackState = speakingState
+                return@LaunchedEffect
+            }
+        }
+
+        val fallbackDetail = when (geminiResult) {
+            is ShayarVoiceResult.FallbackRequired -> geminiResult.message
+            is ShayarVoiceResult.Error -> geminiResult.message
+            is ShayarVoiceResult.Ready -> "ऑफ़लाइन आवाज़ सक्रिय"
+        }
+
+        if (!allowLocalTtsFallback) {
+            // User prefers pure emotional BGM instead of phone TTS when Gemini voice isn't available
+            voicePlaybackState = ShayarVoicePlaybackState.Error(fallbackDetail)
+            return@LaunchedEffect
+        }
+
+        // Graceful offline/quota fallback using mastered Android Hindi voice
+        val fallbackState = ShayarVoicePlaybackState.QuotaFallback(
+            persona = activePersonaSnapshot,
+            detail = fallbackDetail
+        )
+        val cachedLocalWav = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
+            couplet = entry.couplet,
+            persona = activePersonaSnapshot
+        )
+        val readyLocalWav = cachedLocalWav ?: localFallbackSpeaker.synthesizeMasteredVoice(
+            couplet = entry.couplet,
+            persona = activePersonaSnapshot,
+            isPrewarm = false
+        )
+
+        if (readyLocalWav != null &&
             !latestIsPaused &&
             isAudioEnabled &&
             !showCreateSheet &&
             latestActiveKey == activeReelKey
         ) {
-            val started = playWavFileInMediaPlayer(readyWav)
+            val started = playWavFileInMediaPlayer(readyLocalWav, fallbackState)
             if (started) {
-                scheduleNextReelsPrewarm()
+                scheduleNextReelPrewarm(activePageSnapshot + 1)
                 return@LaunchedEffect
             }
         }
 
-        // Zero-failure live Google Android TTS backup if file synthesis wasn't available
+        // Final zero-silence live TTS backup
         fun speakOnce() {
             if (latestIsPaused || !isAudioEnabled || showCreateSheet || latestActiveKey != activeReelKey) {
                 return
             }
-            voicePlaybackState = speakingState
+            voicePlaybackState = fallbackState
             localFallbackSpeaker.speak(
                 couplet = entry.couplet,
                 persona = activePersonaSnapshot,
@@ -647,7 +756,7 @@ fun ReelsScreen(
                 },
                 onCompletedAll = {
                     scope.launch {
-                        delay(3_000L)
+                        delay(3_200L)
                         if (!latestIsPaused && isAudioEnabled && !showCreateSheet &&
                             latestActiveKey == activeReelKey &&
                             voicePlayerRef[0] == null
@@ -784,6 +893,7 @@ fun ReelsScreen(
                         showSoundMixerSheet = true
                     },
                     onRetryVoice = {
+                        ShayarVoiceEngine.clearQuotaCooldown()
                         voiceRetryTick++
                     },
                     onToggleFollow = {
@@ -954,7 +1064,13 @@ fun ReelsScreen(
                 selectedBgmTrack = currentSelectedBgmOverride,
                 effectiveBgmTrack = effectiveBgmTrack,
                 voiceState = voicePlaybackState,
+                allowLocalTtsFallback = allowLocalTtsFallback,
+                onToggleLocalTtsFallback = { enabled ->
+                    allowLocalTtsFallback = enabled
+                    ReelsStorage.saveAllowLocalTtsFallback(context, enabled)
+                },
                 onRetryVoice = {
+                    ShayarVoiceEngine.clearQuotaCooldown()
                     voiceRetryTick++
                 },
                 onSelectPersona = { persona ->
@@ -1591,32 +1707,47 @@ private fun ReelPageCard(
 
             // Tappable Audio Attribution Line — opens Voice & BGM Mixer for non-video Reels
             val isVideoReel = videoUri != null || customReel?.reel?.mediaType == "video"
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(enabled = !isVideoReel, onClick = onOpenSoundMixer)
-                    .padding(vertical = 2.dp)
-                    .testTag("reel_audio_attribution_row")
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = Color(0xFFFFD580),
-                    modifier = Modifier.size(14.dp)
+            if (!isVideoReel && isAudioEnabled && voiceState !is ShayarVoicePlaybackState.Idle) {
+                ReelVoiceStatusPill(
+                    voiceState = voiceState,
+                    bgmTrack = activeBgmTrack,
+                    isAudioEnabled = isAudioEnabled,
+                    onOpenSoundMixer = {
+                        if (voiceState is ShayarVoicePlaybackState.Error) {
+                            onRetryVoice()
+                        } else {
+                            onOpenSoundMixer()
+                        }
+                    }
                 )
-                Text(
-                    text = if (isVideoReel) {
-                        "Original Audio • $cleanPoetName"
-                    } else {
-                        "${activeBgmTrack.emoji} ${activeBgmTrack.labelHi} • ${activePersona.emoji} ${activePersona.labelHi}"
-                    },
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                    color = Color.White.copy(alpha = 0.90f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            } else {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = !isVideoReel, onClick = onOpenSoundMixer)
+                        .padding(vertical = 2.dp)
+                        .testTag("reel_audio_attribution_row")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MusicNote,
+                        contentDescription = null,
+                        tint = Color(0xFFFFD580),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = if (isVideoReel) {
+                            "Original Audio • $cleanPoetName"
+                        } else {
+                            "${activeBgmTrack.emoji} ${activeBgmTrack.labelHi} • ${activePersona.emoji} ${activePersona.labelHi}"
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
+                        color = Color.White.copy(alpha = 0.90f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 

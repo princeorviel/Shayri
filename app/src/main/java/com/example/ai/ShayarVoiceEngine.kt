@@ -29,10 +29,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v8"
+private const val VOICE_CACHE_DIR = "shayar_voices_v11"
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
-private const val QUOTA_COOLDOWN_MS = 45_000L
-private const val APP_CHECK_COOLDOWN_MS = 120_000L
+private const val QUOTA_COOLDOWN_MS = 15_000L
+private const val APP_CHECK_COOLDOWN_MS = 20_000L
 
 enum class ShayarVoicePersona(
     val id: String,
@@ -45,7 +45,7 @@ enum class ShayarVoicePersona(
     val voiceDirection: String,
     val emotionalStyleCue: String
 ) {
-    // 4 Expressive Female Shayara (लड़की शायर) Voices — cast from Gemini's warmest, softest storytelling voices
+    // 4 Strongly Contrasting Female Shayara Voices
     DARD_SHAYARA(
         id = "dard_shayara",
         labelHi = "दर्द भरी शायरा",
@@ -54,54 +54,54 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "💔",
         geminiVoiceName = "Vindemiatrix",
-        voiceDirection = "a heartbroken young Indian woman speaking quietly from her own fresh pain at 2 AM, voice fragile and misty with unshed tears",
-        emotionalStyleCue = "raw personal heartbreak, tender quiet ache, speaking to someone she still misses"
+        voiceDirection = "a fragile, tearful young North Indian woman speaking slowly with a quivering heartbroken voice",
+        emotionalStyleCue = "slow, misty, aching heartbreak as if holding back tears"
     ),
     SUREELI_SHAYARA(
         id = "sureeli_shayara",
         labelHi = "सुरीली शायरा",
-        subtitleHi = "मीठी, सुरीली व दिलकश आवाज़",
+        subtitleHi = "मीठी, खिलखिलाती व सुरीली आवाज़",
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🎶",
-        geminiVoiceName = "Sulafat",
-        voiceDirection = "a warm, sweet-voiced Indian poetess sharing a heartfelt sher with a soft smile and soulful natural Hindustani flow",
-        emotionalStyleCue = "warm affectionate intimacy, effortless lyrical charm, smiling softly through the words"
+        geminiVoiceName = "Leda",
+        voiceDirection = "a bright, cheerful, melodious young Indian poetess speaking at a lively warm tempo with a natural smile",
+        emotionalStyleCue = "light, sweet, musical charm with playful affectionate sparkle"
     ),
     TADAP_SHAYARA(
         id = "tadap_shayara",
-        labelHi = "प्यार में तड़पती आवाज़",
-        subtitleHi = "इंतज़ार और तड़प भरी नाज़ुक आवाज़",
+        labelHi = "तेवर व जज़्बात शायरा",
+        subtitleHi = "दमदार, तड़प और स्वाभिमान भरी आवाज़",
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🥺",
-        geminiVoiceName = "Achernar",
-        voiceDirection = "a soft, deeply yearning young Indian woman confessing unspoken love and longing in an intimate close voice note",
-        emotionalStyleCue = "quiet breathless longing, vulnerable confession, gentle ache in the throat"
+        geminiVoiceName = "Kore",
+        voiceDirection = "a clear, emotionally fierce, expressive Indian woman with dramatic intensity and strong vocal presence",
+        emotionalStyleCue = "bold poignant emotion, sharp dramatic tension, powerful closing punch"
     ),
     ROMANTIC_SHAYARA(
         id = "romantic_shayara",
         labelHi = "रोमांटिक शायरा",
-        subtitleHi = "प्यार भरी, ख़्वाब सी रोमांटिक आवाज़",
+        subtitleHi = "मखमली, ख़्वाब सी रोमांटिक आवाज़",
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🌹",
-        geminiVoiceName = "Despina",
-        voiceDirection = "a dreamy, smooth-voiced Indian woman whispering loving Urdu-Hindi words closely to someone dear",
-        emotionalStyleCue = "velvet romantic warmth, gentle affectionate whisper-soft closeness"
+        geminiVoiceName = "Aoede",
+        voiceDirection = "a warm, silky, breezy young Indian woman speaking romantically with dreamy velvety charm",
+        emotionalStyleCue = "warm affectionate closeness, lyrical flow, dreamy romantic glow"
     ),
 
-    // 4 Expressive Male Shayar (शायर) Voices — cast from Gemini's breathy, mature & gravelly storytelling voices
+    // 4 Strongly Contrasting Male Shayar Voices
     DARD_SHAYAR(
         id = "dard_shayar",
         labelHi = "दर्द-ए-दिल शायर",
-        subtitleHi = "गहरी दर्द और खामोशी भरी आवाज़",
+        subtitleHi = "गहरी, भारी और दर्द भरी आवाज़",
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🥀",
         geminiVoiceName = "Enceladus",
-        voiceDirection = "a heartbroken Indian man speaking softly and breathily from deep personal grief in late-night silence",
-        emotionalStyleCue = "heavy quiet pain, intimate breathy vulnerability, spoken straight from a bruised heart"
+        voiceDirection = "a deep, husky, breathy North Indian man speaking slowly with heavy late-night grief",
+        emotionalStyleCue = "deep gravelly ache, slow lingering emotional weight"
     ),
     TADAP_AASHIQ(
         id = "tadap_aashiq",
@@ -110,20 +110,20 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "❤️‍🔥",
-        geminiVoiceName = "Gacrux",
-        voiceDirection = "a deeply emotional, grounded Indian lover speaking earnestly from the heart about missing his beloved",
-        emotionalStyleCue = "sincere heartfelt longing, conversational warmth turning deeply emotional on the final line"
+        geminiVoiceName = "Puck",
+        voiceDirection = "an energetic, passionate young Indian man speaking with intense heartfelt urgency and rising emotion",
+        emotionalStyleCue = "lively passionate longing, rising emotional crescendo on the last line"
     ),
     MEHFIL_SHAYAR(
         id = "mehfil_shayar",
-        labelHi = "महफ़िल शायर",
-        subtitleHi = "रेशमी, गहरी मुशायरा शायर आवाज़",
+        labelHi = "महफ़िल उस्ताद",
+        subtitleHi = "रॉयल मुशायरा मंच की भारी आवाज़",
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🎙️",
         geminiVoiceName = "Algenib",
-        voiceDirection = "a soulful, rich-voiced Indian Urdu Mushaira shayar with a slightly gravelly lived-in baritone sharing wisdom with friends at midnight",
-        emotionalStyleCue = "authentic Mehfil soul, effortless lived-in conversational depth, landing the punchline with quiet weight"
+        voiceDirection = "a commanding, seasoned Lucknow Mushaira poet in his 40s with a rich resonant baritone and royal theatrical cadence",
+        emotionalStyleCue = "poised regal Mushaira storytelling, dramatic pause before landing the sher punchline"
     ),
     JOSH_SHAYAR(
         id = "josh_shayar",
@@ -132,9 +132,9 @@ enum class ShayarVoicePersona(
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🔥",
-        geminiVoiceName = "Alnilam",
-        voiceDirection = "a charismatic, self-assured Indian poet speaking with natural fire, quiet pride, and sharp punchline timing",
-        emotionalStyleCue = "confident bold charisma, real human conviction, crisp dramatic pause before the closing punchline"
+        geminiVoiceName = "Fenrir",
+        voiceDirection = "a bold, fearless, high-energy Indian stage poet with powerful chest voice and sharp North Indian swagger",
+        emotionalStyleCue = "confident punchy pace, fiery bold authority, hard-hitting closing line"
     );
 
     companion object {
@@ -185,33 +185,43 @@ enum class ShayarVoicePersona(
                 "aukat", "attitude", "hausla", "jeet", "zid", "sher"
             ).any { it in text }
 
+            // Carefully interleaved Female/Male contrasting pools rotated strictly by pageIndex
+            // so consecutive Reels NEVER repeat the same voice, gender, or emotional cadence.
+            val isComedyOrPlayful = cat.isJokeCategory || cat == ShayariCategory.NIBBA_NIBBI ||
+                cat == ShayariCategory.GEN_Z || cat == ShayariCategory.DOSTI
+
             val pool: List<ShayarVoicePersona> = when {
+                isComedyOrPlayful ->
+                    listOf(SUREELI_SHAYARA, TADAP_AASHIQ, TADAP_SHAYARA, JOSH_SHAYAR)
+
                 cat == ShayariCategory.ATTITUDE || cat == ShayariCategory.HAUSLA || cat == ShayariCategory.DESHPREM || hasJoshWords ->
-                    listOf(JOSH_SHAYAR, MEHFIL_SHAYAR, SUREELI_SHAYARA)
+                    listOf(JOSH_SHAYAR, TADAP_SHAYARA, MEHFIL_SHAYAR, SUREELI_SHAYARA)
 
                 cat == ShayariCategory.DARD || cat == ShayariCategory.BEWAFAI || cat == ShayariCategory.AANSU ||
                     cat == ShayariCategory.TANHAI || cat == ShayariCategory.MAUT_JANAZA || (hasDardWords && !hasRomanticWords) ->
-                    listOf(DARD_SHAYARA, DARD_SHAYAR, TADAP_SHAYARA, TADAP_AASHIQ)
+                    listOf(DARD_SHAYARA, DARD_SHAYAR, TADAP_SHAYARA, MEHFIL_SHAYAR, ROMANTIC_SHAYARA, TADAP_AASHIQ)
 
                 hasTadapWords || cat == ShayariCategory.SECRET_LOVE || cat == ShayariCategory.AAINA ->
-                    listOf(TADAP_SHAYARA, TADAP_AASHIQ, DARD_SHAYARA, ROMANTIC_SHAYARA)
+                    listOf(TADAP_AASHIQ, TADAP_SHAYARA, DARD_SHAYAR, ROMANTIC_SHAYARA, MEHFIL_SHAYAR, DARD_SHAYARA)
 
                 cat == ShayariCategory.MOHABBAT || cat == ShayariCategory.ROMANTIC || cat == ShayariCategory.TAREEF || hasRomanticWords ->
-                    listOf(ROMANTIC_SHAYARA, SUREELI_SHAYARA, TADAP_AASHIQ, TADAP_SHAYARA, MEHFIL_SHAYAR)
+                    listOf(ROMANTIC_SHAYARA, TADAP_AASHIQ, SUREELI_SHAYARA, MEHFIL_SHAYAR, TADAP_SHAYARA, DARD_SHAYAR)
 
                 else ->
                     listOf(
-                        SUREELI_SHAYARA,
                         MEHFIL_SHAYAR,
-                        ROMANTIC_SHAYARA,
-                        DARD_SHAYARA,
+                        SUREELI_SHAYARA,
                         TADAP_AASHIQ,
+                        ROMANTIC_SHAYARA,
+                        JOSH_SHAYAR,
+                        DARD_SHAYARA,
                         DARD_SHAYAR,
                         TADAP_SHAYARA
                     )
             }
 
-            val index = abs(pageIndex + (stableKey.hashCode() and 0x3)) % pool.size
+            // Strictly advance by pageIndex (no random hash offset) so adjacent pages ALWAYS contrast!
+            val index = abs(pageIndex) % pool.size
             return pool[index]
         }
     }
@@ -321,7 +331,7 @@ object ShayarVoiceEngine {
         val deferred = inFlightRequests.computeIfAbsent(requestKey) {
             engineScope.async {
                 try {
-                    generateVoiceInternal(cleanCouplet, persona, cacheFile)
+                    generateVoiceInternal(cleanCouplet, categoryId, persona, cacheFile)
                 } finally {
                     inFlightRequests.remove(requestKey)
                 }
@@ -330,39 +340,69 @@ object ShayarVoiceEngine {
         return deferred.await()
     }
 
+    /**
+     * Quietly pre-generates the single upcoming Reel's voice on disk AFTER the current Reel is
+     * already playing, so swiping to the next Reel starts in 0ms with zero loading delay.
+     * Skips immediately if already cached, already in-flight, or in quota/App-Check cooldown.
+     */
+    suspend fun prewarmVoiceIfSafe(
+        context: Context,
+        couplet: String,
+        categoryId: String,
+        persona: ShayarVoicePersona
+    ) {
+        val cleanCouplet = couplet.trim()
+        if (cleanCouplet.isBlank() || isInFallbackCooldown()) return
+        val appCtx = context.applicationContext
+        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
+        if (findExistingCacheFile(cacheFile) != null) return
+        val requestKey = cacheFile.nameWithoutExtension
+        if (inFlightRequests.containsKey(requestKey)) return
+        runCatching {
+            getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)
+        }
+    }
+
     private suspend fun generateVoiceInternal(
         cleanCouplet: String,
+        categoryId: String,
         persona: ShayarVoicePersona,
         cacheFile: File
     ): ShayarVoiceResult {
         findExistingCacheFile(cacheFile)?.let { return ShayarVoiceResult.Ready(it) }
 
-        val prompt = buildPoeticRecitationPrompt(cleanCouplet, persona)
+        val prompt = buildPoeticRecitationPrompt(
+            couplet = cleanCouplet,
+            persona = persona,
+            categoryId = categoryId
+        )
         return try {
             val model = getModel(persona)
-            val response = withTimeout(30_000L) {
+            val response = withTimeout(45_000L) {
                 model.generateContent(prompt)
             }
 
             val allParts = response.candidates.flatMap { it.content.parts }
-            val audioPart = allParts
+            val audioParts = allParts
                 .filterIsInstance<InlineDataPart>()
-                .firstOrNull { part ->
+                .filter { part ->
                     part.mimeType.startsWith("audio/", ignoreCase = true) &&
-                        part.inlineData.size >= 1_600
+                        part.inlineData.isNotEmpty()
                 }
 
-            if (audioPart != null) {
+            val combinedAudio = combineAudioParts(audioParts)
+            if (combinedAudio != null && combinedAudio.first.size >= 1_600) {
+                val (audioBytes, audioMimeType) = combinedAudio
                 clearQuotaCooldown()
                 Log.d(
                     TAG,
-                    "Shayar voice ready via $PRIMARY_TTS_MODEL (${persona.id}/${persona.geminiVoiceName}): mime=${audioPart.mimeType}, bytes=${audioPart.inlineData.size}"
+                    "Shayar voice ready via $PRIMARY_TTS_MODEL (${persona.id}/${persona.geminiVoiceName}): mime=$audioMimeType, parts=${audioParts.size}, bytes=${audioBytes.size}"
                 )
                 val savedFile = withContext(Dispatchers.IO) {
                     val rawFile = writePlayableAudioFile(
                         targetBaseFile = cacheFile,
-                        rawBytes = audioPart.inlineData,
-                        mimeType = audioPart.mimeType
+                        rawBytes = audioBytes,
+                        mimeType = audioMimeType
                     )
                     if (rawFile.extension.equals("wav", ignoreCase = true)) {
                         val masteredFile = File(rawFile.parentFile, "${rawFile.nameWithoutExtension}_m.wav")
@@ -389,12 +429,12 @@ object ShayarVoiceEngine {
                     ShayarVoiceResult.Ready(savedFile)
                 } else {
                     Log.w(TAG, "Gemini returned silent/unplayable WAV; triggering fallback.")
-                    ShayarVoiceResult.Error("ऑडियो साफ़ नहीं मिला — लोकल आवाज़ चालू")
+                    ShayarVoiceResult.Error("ऑडियो साफ़ नहीं मिला — दोबारा प्रयास करें")
                 }
             } else {
                 val partSummary = allParts.joinToString { it::class.simpleName ?: "Part" }
-                Log.e(TAG, "Model $PRIMARY_TTS_MODEL returned no audio InlineDataPart. Parts=[$partSummary]")
-                ShayarVoiceResult.Error("शायर आवाज़ लोड नहीं हो सकी — लोकल आवाज़ चालू")
+                Log.e(TAG, "Model $PRIMARY_TTS_MODEL returned no usable audio InlineDataPart. Parts=[$partSummary]")
+                ShayarVoiceResult.Error("शायर आवाज़ लोड नहीं हो सकी — दोबारा प्रयास करें")
             }
         } catch (e: CancellationException) {
             throw e
@@ -421,7 +461,7 @@ object ShayarVoiceEngine {
                     fallbackCooldownUntilMs = System.currentTimeMillis() + QUOTA_COOLDOWN_MS
                     fallbackCooldownIsQuota = true
                     fallbackCooldownIsAppCheck = false
-                    fallbackCooldownMessage = "AI कोटा सीमा • लोकल हिंदी आवाज़ सक्रिय"
+                    fallbackCooldownMessage = "अभी व्यस्त है • ऑफ़लाइन आवाज़ चालू (रिट्राई करें)"
                     ShayarVoiceResult.FallbackRequired(
                         message = fallbackCooldownMessage,
                         isQuotaError = true
@@ -431,20 +471,38 @@ object ShayarVoiceEngine {
                     fallbackCooldownUntilMs = System.currentTimeMillis() + APP_CHECK_COOLDOWN_MS
                     fallbackCooldownIsAppCheck = true
                     fallbackCooldownIsQuota = false
-                    fallbackCooldownMessage = "लोकल हिंदी आवाज़ सक्रिय • AI रिट्राई (App Check)"
+                    fallbackCooldownMessage = "ऑफ़लाइन आवाज़ सक्रिय • रिट्राई करें"
                     ShayarVoiceResult.FallbackRequired(
                         message = fallbackCooldownMessage,
                         isAppCheckError = true
                     )
                 }
                 else -> {
-                    ShayarVoiceResult.Error(
-                        rawMsg.take(72).takeIf { it.isNotBlank() }
-                            ?: "लोकल हिंदी आवाज़ सक्रिय • AI रिट्राई"
-                    )
+                    ShayarVoiceResult.Error("इंटरनेट या आवाज़ सेवा उपलब्ध नहीं — रिट्राई करें")
                 }
             }
         }
+    }
+
+    private fun combineAudioParts(parts: List<InlineDataPart>): Pair<ByteArray, String>? {
+        if (parts.isEmpty()) return null
+        if (parts.size == 1) return parts.first().inlineData to parts.first().mimeType
+        val firstMime = parts.first().mimeType
+        val lowerMime = firstMime.lowercase()
+        val isContainerFormat = lowerMime.contains("mp3") || lowerMime.contains("mpeg") ||
+            lowerMime.contains("ogg") || lowerMime.contains("mp4") ||
+            (parts.first().inlineData.size >= 4 &&
+                parts.first().inlineData[0] == 'R'.code.toByte() &&
+                parts.first().inlineData[1] == 'I'.code.toByte() &&
+                parts.first().inlineData[2] == 'F'.code.toByte() &&
+                parts.first().inlineData[3] == 'F'.code.toByte())
+        if (isContainerFormat) {
+            val largest = parts.maxByOrNull { it.inlineData.size } ?: return null
+            return largest.inlineData to largest.mimeType
+        }
+        val merged = ByteArrayOutputStream()
+        parts.forEach { part -> merged.write(part.inlineData) }
+        return merged.toByteArray() to firstMime
     }
 
     private fun findExistingCacheFile(baseWavFile: File): File? {
@@ -458,56 +516,189 @@ object ShayarVoiceEngine {
         return candidates.firstOrNull { it.exists() && it.length() > 128L }
     }
 
-    private fun buildPoeticRecitationPrompt(
+    private enum class CoupletEmotion {
+        DEEP_HEARTBREAK,
+        PASSIONATE_YEARNING,
+        PLAYFUL_ROMANCE,
+        INTIMATE_ROMANTIC,
+        WITTY_LIGHTHEARTED,
+        BOLD_ATTITUDE,
+        ROYAL_MEHFIL,
+        SOULFUL_SUFI
+    }
+
+    private fun detectCoupletEmotion(
         couplet: String,
+        categoryId: String,
         persona: ShayarVoicePersona
+    ): CoupletEmotion {
+        val lower = couplet.lowercase()
+        val cat = ShayariCategory.fromId(categoryId)
+
+        if (cat.isJokeCategory || cat == ShayariCategory.NIBBA_NIBBI || cat == ShayariCategory.GEN_Z) {
+            return CoupletEmotion.WITTY_LIGHTHEARTED
+        }
+
+        val hasHeartbreak = listOf(
+            "दर्द", "आँसू", "आंसू", "बेवफ़ा", "बेवफा", "टूटा", "टूट", "ज़ख्म", "जख्म", "तन्हा", "बिछड़", "रो", "ग़म", "गम",
+            "dard", "aansu", "bewafa", "toota", "zakhm", "tanha", "gham", "rona"
+        ).any { it in lower }
+
+        val hasYearning = listOf(
+            "तड़प", "तडप", "इंतज़ार", "इंतजार", "जुदाई", "याद", "तरस", "बिन तेरे", "लौट आ", "ख़ामोश", "खामोश",
+            "tadap", "intezaar", "intezar", "judai", "yaad", "taras", "bin tere"
+        ).any { it in lower }
+
+        val hasAttitude = listOf(
+            "औक़ात", "औकात", "शेर", "ज़िद", "जिद", "हौसला", "जीत", "दुश्मन", "वतन", "अंदाज़", "अंदाज",
+            "aukat", "attitude", "hausla", "jeet", "zid", "dushman"
+        ).any { it in lower }
+
+        val hasRomantic = listOf(
+            "इश्क़", "इश्क", "मोहब्बत", "प्यार", "चाँद", "होंठ", "बाहों", "धड़कन", "सनम", "जाँ", "जान", "इज़हार", "ख़ूबसूरत",
+            "ishq", "mohabbat", "pyaar", "pyar", "chaand", "dhadkan", "sanam"
+        ).any { it in lower }
+
+        val hasSufiOrLife = cat == ShayariCategory.KHUDA_RAB || cat == ShayariCategory.ZINDAGI ||
+            cat == ShayariCategory.WAQT || cat == ShayariCategory.MUSAFIR || cat == ShayariCategory.AAINA
+
+        return when {
+            persona == ShayarVoicePersona.JOSH_SHAYAR || cat == ShayariCategory.ATTITUDE ||
+                cat == ShayariCategory.HAUSLA || cat == ShayariCategory.DESHPREM || hasAttitude ->
+                CoupletEmotion.BOLD_ATTITUDE
+
+            persona == ShayarVoicePersona.MEHFIL_SHAYAR ->
+                if (hasSufiOrLife) CoupletEmotion.SOULFUL_SUFI else CoupletEmotion.ROYAL_MEHFIL
+
+            persona == ShayarVoicePersona.SUREELI_SHAYARA ->
+                if (cat == ShayariCategory.DOSTI || cat == ShayariCategory.NEW_YEAR || cat == ShayariCategory.CHRISTMAS) {
+                    CoupletEmotion.WITTY_LIGHTHEARTED
+                } else {
+                    CoupletEmotion.PLAYFUL_ROMANCE
+                }
+
+            persona == ShayarVoicePersona.TADAP_AASHIQ || persona == ShayarVoicePersona.TADAP_SHAYARA ->
+                CoupletEmotion.PASSIONATE_YEARNING
+
+            persona == ShayarVoicePersona.DARD_SHAYARA || persona == ShayarVoicePersona.DARD_SHAYAR ||
+                cat == ShayariCategory.DARD || cat == ShayariCategory.BEWAFAI ||
+                cat == ShayariCategory.AANSU || cat == ShayariCategory.TANHAI ||
+                cat == ShayariCategory.MAUT_JANAZA || (hasHeartbreak && !hasRomantic) ->
+                CoupletEmotion.DEEP_HEARTBREAK
+
+            hasYearning || cat == ShayariCategory.SECRET_LOVE ->
+                CoupletEmotion.PASSIONATE_YEARNING
+
+            persona == ShayarVoicePersona.ROMANTIC_SHAYARA || cat == ShayariCategory.MOHABBAT ||
+                cat == ShayariCategory.ROMANTIC || cat == ShayariCategory.TAREEF || hasRomantic ->
+                CoupletEmotion.INTIMATE_ROMANTIC
+
+            hasSufiOrLife -> CoupletEmotion.SOULFUL_SUFI
+            else -> CoupletEmotion.ROYAL_MEHFIL
+        }
+    }
+
+    private fun sanitizeLineForTranscript(rawLine: String): String {
+        return rawLine
+            .replace(Regex("[\\p{So}\\p{Cn}_#*~`^|<>\\[\\]{}]"), " ")
+            .replace(Regex("[•·▪▫●○◆◇★☆]+"), ", ")
+            .replace(Regex("\\.{2,}"), ",")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    internal fun buildPoeticRecitationPrompt(
+        couplet: String,
+        persona: ShayarVoicePersona,
+        categoryId: String = ""
     ): String {
         val lines = couplet
             .replace("\r\n", "\n")
             .split("\n")
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+            .map { sanitizeLineForTranscript(it) }
+            .filter { line -> line.any { ch -> ch.isLetterOrDigit() } }
 
-        // Minimal, organic inline cues — NEVER use [slowly] or [deliberate] which make Hindi sound
-        // like a stretched audiobook narrator. Only natural human breath + pause before the heart-hitting final line.
-        val (openingCue, closingCue) = when (persona) {
-            ShayarVoicePersona.DARD_SHAYARA,
-            ShayarVoicePersona.DARD_SHAYAR -> "[sighs]" to "[pauses] [softly]"
-            ShayarVoicePersona.TADAP_SHAYARA,
-            ShayarVoicePersona.TADAP_AASHIQ -> "[softly]" to "[pauses] [sighs]"
-            ShayarVoicePersona.SUREELI_SHAYARA,
-            ShayarVoicePersona.ROMANTIC_SHAYARA -> "[softly]" to "[pauses]"
-            ShayarVoicePersona.MEHFIL_SHAYAR -> "" to "[pauses]"
-            ShayarVoicePersona.JOSH_SHAYAR -> "" to "[pauses]"
+        val emotion = detectCoupletEmotion(couplet, categoryId, persona)
+
+        // Concise, sharply contrasting "Say ...:" directives so every persona & mood has a
+        // distinct tempo, pitch contour, and emotional energy (and generates faster!).
+        val styleDirective = when (emotion) {
+            CoupletEmotion.DEEP_HEARTBREAK ->
+                "Say this Hindi-Urdu shayari slowly and emotionally as ${persona.voiceDirection}, with fragile raw heartbreak and voice trembling softly on the closing line:"
+            CoupletEmotion.PASSIONATE_YEARNING ->
+                "Say this Hindi-Urdu shayari passionately as ${persona.voiceDirection}, with expressive intensity, rising heartfelt longing, and emotional weight on the last line:"
+            CoupletEmotion.PLAYFUL_ROMANCE ->
+                "Say this Hindi-Urdu shayari warmly at a lively, smiling conversational pace as ${persona.voiceDirection}, with sweet musical lilt and bright affectionate joy:"
+            CoupletEmotion.INTIMATE_ROMANTIC ->
+                "Say this Hindi-Urdu shayari tenderly as ${persona.voiceDirection}, with velvety romantic warmth, gentle intimacy, and soft lingering charm:"
+            CoupletEmotion.WITTY_LIGHTHEARTED ->
+                "Say this Hindi-Urdu piece cheerfully at an upbeat, playful pace as ${persona.voiceDirection}, with a warm smile and amused lighthearted timing:"
+            CoupletEmotion.BOLD_ATTITUDE ->
+                "Say this Hindi-Urdu shayari boldly at a crisp, energetic stage pace as ${persona.voiceDirection}, with fearless swagger and a sharp punch on the final line:"
+            CoupletEmotion.ROYAL_MEHFIL ->
+                "Recite this Hindi-Urdu sher with classic Lucknow Mushaira poise as ${persona.voiceDirection}, building regal suspense on line one and landing the punchline with resonant authority:"
+            CoupletEmotion.SOULFUL_SUFI ->
+                "Say this Hindi-Urdu shayari calmly and deeply as ${persona.voiceDirection}, with grounded Sufi serenity, warm conversational wisdom, and peaceful gravity:"
         }
 
         val taggedTranscript = buildString {
             lines.forEachIndexed { idx, rawLine ->
-                val clean = rawLine.trimEnd('।', '.', ',', ' ')
-                val lineWithPunct = if (idx < lines.lastIndex) "$clean," else "$clean।"
-                val cue = when {
-                    idx == 0 -> openingCue
-                    idx == lines.lastIndex -> closingCue
-                    else -> "[pauses]"
+                val isFirst = idx == 0
+                val isLast = idx == lines.lastIndex
+                val clean = rawLine.trimEnd('।', '.', ',', ' ', '—', '-')
+                val endingPunct = when {
+                    rawLine.endsWith("?") -> "?"
+                    rawLine.endsWith("!") -> "!"
+                    emotion == CoupletEmotion.BOLD_ATTITUDE && isLast -> "!"
+                    isLast -> "।"
+                    else -> ","
                 }
+
                 if (idx > 0) append("\n")
-                if (cue.isNotEmpty()) {
-                    append(cue)
-                    append(" ")
+
+                val prefixTag = when (emotion) {
+                    CoupletEmotion.DEEP_HEARTBREAK -> when {
+                        isLast && lines.size >= 2 -> "[medium pause] [sigh] "
+                        isFirst -> ""
+                        else -> "[short pause] "
+                    }
+                    CoupletEmotion.PASSIONATE_YEARNING -> when {
+                        isLast && lines.size >= 2 -> "[short pause] "
+                        else -> ""
+                    }
+                    CoupletEmotion.PLAYFUL_ROMANCE -> when {
+                        isFirst -> ""
+                        else -> "[short pause] "
+                    }
+                    CoupletEmotion.INTIMATE_ROMANTIC -> when {
+                        isFirst -> ""
+                        else -> "[short pause] "
+                    }
+                    CoupletEmotion.WITTY_LIGHTHEARTED -> when {
+                        isLast && lines.size >= 2 -> "[short pause] [chuckle] "
+                        else -> ""
+                    }
+                    CoupletEmotion.BOLD_ATTITUDE -> when {
+                        isLast && lines.size >= 2 -> "[medium pause] "
+                        else -> ""
+                    }
+                    CoupletEmotion.ROYAL_MEHFIL -> when {
+                        isLast && lines.size >= 2 -> "[medium pause] "
+                        else -> ""
+                    }
+                    CoupletEmotion.SOULFUL_SUFI -> when {
+                        isFirst -> ""
+                        else -> "[short pause] "
+                    }
                 }
-                append(lineWithPunct)
+
+                append(prefixTag)
+                append(clean)
+                append(endingPunct)
             }
         }
 
-        return buildString {
-            appendLine("Perform this Hindi-Urdu shayari as a real Indian person speaking spontaneously from the heart — NOT reading written text from a page.")
-            appendLine("Speaker: ${persona.voiceDirection}.")
-            appendLine("Emotion: ${persona.emotionalStyleCue}.")
-            appendLine("Style: Conversational, intimate late-night Hindustani/Urdu tone like a real Shayar on a viral heartfelt Reel — natural flowing everyday Indian pronunciation, organic breath, subtle rise on the first line, heartfelt emotional weight on the last line. Zero robotic narration, zero stiff word-by-word reading.")
-            appendLine()
-            appendLine("#### TRANSCRIPT")
-            append(taggedTranscript)
-        }
+        return "$styleDirective\n\n$taggedTranscript"
     }
 
     private fun resolveCacheFile(
@@ -541,7 +732,10 @@ object ShayarVoiceEngine {
             else -> {
                 val sampleRate = parseSampleRate(lowerMime) ?: 24_000
                 val channels = parseChannelCount(lowerMime) ?: 1
-                wrapPcmAsWav(rawBytes, sampleRate = sampleRate, channels = channels, bitsPerSample = 16)
+                val frameAlign = channels * 2
+                val alignedLen = (rawBytes.size / frameAlign) * frameAlign
+                val alignedPcm = if (alignedLen == rawBytes.size) rawBytes else rawBytes.copyOf(alignedLen)
+                wrapPcmAsWav(alignedPcm, sampleRate = sampleRate, channels = channels, bitsPerSample = 16)
             }
         }
 
@@ -608,9 +802,9 @@ object ShayarVoiceEngine {
 
     private fun trimCacheIfNeeded(cacheDir: File?) {
         val files = cacheDir?.listFiles()?.filter { it.isFile } ?: return
-        if (files.size <= 45) return
+        if (files.size <= 90) return
         files.sortedBy { it.lastModified() }
-            .take(files.size - 32)
+            .take(files.size - 70)
             .forEach { runCatching { it.delete() } }
     }
 

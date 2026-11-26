@@ -76,7 +76,14 @@ object StudioVocalMaster {
             val decoded = decodePcm16Wav(inputWav) ?: return false
             if (decoded.monoSamples.size < decoded.sampleRate / 12) return false
 
-            val samples = trimSilenceEdges(decoded.monoSamples, decoded.sampleRate)
+            // Ultra-gentle edge trim (0.0018f threshold + 65ms breathing pad) so soft human
+            // sighs, breath intakes, and whispered line endings are NEVER clipped off.
+            val samples = trimSilenceEdges(
+                samples = decoded.monoSamples,
+                sampleRate = decoded.sampleRate,
+                threshold = 0.0018f,
+                padSeconds = 0.065
+            )
             if (samples.isEmpty()) return false
 
             // Reject truly silent/corrupt generations so Reels immediately falls back
@@ -90,19 +97,29 @@ object StudioVocalMaster {
                 return false
             }
 
-            applyHighPass(samples, decoded.sampleRate, cutoffHz = 50.0)
+            applyHighPass(samples, decoded.sampleRate, cutoffHz = 48.0)
 
-            // Subtle close-mic studio warmth below 190Hz (keeps 100% of Gemini's natural human breath & highs untouched)
-            val warmAlpha = (1.0 - exp(-2.0 * PI * 190.0 / decoded.sampleRate)).toFloat()
+            // Subtle close-mic studio body below 180Hz (keeps 100% of Gemini's natural human breath & vocal timbre pure)
+            val warmAlpha = (1.0 - exp(-2.0 * PI * 180.0 / decoded.sampleRate)).toFloat()
             var lowState = 0f
             for (i in samples.indices) {
                 val x = samples[i]
                 lowState += (x - lowState) * warmAlpha
-                samples[i] = x + lowState * 0.14f
+                samples[i] = x + lowState * 0.10f
+            }
+
+            // Smooth 10ms edge fades so playback starts and ends with zero digital clicks
+            val fadeN = (0.010 * decoded.sampleRate).toInt().coerceAtMost(samples.size / 6)
+            if (fadeN > 0) {
+                for (i in 0 until fadeN) {
+                    val g = i.toFloat() / fadeN.toFloat()
+                    samples[i] *= g
+                    samples[samples.lastIndex - i] *= g
+                }
             }
 
             val tmp = File(outputWav.parentFile, "${outputWav.name}.tmp")
-            writeNormalizedStereoWav(tmp, samples, samples, decoded.sampleRate, targetPeak = 0.92f)
+            writeNormalizedStereoWav(tmp, samples, samples, decoded.sampleRate, targetPeak = 0.93f)
             if (!tmp.renameTo(outputWav)) {
                 outputWav.writeBytes(tmp.readBytes())
                 tmp.delete()
@@ -290,14 +307,18 @@ object StudioVocalMaster {
         return DecodedPcm(safeRate, mono)
     }
 
-    private fun trimSilenceEdges(samples: FloatArray, sampleRate: Int): FloatArray {
-        val threshold = 0.006f
+    private fun trimSilenceEdges(
+        samples: FloatArray,
+        sampleRate: Int,
+        threshold: Float = 0.006f,
+        padSeconds: Double = 0.030
+    ): FloatArray {
         var start = 0
         while (start < samples.size && abs(samples[start]) < threshold) start++
         var end = samples.size - 1
         while (end > start && abs(samples[end]) < threshold) end--
         if (end <= start) return samples
-        val pad = (0.030 * sampleRate).toInt()
+        val pad = (padSeconds * sampleRate).toInt()
         val safeStart = (start - pad).coerceAtLeast(0)
         val safeEnd = (end + pad).coerceAtMost(samples.size - 1)
         return samples.copyOfRange(safeStart, safeEnd + 1)

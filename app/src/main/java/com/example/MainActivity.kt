@@ -40,10 +40,12 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,6 +61,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -69,6 +74,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.ai.configureAppCheck
+import com.example.audio.ReadingAmbientPlayer
+import com.example.audio.ReadingAmbientTrack
+import com.example.audio.ReadingSleepTimerOption
 import com.example.auth.attemptAutoSignIn
 import com.example.auth.isAppOwner
 import com.example.auth.isFirebaseAvailable
@@ -105,7 +113,9 @@ import com.example.data.remote.ShayariCommentsRepository
 import com.example.notifications.DailyShayariNotificationHelper
 import com.example.notifications.DailyShayariScheduler
 import com.example.ui.components.AccountAvatar
+import com.example.ui.components.FloatingReadingMusicBar
 import com.example.ui.components.ProfileManagementSheet
+import com.example.ui.components.ReadingMusicSheet
 import com.example.ui.components.ShareContentMode
 import com.example.ui.components.ShareShayariSheet
 import com.example.ui.components.ShareTarget
@@ -147,6 +157,8 @@ import com.example.util.SocialSharePlatform
 import com.example.util.SocialShareResult
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
+import kotlin.math.ceil
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
@@ -303,6 +315,111 @@ private fun ShayariAppRoot(
     var onlineCommunityReels by remember { mutableStateOf<List<CommunityReel>>(emptyList()) }
     var onlineLikedReelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var reelsCreateTrigger by remember { mutableIntStateOf(0) }
+    var showReadingMusicSheet by remember { mutableStateOf(false) }
+    var activeReaderCategoryId by remember { mutableStateOf<String?>(null) }
+    var selectedSleepTimer by remember { mutableStateOf(ReadingSleepTimerOption.CONTINUOUS) }
+    var sleepTimerDeadlineMs by remember { mutableLongStateOf(0L) }
+    var remainingSleepTimerMinutes by remember { mutableStateOf<Int?>(null) }
+    var isAppInForeground by remember { mutableStateOf(true) }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val readingAmbientPlayer = remember(context) {
+        ReadingAmbientPlayer(
+            context = context,
+            onAudioFocusLost = {
+                viewModel.setReadingBgmEnabled(false)
+            }
+        )
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> isAppInForeground = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> isAppInForeground = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    DisposableEffect(readingAmbientPlayer) {
+        onDispose {
+            readingAmbientPlayer.release()
+        }
+    }
+
+    val selectedReadingTrack = remember(uiState.preferences.readingBgmTrackId) {
+        ReadingAmbientTrack.fromId(uiState.preferences.readingBgmTrackId)
+    }
+    val moodContextCategoryId = when (currentRoute) {
+        ROUTE_READER -> activeReaderCategoryId ?: uiState.selectedCategoryId
+        ROUTE_CATEGORY_DETAIL -> navBackStackEntry?.arguments?.getString("categoryId")
+        else -> uiState.selectedCategoryId
+    }
+    val effectiveReadingTrack = remember(
+        uiState.preferences.readingBgmAutoMood,
+        selectedReadingTrack,
+        moodContextCategoryId
+    ) {
+        if (uiState.preferences.readingBgmAutoMood && !moodContextCategoryId.isNullOrBlank()) {
+            ReadingAmbientTrack.recommendedForCategory(moodContextCategoryId)
+        } else {
+            selectedReadingTrack
+        }
+    }
+    val shouldPlayReadingMusic = uiState.preferences.readingBgmEnabled &&
+        isAppInForeground &&
+        currentRoute != ROUTE_REELS
+
+    LaunchedEffect(
+        shouldPlayReadingMusic,
+        effectiveReadingTrack,
+        uiState.preferences.readingBgmVolume
+    ) {
+        readingAmbientPlayer.updateState(
+            shouldPlay = shouldPlayReadingMusic,
+            track = effectiveReadingTrack,
+            volume = uiState.preferences.readingBgmVolume
+        )
+    }
+
+    LaunchedEffect(
+        selectedSleepTimer,
+        sleepTimerDeadlineMs,
+        uiState.preferences.readingBgmEnabled
+    ) {
+        if (selectedSleepTimer == ReadingSleepTimerOption.CONTINUOUS ||
+            sleepTimerDeadlineMs <= 0L ||
+            !uiState.preferences.readingBgmEnabled
+        ) {
+            remainingSleepTimerMinutes = null
+            return@LaunchedEffect
+        }
+        while (true) {
+            val remainingMs = sleepTimerDeadlineMs - System.currentTimeMillis()
+            if (remainingMs <= 0L) {
+                remainingSleepTimerMinutes = null
+                selectedSleepTimer = ReadingSleepTimerOption.CONTINUOUS
+                sleepTimerDeadlineMs = 0L
+                readingAmbientPlayer.fadeOutAndStop {
+                    viewModel.setReadingBgmEnabled(false)
+                    scope.launch {
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        snackbarHostState.showSnackbar(
+                            context.getString(R.string.reading_music_timer_finished)
+                        )
+                    }
+                }
+                break
+            }
+            remainingSleepTimerMinutes = ceil(remainingMs / 60_000.0).toInt().coerceAtLeast(1)
+            delay(minOf(10_000L, remainingMs))
+        }
+    }
 
     LaunchedEffect(context) {
         val persisted = ReelsStorage.loadUserReels(context)
@@ -1266,7 +1383,9 @@ private fun ShayariAppRoot(
                                     navController.navigate(ROUTE_ADMIN_DASHBOARD) {
                                         launchSingleTop = true
                                     }
-                                }
+                                },
+                                isReadingMusicPlaying = shouldPlayReadingMusic,
+                                onOpenReadingMusic = { showReadingMusicSheet = true }
                             )
                         }
 
@@ -2430,10 +2549,47 @@ private fun ShayariAppRoot(
                                     navController.navigate(ROUTE_WRITE_STUDIO) {
                                         launchSingleTop = true
                                     }
+                                },
+                                isAmbientMusicPlaying = shouldPlayReadingMusic,
+                                activeAmbientTrack = effectiveReadingTrack,
+                                onToggleAmbientMusic = {
+                                    viewModel.setReadingBgmEnabled(!uiState.preferences.readingBgmEnabled)
+                                },
+                                onOpenAmbientMusicConfig = { showReadingMusicSheet = true },
+                                onCurrentCategoryChanged = { catId ->
+                                    activeReaderCategoryId = catId
                                 }
                             )
                         }
                     }
+
+                    val showFloatingMusicBar = uiState.preferences.readingBgmEnabled &&
+                        currentRoute in setOf(
+                            ROUTE_MEHFIL,
+                            ROUTE_FAVORITES,
+                            ROUTE_CATEGORY_DETAIL,
+                            ROUTE_KAVI_MANCH,
+                            ROUTE_POET_PROFILE
+                        )
+                    FloatingReadingMusicBar(
+                        visible = showFloatingMusicBar,
+                        isPlaying = shouldPlayReadingMusic,
+                        activeTrack = effectiveReadingTrack,
+                        remainingTimerMinutes = remainingSleepTimerMinutes,
+                        onTogglePlay = {
+                            viewModel.setReadingBgmEnabled(!uiState.preferences.readingBgmEnabled)
+                        },
+                        onOpenConfig = { showReadingMusicSheet = true },
+                        onStopAndDismiss = {
+                            selectedSleepTimer = ReadingSleepTimerOption.CONTINUOUS
+                            sleepTimerDeadlineMs = 0L
+                            remainingSleepTimerMinutes = null
+                            viewModel.setReadingBgmEnabled(false)
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
                 }
             }
         }
@@ -2557,6 +2713,52 @@ private fun ShayariAppRoot(
                         shareTarget = null
                     }
                 }
+            )
+        }
+
+        if (showReadingMusicSheet) {
+            ReadingMusicSheet(
+                isEnabled = uiState.preferences.readingBgmEnabled,
+                selectedTrack = selectedReadingTrack,
+                effectiveTrack = effectiveReadingTrack,
+                volume = uiState.preferences.readingBgmVolume,
+                autoMoodEnabled = uiState.preferences.readingBgmAutoMood,
+                selectedTimer = selectedSleepTimer,
+                remainingTimerMinutes = remainingSleepTimerMinutes,
+                onToggleEnabled = { enabled ->
+                    viewModel.setReadingBgmEnabled(enabled)
+                    if (enabled && selectedSleepTimer != ReadingSleepTimerOption.CONTINUOUS) {
+                        sleepTimerDeadlineMs = System.currentTimeMillis() + selectedSleepTimer.minutes * 60_000L
+                    } else if (!enabled) {
+                        sleepTimerDeadlineMs = 0L
+                        remainingSleepTimerMinutes = null
+                    }
+                },
+                onSelectTrack = { track ->
+                    viewModel.setReadingBgmTrack(track, enablePlayback = true)
+                    if (selectedSleepTimer != ReadingSleepTimerOption.CONTINUOUS && sleepTimerDeadlineMs <= 0L) {
+                        sleepTimerDeadlineMs = System.currentTimeMillis() + selectedSleepTimer.minutes * 60_000L
+                    }
+                },
+                onVolumeChanged = { vol ->
+                    viewModel.setReadingBgmVolume(vol)
+                },
+                onAutoMoodChanged = { autoMood ->
+                    viewModel.setReadingBgmAutoMood(autoMood)
+                },
+                onSelectTimer = { option ->
+                    selectedSleepTimer = option
+                    if (option == ReadingSleepTimerOption.CONTINUOUS) {
+                        sleepTimerDeadlineMs = 0L
+                        remainingSleepTimerMinutes = null
+                    } else {
+                        sleepTimerDeadlineMs = System.currentTimeMillis() + option.minutes * 60_000L
+                        if (!uiState.preferences.readingBgmEnabled) {
+                            viewModel.setReadingBgmEnabled(true)
+                        }
+                    }
+                },
+                onDismiss = { showReadingMusicSheet = false }
             )
         }
     }
