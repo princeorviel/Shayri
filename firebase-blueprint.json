@@ -446,6 +446,14 @@
           "type": "string",
           "description": "Optional preferred BGM track ID for text/photo Reels."
         },
+        "singerName": {
+          "type": "string",
+          "description": "Optional detected or user-entered singer/vocalist name for video Reels (0..60 chars)."
+        },
+        "songTitle": {
+          "type": "string",
+          "description": "Optional detected or user-entered song title for video Reels (0..80 chars)."
+        },
         "likeCount": {
           "type": "integer",
           "description": "Atomic server-validated like count for the Reel."

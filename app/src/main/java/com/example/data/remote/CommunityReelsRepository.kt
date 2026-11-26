@@ -106,7 +106,9 @@ class CommunityReelsRepository(
         backgroundPreset: String,
         thumbnailBase64: String,
         voicePersonaId: String,
-        bgmTrackId: String
+        bgmTrackId: String,
+        singerName: String = "",
+        songTitle: String = ""
     ): Result<String> = withContext(ioDispatcher) {
         val cleanDocId = reelId.trim().replace(Regex("[^A-Za-z0-9_\\-]"), "_").take(100)
             .ifBlank { "reel_${System.currentTimeMillis()}" }
@@ -128,6 +130,8 @@ class CommunityReelsRepository(
             val cleanThumb = thumbnailBase64.take(640_000)
             val cleanVoice = voicePersonaId.trim().take(40)
             val cleanBgm = bgmTrackId.trim().take(40)
+            val cleanSinger = singerName.trim().take(60)
+            val cleanSongTitle = songTitle.trim().take(80)
 
             if (cleanCaption.isEmpty() && cleanThumb.isEmpty() && normalizedMediaType == "text") {
                 return@withContext Result.failure(
@@ -145,6 +149,8 @@ class CommunityReelsRepository(
                 "thumbnailBase64" to cleanThumb,
                 "voicePersonaId" to cleanVoice,
                 "bgmTrackId" to cleanBgm,
+                "singerName" to cleanSinger,
+                "songTitle" to cleanSongTitle,
                 "likeCount" to 0,
                 "status" to "published",
                 "createdAt" to FieldValue.serverTimestamp(),
@@ -159,6 +165,35 @@ class CommunityReelsRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateReelSinger(
+        reelId: String,
+        singerName: String,
+        songTitle: String = ""
+    ): Result<Unit> = withContext(ioDispatcher) {
+        val cleanId = reelId.trim()
+        if (cleanId.isEmpty()) return@withContext Result.success(Unit)
+        val path = "$COLLECTION_COMMUNITY_REELS/$cleanId"
+        try {
+            requireUserId()
+            db.collection(COLLECTION_COMMUNITY_REELS)
+                .document(cleanId)
+                .update(
+                    mapOf(
+                        "singerName" to singerName.trim().take(60),
+                        "songTitle" to songTitle.trim().take(80),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                )
+                .await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
             Result.failure(e)
         }
     }

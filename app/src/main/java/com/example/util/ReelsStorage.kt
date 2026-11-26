@@ -80,6 +80,9 @@ object ReelsStorage {
                             else -> "text"
                         }
                     val thumbnailBase64 = obj.optString("thumbnailBase64").takeIf { it.isNotBlank() }
+                    val singerName = obj.optString("singerName").takeIf { it.isNotBlank() }
+                    val songTitle = obj.optString("songTitle").takeIf { it.isNotBlank() }
+                    val singerChecked = obj.optBoolean("singerChecked", false)
                     val isOnlineSynced = obj.optBoolean("isOnlineSynced", false)
                     val likeCount = obj.optInt("likeCount", 0)
                     val createdAtMs = obj.optLong("createdAtMs", System.currentTimeMillis())
@@ -98,6 +101,9 @@ object ReelsStorage {
                             ownerUserId = ownerUserId,
                             mediaType = mediaType,
                             thumbnailBase64 = thumbnailBase64,
+                            singerName = singerName,
+                            songTitle = songTitle,
+                            singerChecked = singerChecked,
                             likeCount = likeCount,
                             isOnlineSynced = isOnlineSynced,
                             createdAtMs = createdAtMs
@@ -128,6 +134,9 @@ object ReelsStorage {
                     put("ownerUserId", reel.ownerUserId.orEmpty())
                     put("mediaType", reel.mediaType)
                     put("thumbnailBase64", reel.thumbnailBase64.orEmpty())
+                    put("singerName", reel.singerName.orEmpty())
+                    put("songTitle", reel.songTitle.orEmpty())
+                    put("singerChecked", reel.singerChecked)
                     put("isOnlineSynced", reel.isOnlineSynced)
                     put("likeCount", reel.likeCount)
                     put("createdAtMs", reel.createdAtMs)

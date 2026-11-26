@@ -59,6 +59,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
@@ -66,9 +67,11 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PhotoLibrary
@@ -131,6 +134,7 @@ import com.example.R
 import com.example.ai.ShayarVoiceEngine
 import com.example.ai.ShayarVoicePersona
 import com.example.ai.ShayarVoiceResult
+import com.example.ai.VideoSingerDetector
 import com.example.audio.LocalShayarFallbackSpeaker
 import com.example.audio.ReelBgmTrack
 import com.example.audio.ShayariBgmPlayer
@@ -173,6 +177,9 @@ data class UserCreatedReel(
     val ownerUserId: String? = null,
     val mediaType: String = "text",
     val thumbnailBase64: String? = null,
+    val singerName: String? = null,
+    val songTitle: String? = null,
+    val singerChecked: Boolean = false,
     val likeCount: Int = 0,
     val isOnlineSynced: Boolean = false,
     val createdAtMs: Long = System.currentTimeMillis()
@@ -243,10 +250,17 @@ private sealed interface ReelEntry {
 
 private fun UserCreatedReel.toSyntheticShayariEntity(): ShayariEntity {
     val deterministicId = 9_000_000 + (id.hashCode() and 0x7FFFF)
+    val effectiveCredit = singerName?.trim()?.takeIf { it.isNotBlank() }
+        ?: if (videoUri != null || mediaType == "video") {
+            VideoSingerDetector.extractKnownSingerFromText(couplet, poet)
+        } else {
+            null
+        }
+        ?: poet.ifBlank { "शायर दोस्त" }
     return ShayariEntity(
         id = deterministicId,
         couplet = couplet.ifBlank { "🎬 मेरी Reel" },
-        poet = poet.ifBlank { "शायर दोस्त" },
+        poet = effectiveCredit,
         categoryId = categoryId.ifBlank { ShayariCategory.MOHABBAT.id },
         moodTag = tags.joinToString(", ")
     )
@@ -268,6 +282,7 @@ fun ReelsScreen(
     modifier: Modifier = Modifier,
     createSheetTrigger: Int = 0,
     onDeleteUserReel: ((UserCreatedReel) -> Unit)? = null,
+    onUpdateUserReelSinger: ((reel: UserCreatedReel, singerName: String?, songTitle: String?) -> Unit)? = null,
     currentUserId: String? = null,
     onlineLikedReelIds: Set<String> = emptySet(),
     isSignedInOnline: Boolean = false,
@@ -283,6 +298,8 @@ fun ReelsScreen(
     var isCurrentReelPaused by remember { mutableStateOf(false) }
     var showCreateSheet by remember { mutableStateOf(false) }
     var showSoundMixerSheet by remember { mutableStateOf(false) }
+    var detectingSingerReelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var editingSingerReel by remember { mutableStateOf<UserCreatedReel?>(null) }
 
     // Per-Reel Sound Mixer overrides keyed by entry.stableKey (changing one shayari NEVER changes others!)
     var perReelPersonaOverrides by remember(context) {
@@ -421,6 +438,31 @@ fun ReelsScreen(
     val latestActiveKey by rememberUpdatedState(currentEntry?.stableKey)
     val currentHasVideoAudio = currentEntry is ReelEntry.CustomReel &&
         (currentEntry.reel.videoUri != null || currentEntry.reel.mediaType == "video")
+
+    // Auto-identify the playback singer (e.g. Kishore Kumar, Lata Mangeshkar, Arijit Singh)
+    // on any video Reel that has not been checked yet, so singer name replaces uploader name.
+    LaunchedEffect(currentEntry?.stableKey, currentHasVideoAudio) {
+        val custom = currentEntry as? ReelEntry.CustomReel ?: return@LaunchedEffect
+        val reel = custom.reel
+        val isVideo = reel.videoUri != null || reel.mediaType == "video"
+        if (!isVideo || !reel.singerName.isNullOrBlank() || reel.singerChecked) return@LaunchedEffect
+        if (onUpdateUserReelSinger == null || reel.id in detectingSingerReelIds) return@LaunchedEffect
+        val isOwnerOrLocal = reel.ownerUserId == null || reel.ownerUserId == currentUserId
+        if (!isOwnerOrLocal) return@LaunchedEffect
+
+        detectingSingerReelIds = detectingSingerReelIds + reel.id
+        try {
+            val detected = VideoSingerDetector.detectSinger(
+                context = context,
+                videoUri = reel.videoUri?.let { Uri.parse(it) },
+                caption = reel.couplet,
+                uploaderName = reel.poet
+            )
+            onUpdateUserReelSinger(reel, detected.singerName, detected.songTitle)
+        } finally {
+            detectingSingerReelIds = detectingSingerReelIds - reel.id
+        }
+    }
 
     fun resolvePersonaFor(entry: ReelEntry, pageIdx: Int): ShayarVoicePersona {
         return perReelPersonaOverrides[entry.stableKey]
@@ -824,9 +866,18 @@ fun ReelsScreen(
                     }
                 }
                 val commentCount = commentCounts[shayariCommentKey(commentEntity.id)] ?: 0
-                val isFollowed = entry.poet in followedPoets
                 val isOwnCustomReel = entry is ReelEntry.CustomReel &&
                     (entry.reel.ownerUserId == null || entry.reel.ownerUserId == currentUserId)
+                val entryIsVideo = entry is ReelEntry.CustomReel &&
+                    (entry.reel.videoUri != null || entry.reel.mediaType == "video")
+                val entrySingerName = if (entry is ReelEntry.CustomReel && entryIsVideo) {
+                    entry.reel.singerName?.trim()?.takeIf { it.isNotBlank() }
+                        ?: VideoSingerDetector.extractKnownSingerFromText(entry.reel.couplet, entry.reel.poet)
+                } else {
+                    null
+                }
+                val followTargetName = entrySingerName ?: entry.poet
+                val isFollowed = followTargetName in followedPoets
 
                 ReelPageCard(
                     entry = entry,
@@ -846,6 +897,12 @@ fun ReelsScreen(
                     activePersona = effectivePersona,
                     activeBgmTrack = effectiveBgmTrack,
                     canDelete = isOwnCustomReel && onDeleteUserReel != null,
+                    isDetectingSinger = entry is ReelEntry.CustomReel && entry.reel.id in detectingSingerReelIds,
+                    onEditSingerClick = if (isOwnCustomReel && entryIsVideo && onUpdateUserReelSinger != null) {
+                        { editingSingerReel = (entry as ReelEntry.CustomReel).reel }
+                    } else {
+                        null
+                    },
                     onToggleLike = {
                         if (isOnlineCustomReel && onToggleOnlineReelLike != null && isSignedInOnline) {
                             onToggleOnlineReelLike((entry as ReelEntry.CustomReel).reel.id, isLiked)
@@ -898,10 +955,10 @@ fun ReelsScreen(
                     },
                     onToggleFollow = {
                         if (isFollowed) {
-                            updateFollowedPoets(followedPoets - entry.poet)
+                            updateFollowedPoets(followedPoets - followTargetName)
                         } else {
-                            updateFollowedPoets(followedPoets + entry.poet)
-                            onShowFeedback("${entry.poet} को फॉलो किया ✨")
+                            updateFollowedPoets(followedPoets + followTargetName)
+                            onShowFeedback("$followTargetName को फॉलो किया ✨")
                         }
                     },
                     onTagClick = { clickedTag ->
@@ -1127,6 +1184,24 @@ fun ReelsScreen(
                 }
             )
         }
+
+        editingSingerReel?.let { targetReel ->
+            EditVideoSingerSheet(
+                reel = targetReel,
+                onDismiss = { editingSingerReel = null },
+                onSave = { newSinger, newSong ->
+                    onUpdateUserReelSinger?.invoke(targetReel, newSinger, newSong)
+                    editingSingerReel = null
+                    onShowFeedback(
+                        if (!newSinger.isNullOrBlank()) {
+                            "🎤 सिंगर का नाम सेव हुआ: $newSinger"
+                        } else {
+                            "सिंगर का नाम हटा दिया गया"
+                        }
+                    )
+                }
+            )
+        }
     }
 }
 
@@ -1145,6 +1220,8 @@ private fun ReelPageCard(
     activePersona: ShayarVoicePersona,
     activeBgmTrack: ReelBgmTrack,
     canDelete: Boolean,
+    isDetectingSinger: Boolean = false,
+    onEditSingerClick: (() -> Unit)? = null,
     onToggleLike: () -> Unit,
     onLikeOnly: () -> Unit,
     onToggleSave: () -> Unit,
@@ -1180,8 +1257,21 @@ private fun ReelPageCard(
             }.getOrNull()
         }
     }
+    val isVideoReel = videoUri != null || customReel?.reel?.mediaType == "video"
     val isCustomMediaReel = customReel != null &&
         (videoUri != null || photoUri != null || decodedThumbBitmap != null || customReel.reel.mediaType == "video" || customReel.reel.mediaType == "photo")
+    val resolvedSingerName = remember(customReel?.reel?.singerName, entry.couplet, entry.poet, isVideoReel) {
+        if (!isVideoReel) {
+            null
+        } else {
+            customReel?.reel?.singerName?.trim()?.takeIf { it.isNotBlank() }
+                ?: VideoSingerDetector.extractKnownSingerFromText(entry.couplet, entry.poet)
+        }
+    }
+    val resolvedSongTitle = remember(customReel?.reel?.songTitle, isVideoReel) {
+        if (!isVideoReel) null else customReel?.reel?.songTitle?.trim()?.takeIf { it.isNotBlank() }
+    }
+    val hasSingerCredit = isVideoReel && !resolvedSingerName.isNullOrBlank()
     val fallbackDrawable = remember(entry.stableKey) {
         when (entry) {
             is ReelEntry.ShayariReel -> resolveDiversePhotoForCard(entry.shayari, category)
@@ -1587,27 +1677,44 @@ private fun ReelPageCard(
                     else -> trimmed
                 }
             }
+            val displayHeaderName = if (hasSingerCredit) resolvedSingerName!! else cleanPoetName
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Surface(
                     shape = CircleShape,
-                    color = category.darkAccent.copy(alpha = 0.28f),
-                    border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.85f)),
+                    color = if (hasSingerCredit) {
+                        Color(0xFFFFB74D).copy(alpha = 0.24f)
+                    } else {
+                        category.darkAccent.copy(alpha = 0.28f)
+                    },
+                    border = BorderStroke(
+                        1.5.dp,
+                        if (hasSingerCredit) Color(0xFFFFD580) else Color.White.copy(alpha = 0.85f)
+                    ),
                     modifier = Modifier.size(36.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = cleanPoetName.take(1).uppercase().ifBlank { "श" },
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                            color = Color.White
-                        )
+                        if (hasSingerCredit) {
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = resolvedSingerName,
+                                tint = Color(0xFFFFE0A3),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        } else {
+                            Text(
+                                text = displayHeaderName.take(1).uppercase().ifBlank { "श" },
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color.White
+                            )
+                        }
                     }
                 }
 
                 Text(
-                    text = cleanPoetName,
+                    text = displayHeaderName,
                     style = MaterialTheme.typography.titleSmall.copy(
                         fontWeight = FontWeight.Bold,
                         shadow = Shadow(Color.Black, Offset(0f, 1.5f), 6f)
@@ -1615,7 +1722,9 @@ private fun ReelPageCard(
                     color = Color.White,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .testTag("reel_creator_or_singer_name")
                 )
 
                 Surface(
@@ -1705,8 +1814,8 @@ private fun ReelPageCard(
                 }
             }
 
-            // Tappable Audio Attribution Line — opens Voice & BGM Mixer for non-video Reels
-            val isVideoReel = videoUri != null || customReel?.reel?.mediaType == "video"
+            // Tappable Audio Attribution Line — shows Singer name (never uploader name!) for video Reels,
+            // or opens Voice & BGM Mixer for non-video Reels
             if (!isVideoReel && isAudioEnabled && voiceState !is ShayarVoicePlaybackState.Idle) {
                 ReelVoiceStatusPill(
                     voiceState = voiceState,
@@ -1721,32 +1830,60 @@ private fun ReelPageCard(
                     }
                 )
             } else {
+                val videoAudioLabel = when {
+                    resolvedSingerName != null && resolvedSongTitle != null ->
+                        "सिंगर: $resolvedSingerName • $resolvedSongTitle"
+                    resolvedSingerName != null ->
+                        "सिंगर: $resolvedSingerName"
+                    isDetectingSinger ->
+                        "सिंगर पहचाना जा रहा है…"
+                    else ->
+                        "Original Audio"
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier
                         .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = !isVideoReel, onClick = onOpenSoundMixer)
+                        .clickable(
+                            enabled = (!isVideoReel) || (onEditSingerClick != null),
+                            onClick = {
+                                if (isVideoReel) {
+                                    onEditSingerClick?.invoke()
+                                } else {
+                                    onOpenSoundMixer()
+                                }
+                            }
+                        )
                         .padding(vertical = 2.dp)
                         .testTag("reel_audio_attribution_row")
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MusicNote,
+                        imageVector = if (hasSingerCredit) Icons.Rounded.Mic else Icons.Rounded.MusicNote,
                         contentDescription = null,
                         tint = Color(0xFFFFD580),
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
                         text = if (isVideoReel) {
-                            "Original Audio • $cleanPoetName"
+                            videoAudioLabel
                         } else {
                             "${activeBgmTrack.emoji} ${activeBgmTrack.labelHi} • ${activePersona.emoji} ${activePersona.labelHi}"
                         },
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Medium),
-                        color = Color.White.copy(alpha = 0.90f),
+                        color = Color.White.copy(alpha = 0.92f),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    if (isVideoReel && onEditSingerClick != null) {
+                        Icon(
+                            imageVector = Icons.Rounded.Edit,
+                            contentDescription = "सिंगर का नाम बदलें",
+                            tint = Color.White.copy(alpha = 0.72f),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
             }
         }
@@ -2027,8 +2164,42 @@ private fun CreateReelBottomSheet(
     var selectedBackdropKey by remember { mutableStateOf<String?>(BUILT_IN_REEL_BACKDROPS.first().key) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var isPublishing by remember { mutableStateOf(false) }
+    var singerNameInput by remember { mutableStateOf("") }
+    var detectedSongTitle by remember { mutableStateOf<String?>(null) }
+    var userEditedSinger by remember { mutableStateOf(false) }
+    var isDetectingSinger by remember { mutableStateOf(false) }
+    var singerDetectTrigger by remember { mutableIntStateOf(0) }
 
     val parsedHashtags = remember(caption) { extractUserHashtags(caption) }
+
+    // Automatically identify the singer whenever a video is picked
+    LaunchedEffect(pickedVideoUri, singerDetectTrigger) {
+        val uri = pickedVideoUri
+        if (uri == null) {
+            isDetectingSinger = false
+            return@LaunchedEffect
+        }
+        if (singerDetectTrigger == 0) {
+            userEditedSinger = false
+            singerNameInput = ""
+            detectedSongTitle = null
+        }
+        isDetectingSinger = true
+        val detected = VideoSingerDetector.detectSinger(
+            context = context,
+            videoUri = uri,
+            caption = caption,
+            uploaderName = defaultAuthor,
+            forceRefresh = singerDetectTrigger > 0
+        )
+        if (!userEditedSinger && !detected.singerName.isNullOrBlank()) {
+            singerNameInput = detected.singerName
+        }
+        if (!detected.songTitle.isNullOrBlank()) {
+            detectedSongTitle = detected.songTitle
+        }
+        isDetectingSinger = false
+    }
 
     val videoPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -2267,6 +2438,9 @@ private fun CreateReelBottomSheet(
                             onClick = {
                                 pickedVideoUri = null
                                 pickedPhotoUri = null
+                                singerNameInput = ""
+                                detectedSongTitle = null
+                                userEditedSinger = false
                                 selectedBackdropKey = BUILT_IN_REEL_BACKDROPS.first().key
                             },
                             enabled = !isPublishing
@@ -2277,6 +2451,67 @@ private fun CreateReelBottomSheet(
                             )
                         }
                     }
+                }
+
+                if (pickedVideoUri != null) {
+                    OutlinedTextField(
+                        value = singerNameInput,
+                        onValueChange = {
+                            if (it.length <= 60) {
+                                singerNameInput = it
+                                userEditedSinger = true
+                            }
+                        },
+                        enabled = !isPublishing,
+                        singleLine = true,
+                        label = { Text("सिंगर का नाम (गायक)") },
+                        placeholder = { Text("जैसे: किशोर कुमार, अरिजीत सिंह, लता मंगेशकर") },
+                        supportingText = {
+                            Text(
+                                text = when {
+                                    isDetectingSinger -> "🎵 वीडियो के गाने से सिंगर पहचाना जा रहा है…"
+                                    singerNameInput.isNotBlank() && !detectedSongTitle.isNullOrBlank() ->
+                                        "गीत: $detectedSongTitle • वीडियो पर सिंगर का नाम दिखेगा"
+                                    singerNameInput.isNotBlank() ->
+                                        "वीडियो पर यही सिंगर का नाम दिखेगा"
+                                    else ->
+                                        "अगर वीडियो में किसी सिंगर ने गाया है तो उसका नाम अपने आप आएगा या आप लिख सकते हैं"
+                                }
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Rounded.Mic,
+                                contentDescription = null,
+                                tint = Color(0xFFFF4D6D)
+                            )
+                        },
+                        trailingIcon = {
+                            if (isDetectingSinger) {
+                                CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            } else {
+                                IconButton(
+                                    onClick = {
+                                        userEditedSinger = false
+                                        singerDetectTrigger++
+                                    },
+                                    enabled = !isPublishing
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AutoAwesome,
+                                        contentDescription = "AI से सिंगर पहचानें"
+                                    )
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("create_reel_singer_input")
+                    )
                 }
             } else {
                 Text(
@@ -2475,6 +2710,12 @@ private fun CreateReelBottomSheet(
                             else -> null
                         }
                         val cleanCaption = caption.trim()
+                        val resolvedSinger = if (mediaType == "video") {
+                            singerNameInput.trim().take(60).takeIf { it.isNotBlank() }
+                                ?: VideoSingerDetector.extractKnownSingerFromText(cleanCaption, defaultAuthor)
+                        } else {
+                            null
+                        }
                         val newReel = UserCreatedReel(
                             id = "reel_${System.currentTimeMillis()}",
                             couplet = cleanCaption,
@@ -2491,7 +2732,10 @@ private fun CreateReelBottomSheet(
                             voicePersonaId = null,
                             bgmTrackId = null,
                             mediaType = mediaType,
-                            thumbnailBase64 = thumbBase64
+                            thumbnailBase64 = thumbBase64,
+                            singerName = resolvedSinger,
+                            songTitle = if (mediaType == "video") detectedSongTitle else null,
+                            singerChecked = mediaType == "video" && !isDetectingSinger
                         )
                         isPublishing = false
                         onPublishReel(newReel)
@@ -2520,6 +2764,137 @@ private fun CreateReelBottomSheet(
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditVideoSingerSheet(
+    reel: UserCreatedReel,
+    onDismiss: () -> Unit,
+    onSave: (singerName: String?, songTitle: String?) -> Unit
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var singerInput by remember(reel.id) { mutableStateOf(reel.singerName.orEmpty()) }
+    var songInput by remember(reel.id) { mutableStateOf(reel.songTitle.orEmpty()) }
+    var isDetecting by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(
+        onDismissRequest = { if (!isDetecting) onDismiss() },
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "🎤 वीडियो सिंगर का नाम",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = "इस वीडियो में जिस सिंगर ने गाया है (जैसे किशोर कुमार, अरिजीत सिंह, लता मंगेशकर), उसका नाम लिखें या AI से पहचानें।",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = singerInput,
+                onValueChange = { if (it.length <= 60) singerInput = it },
+                enabled = !isDetecting,
+                singleLine = true,
+                label = { Text("सिंगर का नाम") },
+                placeholder = { Text("जैसे: किशोर कुमार") },
+                leadingIcon = { Icon(Icons.Rounded.Mic, contentDescription = null) },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("edit_reel_singer_input")
+            )
+
+            OutlinedTextField(
+                value = songInput,
+                onValueChange = { if (it.length <= 80) songInput = it },
+                enabled = !isDetecting,
+                singleLine = true,
+                label = { Text("गाने का नाम (वैकल्पिक)") },
+                placeholder = { Text("जैसे: पल पल दिल के पास") },
+                leadingIcon = { Icon(Icons.Rounded.MusicNote, contentDescription = null) },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (!reel.videoUri.isNullOrBlank()) {
+                FilledTonalButton(
+                    onClick = {
+                        if (isDetecting) return@FilledTonalButton
+                        isDetecting = true
+                        scope.launch {
+                            val detected = VideoSingerDetector.detectSinger(
+                                context = context,
+                                videoUri = Uri.parse(reel.videoUri),
+                                caption = reel.couplet,
+                                uploaderName = reel.poet,
+                                forceRefresh = true
+                            )
+                            if (!detected.singerName.isNullOrBlank()) {
+                                singerInput = detected.singerName
+                            }
+                            if (!detected.songTitle.isNullOrBlank()) {
+                                songInput = detected.songTitle
+                            }
+                            isDetecting = false
+                        }
+                    },
+                    enabled = !isDetecting,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isDetecting) {
+                        CircularProgressIndicator(strokeWidth = 2.dp, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("वीडियो सुनकर सिंगर पहचाना जा रहा है…")
+                    } else {
+                        Icon(Icons.Rounded.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("AI से सिंगर पहचानें")
+                    }
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !isDetecting,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("रद्द करें")
+                }
+                Button(
+                    onClick = {
+                        val cleanSinger = singerInput.trim().take(60).takeIf { it.isNotBlank() }
+                        val cleanSong = songInput.trim().take(80).takeIf { it.isNotBlank() }
+                        onSave(cleanSinger, cleanSong)
+                    },
+                    enabled = !isDetecting,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("edit_reel_singer_save_button")
+                ) {
+                    Text("सेव करें", fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }

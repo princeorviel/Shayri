@@ -742,15 +742,44 @@ test("Community reels allow free-form TikTok captions, enforce auth/ownership, a
   unlikeBatch.update(bobDb.collection("community_reels").doc("reel_1"), { likeCount: 0 });
   await assertSucceeds(unlikeBatch.commit());
 
-  // Owner can edit caption & delete own reel
+  // Owner can edit caption, singerName, songTitle & delete own reel
   await assertSucceeds(
     aliceDb.collection("community_reels").doc("reel_1").update({
       caption: "Updated funny cat video #lol",
       tags: ["lol"],
+      singerName: "किशोर कुमार",
+      songTitle: "पल पल दिल के पास",
       updatedAt: new Date(Date.now() - 200),
     })
   );
+
+  // Creating a video reel with singerName and songTitle succeeds
+  await assertSucceeds(
+    aliceDb.collection("community_reels").doc("reel_singer").set(
+      validReel(ALICE_UID, {
+        singerName: "किशोर कुमार",
+        songTitle: "मेरे सपनों की रानी",
+      })
+    )
+  );
+
+  // Oversized singerName (> 60 chars) and cross-user singerName edit are rejected
+  await assertFails(
+    aliceDb.collection("community_reels").doc("reel_bad_singer").set(
+      validReel(ALICE_UID, {
+        singerName: "S".repeat(65),
+      })
+    )
+  );
+  await assertFails(
+    bobDb.collection("community_reels").doc("reel_singer").update({
+      singerName: "Hacked Singer",
+      updatedAt: new Date(Date.now() - 100),
+    })
+  );
+
   await assertSucceeds(aliceDb.collection("community_reels").doc("reel_1").delete());
 });
+
 
 

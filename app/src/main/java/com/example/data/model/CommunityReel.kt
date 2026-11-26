@@ -18,6 +18,8 @@ data class CommunityReel(
     val thumbnailBase64: String = "",
     val voicePersonaId: String = "",
     val bgmTrackId: String = "",
+    val singerName: String = "",
+    val songTitle: String = "",
     val likeCount: Int = 0,
     val status: String = "published",
     val createdAt: Timestamp? = null,

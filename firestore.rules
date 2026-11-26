@@ -232,6 +232,8 @@ service cloud.firestore {
              data.voicePersonaId.size() <= 40 &&
              data.bgmTrackId is string &&
              data.bgmTrackId.size() <= 40 &&
+             (!('singerName' in data) || (data.singerName is string && data.singerName.size() <= 60)) &&
+             (!('songTitle' in data) || (data.songTitle is string && data.songTitle.size() <= 80)) &&
              data.likeCount is int &&
              data.likeCount >= 0 &&
              data.status == 'published' &&
@@ -629,7 +631,8 @@ service cloud.firestore {
                        incoming().keys().hasOnly([
                          'userId', 'authorName', 'caption', 'tags', 'mediaType',
                          'backgroundPreset', 'thumbnailBase64', 'voicePersonaId',
-                         'bgmTrackId', 'likeCount', 'status', 'createdAt', 'updatedAt'
+                         'bgmTrackId', 'singerName', 'songTitle', 'likeCount',
+                         'status', 'createdAt', 'updatedAt'
                        ]) &&
                        isValidCommunityReel(incoming());
 
@@ -640,11 +643,13 @@ service cloud.firestore {
                        incoming().createdAt == existing().createdAt &&
                        incoming().status == existing().status &&
                        incoming().mediaType == existing().mediaType && (
-                         // Action 1: Owner edits caption or tags (cannot fake likeCount)
+                         // Action 1: Owner edits caption, tags, or singer credit (cannot fake likeCount)
                          (
                            existing().userId == request.auth.uid &&
                            incoming().likeCount == existing().likeCount &&
-                           incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'tags', 'updatedAt'])
+                           incoming().diff(existing()).affectedKeys().hasOnly([
+                             'caption', 'tags', 'singerName', 'songTitle', 'updatedAt'
+                           ])
                          ) ||
                          // Action 2: Any signed-in user likes (+1) atomically with /users/{uid}/reel_likes/{reelId}
                          (

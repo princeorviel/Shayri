@@ -630,7 +630,9 @@ private fun ShayariAppRoot(
                                         backgroundPreset = localReel.backgroundDrawableName.orEmpty(),
                                         thumbnailBase64 = thumb.orEmpty(),
                                         voicePersonaId = localReel.voicePersonaId.orEmpty(),
-                                        bgmTrackId = localReel.bgmTrackId.orEmpty()
+                                        bgmTrackId = localReel.bgmTrackId.orEmpty(),
+                                        singerName = localReel.singerName.orEmpty(),
+                                        songTitle = localReel.songTitle.orEmpty()
                                     )
                                     if (res.isSuccess) {
                                         changed = true
@@ -1412,6 +1414,12 @@ private fun ShayariAppRoot(
                                         mediaType = remote.mediaType.ifBlank { localMatch?.mediaType ?: "text" },
                                         thumbnailBase64 = remote.thumbnailBase64.takeIf { it.isNotBlank() }
                                             ?: localMatch?.thumbnailBase64,
+                                        singerName = remote.singerName.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.singerName,
+                                        songTitle = remote.songTitle.takeIf { it.isNotBlank() }
+                                            ?: localMatch?.songTitle,
+                                        singerChecked = localMatch?.singerChecked
+                                            ?: remote.singerName.isNotBlank(),
                                         likeCount = remote.likeCount,
                                         isOnlineSynced = true,
                                         createdAtMs = remote.createdAtMillis.takeIf { it > 0L }
@@ -1452,7 +1460,9 @@ private fun ShayariAppRoot(
                                                 backgroundPreset = enrichedReel.backgroundDrawableName.orEmpty(),
                                                 thumbnailBase64 = enrichedReel.thumbnailBase64.orEmpty(),
                                                 voicePersonaId = enrichedReel.voicePersonaId.orEmpty(),
-                                                bgmTrackId = enrichedReel.bgmTrackId.orEmpty()
+                                                bgmTrackId = enrichedReel.bgmTrackId.orEmpty(),
+                                                singerName = enrichedReel.singerName.orEmpty(),
+                                                songTitle = enrichedReel.songTitle.orEmpty()
                                             )
                                             if (result.isFailure) {
                                                 val fallbackList = userCreatedReels.map {
@@ -1487,6 +1497,55 @@ private fun ShayariAppRoot(
                                             (target.ownerUserId == null || target.ownerUserId == currentUser?.uid)
                                         ) {
                                             reelsRepository.deleteReel(target.id)
+                                        }
+                                    }
+                                },
+                                onUpdateUserReelSinger = { target, detectedSinger, detectedSong ->
+                                    val cleanSinger = detectedSinger?.trim()?.take(60)?.takeIf { it.isNotBlank() }
+                                    val cleanSong = detectedSong?.trim()?.take(80)?.takeIf { it.isNotBlank() }
+                                    val existingInLocal = userCreatedReels.any { it.id == target.id }
+                                    val updatedLocal = if (existingInLocal) {
+                                        userCreatedReels.map {
+                                            if (it.id == target.id) {
+                                                it.copy(
+                                                    singerName = cleanSinger,
+                                                    songTitle = cleanSong,
+                                                    singerChecked = true
+                                                )
+                                            } else {
+                                                it
+                                            }
+                                        }
+                                    } else {
+                                        listOf(
+                                            target.copy(
+                                                singerName = cleanSinger,
+                                                songTitle = cleanSong,
+                                                singerChecked = true
+                                            )
+                                        ) + userCreatedReels
+                                    }
+                                    userCreatedReels = updatedLocal
+                                    onlineCommunityReels = onlineCommunityReels.map { remote ->
+                                        if (remote.id == target.id) {
+                                            remote.copy(
+                                                singerName = cleanSinger.orEmpty(),
+                                                songTitle = cleanSong.orEmpty()
+                                            )
+                                        } else {
+                                            remote
+                                        }
+                                    }
+                                    scope.launch {
+                                        ReelsStorage.saveUserReels(context, updatedLocal)
+                                        if (currentUser != null && reelsRepository != null &&
+                                            (target.ownerUserId == null || target.ownerUserId == currentUser?.uid)
+                                        ) {
+                                            reelsRepository.updateReelSinger(
+                                                reelId = target.id,
+                                                singerName = cleanSinger.orEmpty(),
+                                                songTitle = cleanSong.orEmpty()
+                                            )
                                         }
                                     }
                                 },
