@@ -135,10 +135,12 @@ import com.example.R
 import com.example.ai.ShayarVoiceEngine
 import com.example.ai.ShayarVoicePersona
 import com.example.ai.ShayarVoiceResult
+import com.example.ai.ShayarVoiceStreamResult
 import com.example.ai.VideoSingerDetector
 import com.example.audio.LocalShayarFallbackSpeaker
 import com.example.audio.ReelBgmTrack
 import com.example.audio.ShayariBgmPlayer
+import com.example.audio.StreamingShayarAudioPlayer
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.ShayariTagMatcher
@@ -410,6 +412,7 @@ fun ReelsScreen(
     val bgmPlayer = remember(context) { ShayariBgmPlayer(context) }
     val localFallbackSpeaker = remember(context) { LocalShayarFallbackSpeaker(context) }
     val voicePlayerRef = remember { arrayOf<MediaPlayer?>(null) }
+    val streamingVoicePlayerRef = remember { arrayOf<StreamingShayarAudioPlayer?>(null) }
     val prewarmJobRef = remember { arrayOf<Job?>(null) }
     val wasPausedRef = remember { booleanArrayOf(false) }
     val hasSwipedOnceRef = remember { booleanArrayOf(false) }
@@ -419,6 +422,10 @@ fun ReelsScreen(
         prewarmJobRef[0]?.cancel()
         prewarmJobRef[0] = null
         localFallbackSpeaker.stop()
+        runCatching {
+            streamingVoicePlayerRef[0]?.stopAndRelease()
+        }
+        streamingVoicePlayerRef[0] = null
         runCatching {
             voicePlayerRef[0]?.setOnCompletionListener(null)
             voicePlayerRef[0]?.stop()
@@ -652,7 +659,7 @@ fun ReelsScreen(
         }
     }
 
-    // 2. Sync Pause/Resume on currently loaded Shayar Voice MediaPlayer & live fallback speaker
+    // 2. Sync Pause/Resume on active Streaming AudioTrack, MediaPlayer, & live fallback speaker
     LaunchedEffect(isCurrentReelPaused, showCreateSheet, isAudioEnabled) {
         val shouldPause = isCurrentReelPaused || showCreateSheet || !isAudioEnabled
         val wasPaused = wasPausedRef[0]
@@ -664,8 +671,16 @@ fun ReelsScreen(
             localFallbackSpeaker.stop()
             bgmPlayer.setDucked(false)
         }
+        val streamPlayer = streamingVoicePlayerRef[0]
         val player = voicePlayerRef[0]
-        if (player != null) {
+        if (streamPlayer != null) {
+            if (shouldPause) {
+                streamPlayer.pause()
+            } else {
+                streamPlayer.resume()
+                bgmPlayer.setDucked(true)
+            }
+        } else if (player != null) {
             runCatching {
                 if (shouldPause) {
                     if (player.isPlaying) player.pause()
@@ -699,50 +714,55 @@ fun ReelsScreen(
         }
     }
 
-    fun scheduleNextReelPrewarm(nextPageIndex: Int) {
+    fun scheduleUpcomingReelsPrewarm(currentPageIndex: Int) {
         prewarmJobRef[0]?.cancel()
         prewarmJobRef[0] = null
-        val nextEntry = reelsList.getOrNull(nextPageIndex) ?: return
-        if (nextEntry.couplet.isBlank()) return
-        val nextHasVideo = nextEntry is ReelEntry.CustomReel &&
-            (nextEntry.reel.videoUri != null || nextEntry.reel.mediaType == "video")
-        if (nextHasVideo) return
 
-        val nextPersona = resolvePersonaFor(nextEntry, nextPageIndex)
-        val nextBgm = resolveBgmFor(nextEntry, nextPageIndex)
+        val upcomingPages = listOf(currentPageIndex + 1, currentPageIndex + 2).mapNotNull { idx ->
+            val candidate = reelsList.getOrNull(idx) ?: return@mapNotNull null
+            if (candidate.couplet.isBlank()) return@mapNotNull null
+            val hasVideo = candidate is ReelEntry.CustomReel &&
+                (candidate.reel.videoUri != null || candidate.reel.mediaType == "video")
+            if (hasVideo) return@mapNotNull null
+            Triple(candidate, resolvePersonaFor(candidate, idx), resolveBgmFor(candidate, idx))
+        }
+        if (upcomingPages.isEmpty()) return
 
-        // Sequential look-ahead: wait 1s after current Reel starts playing, then quietly cache
-        // ONLY the single next Reel (page + 1) so the user's next swipe plays in 0ms without quota bursts.
+        // Proactive 2-page look-ahead: starts 150ms after current Reel begins speaking,
+        // sequentially caching page+1 then page+2 so continuous swiping has 0ms loading delay.
         prewarmJobRef[0] = scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            delay(1_000L)
-            if (latestIsPaused || !isAudioEnabled || showCreateSheet) return@launch
-            if (nextBgm != ReelBgmTrack.OFF) {
-                bgmPlayer.prewarmTrack(nextBgm)
-            }
-            if (!ShayarVoiceEngine.isInFallbackCooldown()) {
-                ShayarVoiceEngine.prewarmVoiceIfSafe(
-                    context = context,
-                    couplet = nextEntry.couplet,
-                    categoryId = nextEntry.categoryId,
-                    persona = nextPersona
-                )
-            } else if (allowLocalTtsFallback) {
-                val alreadyLocal = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
-                    couplet = nextEntry.couplet,
-                    persona = nextPersona
-                )
-                if (alreadyLocal == null) {
-                    localFallbackSpeaker.synthesizeMasteredVoice(
+            delay(150L)
+            for ((nextEntry, nextPersona, nextBgm) in upcomingPages) {
+                if (latestIsPaused || !isAudioEnabled || showCreateSheet) return@launch
+                if (nextBgm != ReelBgmTrack.OFF) {
+                    bgmPlayer.prewarmTrack(nextBgm)
+                }
+                if (!ShayarVoiceEngine.isInFallbackCooldown()) {
+                    ShayarVoiceEngine.prewarmVoiceIfSafe(
+                        context = context,
                         couplet = nextEntry.couplet,
-                        persona = nextPersona,
-                        isPrewarm = true
+                        categoryId = nextEntry.categoryId,
+                        persona = nextPersona
                     )
+                } else if (allowLocalTtsFallback) {
+                    val alreadyLocal = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
+                        couplet = nextEntry.couplet,
+                        persona = nextPersona
+                    )
+                    if (alreadyLocal == null) {
+                        localFallbackSpeaker.synthesizeMasteredVoice(
+                            couplet = nextEntry.couplet,
+                            persona = nextPersona,
+                            isPrewarm = true
+                        )
+                    }
                 }
             }
         }
     }
 
-    // 3. Expressive Human Shayar Voice via Gemini 3.1 Flash TTS (0ms cache + next-Reel pre-warm + graceful offline fallback)
+    // 3. Ultra-Low-Latency Streaming Human Shayar Voice via Gemini 3.1 Flash TTS
+    //    (0ms disk cache + <1s live AudioTrack streaming + 2-Reel look-ahead pre-warm)
     LaunchedEffect(
         currentEntry?.stableKey,
         effectivePersona,
@@ -833,35 +853,12 @@ fun ReelsScreen(
             persona = activePersonaSnapshot
         )
 
-        val geminiResult: ShayarVoiceResult = if (cachedGeminiAudio != null) {
+        if (cachedGeminiAudio != null) {
             hasSwipedOnceRef[0] = true
-            ShayarVoiceResult.Ready(cachedGeminiAudio)
-        } else {
-            // Brief 120ms settle delay on swipe so flick-scrolling skips wasted calls while staying snappy
-            val settleMs = if (!hasSwipedOnceRef[0]) 0L else 120L
-            hasSwipedOnceRef[0] = true
-            if (settleMs > 0L) delay(settleMs)
-            if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
-                return@LaunchedEffect
-            }
-            voicePlaybackState = ShayarVoicePlaybackState.Loading
-            ShayarVoiceEngine.getOrGenerateVoice(
-                context = context,
-                couplet = entry.couplet,
-                categoryId = entry.categoryId,
-                persona = activePersonaSnapshot
-            )
-        }
-
-        if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
-            return@LaunchedEffect
-        }
-
-        if (geminiResult is ShayarVoiceResult.Ready) {
             if (!latestIsPaused) {
-                val started = playWavFileInMediaPlayer(geminiResult.audioFile, speakingState)
+                val started = playWavFileInMediaPlayer(cachedGeminiAudio, speakingState)
                 if (started) {
-                    scheduleNextReelPrewarm(activePageSnapshot + 1)
+                    scheduleUpcomingReelsPrewarm(activePageSnapshot)
                     return@LaunchedEffect
                 }
             } else {
@@ -870,10 +867,129 @@ fun ReelsScreen(
             }
         }
 
-        val fallbackDetail = when (geminiResult) {
-            is ShayarVoiceResult.FallbackRequired -> geminiResult.message
-            is ShayarVoiceResult.Error -> geminiResult.message
-            is ShayarVoiceResult.Ready -> "ऑफ़लाइन आवाज़ सक्रिय"
+        // Skip debounce completely on initial open or when prewarm is already in-flight;
+        // use an imperceptible 45ms settle on rapid flick-swipes to avoid wasted requests.
+        val isReadyOrPrewarming = ShayarVoiceEngine.isVoiceInFlightOrCached(
+            context = context,
+            couplet = entry.couplet,
+            categoryId = entry.categoryId,
+            persona = activePersonaSnapshot
+        )
+        val settleMs = if (!hasSwipedOnceRef[0] || isReadyOrPrewarming) 0L else 45L
+        hasSwipedOnceRef[0] = true
+        if (settleMs > 0L) delay(settleMs)
+        if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
+            return@LaunchedEffect
+        }
+
+        voicePlaybackState = ShayarVoicePlaybackState.Loading
+
+        val livePlayer = StreamingShayarAudioPlayer()
+        streamingVoicePlayerRef[0] = livePlayer
+        if (latestIsPaused) {
+            livePlayer.pause()
+        }
+        var firstChunkHeard = false
+
+        val streamResult = ShayarVoiceEngine.streamOrGetVoice(
+            context = context,
+            couplet = entry.couplet,
+            categoryId = entry.categoryId,
+            persona = activePersonaSnapshot,
+            onPcmChunk = { pcmBytes, sampleRate, channels ->
+                if (latestActiveKey != activeReelKey ||
+                    !isAudioEnabled ||
+                    showCreateSheet ||
+                    streamingVoicePlayerRef[0] !== livePlayer
+                ) {
+                    false
+                } else {
+                    if (!firstChunkHeard) {
+                        firstChunkHeard = true
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main.immediate) {
+                            if (latestActiveKey == activeReelKey && isAudioEnabled && !showCreateSheet) {
+                                voicePlaybackState = speakingState
+                                if (!latestIsPaused) {
+                                    bgmPlayer.setDucked(true)
+                                }
+                                // Immediately start prewarming next 2 Reels while current voice streams!
+                                scheduleUpcomingReelsPrewarm(activePageSnapshot)
+                            }
+                        }
+                    }
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        livePlayer.writePcmChunk(pcmBytes, sampleRate, channels)
+                    }
+                }
+            }
+        )
+
+        if (latestActiveKey != activeReelKey || !isAudioEnabled || showCreateSheet) {
+            livePlayer.stopAndRelease()
+            if (streamingVoicePlayerRef[0] === livePlayer) streamingVoicePlayerRef[0] = null
+            return@LaunchedEffect
+        }
+
+        when (streamResult) {
+            is ShayarVoiceStreamResult.StreamedComplete -> {
+                // Wait for AudioTrack to finish playing the final poetic syllable cleanly
+                livePlayer.awaitPlaybackDrain()
+                livePlayer.stopAndRelease()
+                if (streamingVoicePlayerRef[0] === livePlayer) streamingVoicePlayerRef[0] = null
+                bgmPlayer.setDucked(false)
+
+                if (!firstChunkHeard) {
+                    scheduleUpcomingReelsPrewarm(activePageSnapshot)
+                }
+
+                // Loop smoothly from the newly saved WAV file after a natural 3.2s musical pause
+                val savedReplayFile = streamResult.audioFile
+                if (savedReplayFile != null &&
+                    savedReplayFile.exists() &&
+                    latestActiveKey == activeReelKey &&
+                    isAudioEnabled &&
+                    !showCreateSheet
+                ) {
+                    delay(3_200L)
+                    if (latestActiveKey == activeReelKey &&
+                        !latestIsPaused &&
+                        isAudioEnabled &&
+                        !showCreateSheet &&
+                        voicePlayerRef[0] == null &&
+                        streamingVoicePlayerRef[0] == null
+                    ) {
+                        playWavFileInMediaPlayer(savedReplayFile, speakingState)
+                    }
+                }
+                return@LaunchedEffect
+            }
+
+            is ShayarVoiceStreamResult.CachedReady -> {
+                livePlayer.stopAndRelease()
+                if (streamingVoicePlayerRef[0] === livePlayer) streamingVoicePlayerRef[0] = null
+                if (!latestIsPaused) {
+                    val started = playWavFileInMediaPlayer(streamResult.audioFile, speakingState)
+                    if (started) {
+                        scheduleUpcomingReelsPrewarm(activePageSnapshot)
+                        return@LaunchedEffect
+                    }
+                } else {
+                    voicePlaybackState = speakingState
+                    return@LaunchedEffect
+                }
+            }
+
+            is ShayarVoiceStreamResult.FallbackRequired,
+            is ShayarVoiceStreamResult.Error -> {
+                livePlayer.stopAndRelease()
+                if (streamingVoicePlayerRef[0] === livePlayer) streamingVoicePlayerRef[0] = null
+            }
+        }
+
+        val fallbackDetail = when (streamResult) {
+            is ShayarVoiceStreamResult.FallbackRequired -> streamResult.message
+            is ShayarVoiceStreamResult.Error -> streamResult.message
+            else -> "ऑफ़लाइन आवाज़ सक्रिय"
         }
 
         if (!allowLocalTtsFallback) {
@@ -905,7 +1021,7 @@ fun ReelsScreen(
         ) {
             val started = playWavFileInMediaPlayer(readyLocalWav, fallbackState)
             if (started) {
-                scheduleNextReelPrewarm(activePageSnapshot + 1)
+                scheduleUpcomingReelsPrewarm(activePageSnapshot)
                 return@LaunchedEffect
             }
         }

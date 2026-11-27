@@ -25,7 +25,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "LocalShayarSpeaker"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
-private const val MASTERED_CACHE_DIR = "local_shayar_master_v6"
+private const val MASTERED_CACHE_DIR = "local_shayar_master_v7"
 private const val NETWORK_VOICE_COOLDOWN_MS = 90_000L
 
 /**
@@ -604,17 +604,17 @@ class LocalShayarFallbackSpeaker(context: Context) {
     }
 
     private fun naturalProsodyFor(persona: ShayarVoicePersona): Pair<Float, Float> {
-        // Calibrated unhurried poetic speech rates (0.75f-0.85f) so Android Hindi TTS
-        // recites with Mushaira calm instead of sounding like hurried text reading.
+        // Natural artifact-free speech rates (0.90f-0.98f) and organic pitch avoid WSOLA
+        // robotic slow-motion warble while keeping emotional pacing via clean inter-line pauses.
         return when (persona) {
-            ShayarVoicePersona.DARD_SHAYARA -> 0.76f to 0.96f
-            ShayarVoicePersona.SUREELI_SHAYARA -> 0.84f to 1.05f
-            ShayarVoicePersona.TADAP_SHAYARA -> 0.80f to 1.01f
-            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.78f to 1.00f
-            ShayarVoicePersona.DARD_SHAYAR -> 0.75f to 0.91f
-            ShayarVoicePersona.TADAP_AASHIQ -> 0.81f to 0.98f
-            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.77f to 0.89f
-            ShayarVoicePersona.JOSH_SHAYAR -> 0.85f to 0.94f
+            ShayarVoicePersona.DARD_SHAYARA -> 0.90f to 0.97f
+            ShayarVoicePersona.SUREELI_SHAYARA -> 0.96f to 1.04f
+            ShayarVoicePersona.TADAP_SHAYARA -> 0.93f to 1.01f
+            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.91f to 1.00f
+            ShayarVoicePersona.DARD_SHAYAR -> 0.90f to 0.94f
+            ShayarVoicePersona.TADAP_AASHIQ -> 0.94f to 0.98f
+            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.91f to 0.92f
+            ShayarVoicePersona.JOSH_SHAYAR -> 0.98f to 0.96f
         }
     }
 

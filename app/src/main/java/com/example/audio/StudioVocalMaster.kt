@@ -118,10 +118,10 @@ object StudioVocalMaster {
                 }
             }
 
-            // Add a gentle 160ms breathing lead-in and 260ms soft tail so background music sets
-            // the mood for a beat before the Shayar starts speaking (feels cinematic, never rushed).
-            val leadPad = (0.160 * decoded.sampleRate).toInt()
-            val tailPad = (0.260 * decoded.sampleRate).toInt()
+            // Keep lead-in ultra-snappy (25ms) so cached Shayar voices start instantaneously on swipe,
+            // with a gentle 220ms soft tail before looping.
+            val leadPad = (0.025 * decoded.sampleRate).toInt()
+            val tailPad = (0.220 * decoded.sampleRate).toInt()
             val padded = FloatArray(leadPad + samples.size + tailPad)
             System.arraycopy(samples, 0, padded, leadPad, samples.size)
 

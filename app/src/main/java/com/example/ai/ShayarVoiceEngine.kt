@@ -25,11 +25,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v12"
+private const val VOICE_CACHE_DIR = "shayar_voices_v13"
+private const val LEGACY_VOICE_CACHE_DIR = "shayar_voices_v12"
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 private const val QUOTA_COOLDOWN_MS = 15_000L
 private const val APP_CHECK_COOLDOWN_MS = 20_000L
@@ -45,7 +47,7 @@ enum class ShayarVoicePersona(
     val voiceDirection: String,
     val emotionalStyleCue: String
 ) {
-    // 4 Strongly Contrasting Female Shayara Voices — all unhurried, deeply human poetic delivery
+    // 4 Strongly Contrasting Female Shayara Voices — natural native Hindi-Urdu human emotion
     DARD_SHAYARA(
         id = "dard_shayara",
         labelHi = "दर्द भरी शायरा",
@@ -54,8 +56,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "💔",
         geminiVoiceName = "Vindemiatrix",
-        voiceDirection = "a fragile, tearful young North Indian poetess speaking very slowly from the heart with a soft quivering voice and lingering emotional pauses",
-        emotionalStyleCue = "very slow, misty, aching heartbreak as if holding back tears"
+        voiceDirection = "a 24-year-old native North Indian woman confessing real heartbreak late at night, soft misty voice with natural breath and a slight emotional catch in her throat",
+        emotionalStyleCue = "tender, aching heartbreak as if holding back tears while speaking to someone she still misses"
     ),
     SUREELI_SHAYARA(
         id = "sureeli_shayara",
@@ -65,8 +67,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🎶",
         geminiVoiceName = "Leda",
-        voiceDirection = "a sweet, melodious young Indian poetess speaking softly and unhurriedly with a gentle affectionate smile and musical Hindi-Urdu phrasing",
-        emotionalStyleCue = "unhurried sweet musical charm with tender affectionate warmth"
+        voiceDirection = "a warm, expressive young native Hindi-Urdu poetess speaking naturally with an affectionate smile, lively musical inflection, and heartfelt charm",
+        emotionalStyleCue = "sweet affectionate warmth, gentle smile audible in the voice, effortless poetic flow"
     ),
     TADAP_SHAYARA(
         id = "tadap_shayara",
@@ -76,8 +78,8 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🥺",
         geminiVoiceName = "Kore",
-        voiceDirection = "an expressive, emotionally intense North Indian poetess speaking with deliberate dramatic poise, unhurried cadence, and deep vocal presence",
-        emotionalStyleCue = "measured dramatic emotion, deep lingering tension, powerful closing punch"
+        voiceDirection = "a deeply expressive native North Indian poetess on an intimate stage, speaking from the gut with raw longing, controlled intensity, and soulful vocal weight",
+        emotionalStyleCue = "intense lived-in emotion, heartfelt tension building naturally into a powerful closing line"
     ),
     ROMANTIC_SHAYARA(
         id = "romantic_shayara",
@@ -87,11 +89,11 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🌹",
         geminiVoiceName = "Aoede",
-        voiceDirection = "a warm, velvety young Indian poetess speaking very softly and slowly in an intimate dreamy whisper",
-        emotionalStyleCue = "slow affectionate closeness, soft lyrical flow, dreamy romantic glow"
+        voiceDirection = "an intimate, velvety young native Hindi-Urdu woman speaking softly close to the ear, warm breathy tenderness, genuine shy affection",
+        emotionalStyleCue = "close-mic dreamy romance, soft affectionate glow, heartfelt warmth"
     ),
 
-    // 4 Strongly Contrasting Male Shayar Voices — all unhurried, soulful Mushaira delivery
+    // 4 Strongly Contrasting Male Shayar Voices — natural native Hindi-Urdu Mushaira soul
     DARD_SHAYAR(
         id = "dard_shayar",
         labelHi = "दर्द-ए-दिल शायर",
@@ -100,8 +102,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🥀",
         geminiVoiceName = "Enceladus",
-        voiceDirection = "a deep, husky, late-night North Indian shayar speaking very slowly with heavy quiet grief and lingering sighs",
-        emotionalStyleCue = "deep gravelly ache, very slow lingering late-night emotional weight"
+        voiceDirection = "a 30-year-old native North Indian shayar with a warm husky voice, speaking quietly after midnight with genuine unspoken grief, natural sighs, and lived-in pain",
+        emotionalStyleCue = "raw quiet heartbreak, husky intimate ache, deeply human emotional vulnerability"
     ),
     TADAP_AASHIQ(
         id = "tadap_aashiq",
@@ -111,8 +113,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "❤️‍🔥",
         geminiVoiceName = "Puck",
-        voiceDirection = "a heartfelt young Indian shayar speaking slowly and earnestly from memory with deep aching longing, letting every word breathe",
-        emotionalStyleCue = "soulful heartfelt longing, unhurried build-up to an emotional closing line"
+        voiceDirection = "a passionate young native Hindi-Urdu lover speaking straight from memory with earnest aching longing, natural conversational rhythm, and rising emotion",
+        emotionalStyleCue = "earnest heartfelt yearning, intimate honesty, emotional swell on the closing line"
     ),
     MEHFIL_SHAYAR(
         id = "mehfil_shayar",
@@ -122,8 +124,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🎙️",
         geminiVoiceName = "Algenib",
-        voiceDirection = "a seasoned Lucknow Mushaira ustad in his 40s with a rich resonant baritone, reciting very slowly with royal tehzeeb and theatrical pauses",
-        emotionalStyleCue = "slow regal Mushaira storytelling, suspenseful silence before landing the sher punchline"
+        voiceDirection = "a charismatic native Lucknow Mushaira shayar in his late 30s with a rich resonant baritone, speaking with warm conversational tehzeeb, soulful nuance, and captivating poise",
+        emotionalStyleCue = "soulful Mushaira storytelling, natural pause before landing the sher with warm depth"
     ),
     JOSH_SHAYAR(
         id = "josh_shayar",
@@ -133,8 +135,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🔥",
         geminiVoiceName = "Fenrir",
-        voiceDirection = "a bold, commanding Indian stage shayar with a powerful chest voice, speaking slowly and deliberately with calm fearless swagger and heavy pauses",
-        emotionalStyleCue = "slow commanding authority, calm fearless swagger, hard-hitting unhurried closing punch"
+        voiceDirection = "a bold, grounded native Indian stage poet with a strong chest voice, speaking with calm fearless confidence, slight wry edge, and crisp authoritative landing",
+        emotionalStyleCue = "calm fearless attitude, commanding presence, sharp unforgettable closing punch"
     );
 
     companion object {
@@ -237,10 +239,24 @@ sealed interface ShayarVoiceResult {
     data class Error(val message: String) : ShayarVoiceResult
 }
 
+sealed interface ShayarVoiceStreamResult {
+    /** 0ms cache hit or buffered container file ready to play via MediaPlayer. */
+    data class CachedReady(val audioFile: File) : ShayarVoiceStreamResult
+    /** Live PCM chunks were already streamed into AudioTrack; audioFile is saved for instant replay. */
+    data class StreamedComplete(val audioFile: File?) : ShayarVoiceStreamResult
+    data class FallbackRequired(
+        val message: String,
+        val isAppCheckError: Boolean = false,
+        val isQuotaError: Boolean = false
+    ) : ShayarVoiceStreamResult
+    data class Error(val message: String) : ShayarVoiceStreamResult
+}
+
 /**
  * Generates expressive, human-like Hindi/Urdu Mushaira poet & poetess voice recitations
  * using Gemini Flash TTS via Firebase AI Logic (`ResponseModality.AUDIO` + `SpeechConfig(Voice)`),
- * with durable disk caching in `filesDir`, single-flight request deduplication, and
+ * supporting live chunked audio streaming (`generateContentStream`) for <1s start latency,
+ * durable disk caching in `filesDir`, single-flight request deduplication, and
  * quota/App-Check-safe rate handling.
  */
 object ShayarVoiceEngine {
@@ -253,6 +269,8 @@ object ShayarVoiceEngine {
     private var fallbackCooldownIsAppCheck: Boolean = false
     @Volatile
     private var fallbackCooldownIsQuota: Boolean = false
+    @Volatile
+    private var legacyCleanupScheduled: Boolean = false
 
     private val modelCache = ConcurrentHashMap<String, com.google.firebase.ai.GenerativeModel>()
     private val inFlightRequests = ConcurrentHashMap<String, Deferred<ShayarVoiceResult>>()
@@ -267,6 +285,18 @@ object ShayarVoiceEngine {
         fallbackCooldownMessage = ""
         fallbackCooldownIsAppCheck = false
         fallbackCooldownIsQuota = false
+    }
+
+    private fun scheduleLegacyCacheCleanupOnce(context: Context) {
+        if (legacyCleanupScheduled) return
+        legacyCleanupScheduled = true
+        val appCtx = context.applicationContext
+        engineScope.launch {
+            runCatching {
+                val legacyDir = File(appCtx.filesDir, LEGACY_VOICE_CACHE_DIR)
+                if (legacyDir.exists()) legacyDir.deleteRecursively()
+            }
+        }
     }
 
     @OptIn(PublicPreviewAPI::class)
@@ -296,8 +326,285 @@ object ShayarVoiceEngine {
     ): File? {
         val cleanCouplet = couplet.trim()
         if (cleanCouplet.isBlank()) return null
+        scheduleLegacyCacheCleanupOnce(context)
         val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, persona)
         return findExistingCacheFile(baseFile)
+    }
+
+    /**
+     * Returns true if this voice is already cached on disk or currently pre-warming in-flight,
+     * allowing Reels swipe transitions to start with zero debounce delay.
+     */
+    fun isVoiceInFlightOrCached(
+        context: Context,
+        couplet: String,
+        categoryId: String,
+        persona: ShayarVoicePersona
+    ): Boolean {
+        val cleanCouplet = couplet.trim()
+        if (cleanCouplet.isBlank()) return false
+        val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, persona)
+        if (findExistingCacheFile(baseFile) != null) return true
+        return inFlightRequests.containsKey(baseFile.nameWithoutExtension)
+    }
+
+    /**
+     * Ultra-low-latency streaming voice retrieval:
+     * 1. Returns `CachedReady` in 0ms if already on disk.
+     * 2. Reuses an already-running prewarm request if in-flight (zero duplicate calls).
+     * 3. Otherwise streams live PCM chunks from `generateContentStream(...)` straight into
+     *    `onPcmChunk` so the Shayar begins speaking in ~0.7–1.2s while persisting the finished
+     *    WAV to disk cache for instant 0ms loops & revisits.
+     */
+    suspend fun streamOrGetVoice(
+        context: Context,
+        couplet: String,
+        categoryId: String,
+        persona: ShayarVoicePersona,
+        onPcmChunk: suspend (pcmBytes: ByteArray, sampleRate: Int, channels: Int) -> Boolean
+    ): ShayarVoiceStreamResult {
+        val cleanCouplet = couplet.trim()
+        if (cleanCouplet.isBlank()) {
+            return ShayarVoiceStreamResult.Error("शायरी खाली है।")
+        }
+
+        val appCtx = context.applicationContext
+        scheduleLegacyCacheCleanupOnce(appCtx)
+        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
+        findExistingCacheFile(cacheFile)?.let { existing ->
+            return ShayarVoiceStreamResult.CachedReady(existing)
+        }
+
+        // If a background prewarm for this exact Reel is already halfway done, join it!
+        val requestKey = cacheFile.nameWithoutExtension
+        inFlightRequests[requestKey]?.let { existingDeferred ->
+            return when (val joined = existingDeferred.await()) {
+                is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(joined.audioFile)
+                is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
+                    message = joined.message,
+                    isAppCheckError = joined.isAppCheckError,
+                    isQuotaError = joined.isQuotaError
+                )
+                is ShayarVoiceResult.Error -> ShayarVoiceStreamResult.Error(joined.message)
+            }
+        }
+
+        val now = System.currentTimeMillis()
+        if (now < fallbackCooldownUntilMs) {
+            return ShayarVoiceStreamResult.FallbackRequired(
+                message = fallbackCooldownMessage.ifBlank { "AI आवाज़ उपलब्ध नहीं — लोकल शायर आवाज़ चालू" },
+                isAppCheckError = fallbackCooldownIsAppCheck,
+                isQuotaError = fallbackCooldownIsQuota
+            )
+        }
+
+        val prompt = buildPoeticRecitationPrompt(
+            couplet = cleanCouplet,
+            persona = persona,
+            categoryId = categoryId
+        )
+
+        var emittedAnyPcm = false
+        var detectedContainerFormat = false
+        var containerMimeType = "audio/L16;rate=24000"
+        var streamSampleRate = 24_000
+        var streamChannels = 1
+        var checkedFirstChunkHeader = false
+        var carryBytes = ByteArray(0)
+        val pcmAccumulator = ByteArrayOutputStream(64 * 1024)
+        val containerChunks = mutableListOf<InlineDataPart>()
+
+        return try {
+            val model = getModel(persona)
+            withTimeout(40_000L) {
+                model.generateContentStream(prompt).collect { chunk ->
+                    val audioParts = chunk.candidates
+                        .flatMap { it.content.parts }
+                        .filterIsInstance<InlineDataPart>()
+                        .filter { part ->
+                            part.mimeType.startsWith("audio/", ignoreCase = true) &&
+                                part.inlineData.isNotEmpty()
+                        }
+
+                    for (part in audioParts) {
+                        val raw = part.inlineData
+                        val lowerMime = part.mimeType.lowercase()
+
+                        if (!checkedFirstChunkHeader) {
+                            checkedFirstChunkHeader = true
+                            containerMimeType = part.mimeType
+                            val isCompressed = lowerMime.contains("mp3") ||
+                                lowerMime.contains("mpeg") ||
+                                lowerMime.contains("ogg") ||
+                                lowerMime.contains("mp4") ||
+                                lowerMime.contains("aac")
+                            if (isCompressed) {
+                                detectedContainerFormat = true
+                            } else {
+                                streamSampleRate = parseSampleRate(lowerMime) ?: 24_000
+                                streamChannels = parseChannelCount(lowerMime) ?: 1
+                            }
+                        }
+
+                        if (detectedContainerFormat) {
+                            containerChunks.add(part)
+                            continue
+                        }
+
+                        // Strip RIFF/WAV header if Gemini sent a WAV-wrapped first chunk
+                        val payload: ByteArray = if (!emittedAnyPcm && hasRiffWaveHeader(raw)) {
+                            val wavInfo = parseRiffWaveHeader(raw)
+                            if (wavInfo != null) {
+                                streamSampleRate = wavInfo.sampleRate
+                                streamChannels = wavInfo.channels
+                                if (wavInfo.dataOffset < raw.size) {
+                                    raw.copyOfRange(wavInfo.dataOffset, raw.size)
+                                } else {
+                                    ByteArray(0)
+                                }
+                            } else {
+                                raw
+                            }
+                        } else {
+                            raw
+                        }
+
+                        if (payload.isEmpty()) continue
+
+                        // Merge any leftover partial-frame bytes from the previous network chunk
+                        val combined = if (carryBytes.isNotEmpty()) {
+                            ByteArray(carryBytes.size + payload.size).also { dst ->
+                                System.arraycopy(carryBytes, 0, dst, 0, carryBytes.size)
+                                System.arraycopy(payload, 0, dst, carryBytes.size, payload.size)
+                            }
+                        } else {
+                            payload
+                        }
+
+                        val frameAlign = streamChannels * 2
+                        val usableLen = (combined.size / frameAlign) * frameAlign
+                        carryBytes = if (usableLen < combined.size) {
+                            combined.copyOfRange(usableLen, combined.size)
+                        } else {
+                            ByteArray(0)
+                        }
+                        if (usableLen <= 0) continue
+
+                        val alignedSlice = if (usableLen == combined.size) {
+                            combined
+                        } else {
+                            combined.copyOf(usableLen)
+                        }
+
+                        pcmAccumulator.write(alignedSlice)
+                        emittedAnyPcm = true
+                        clearQuotaCooldown()
+
+                        val keepStreaming = onPcmChunk(alignedSlice, streamSampleRate, streamChannels)
+                        if (!keepStreaming) {
+                            throw CancellationException("Audio playback stopped by caller")
+                        }
+                    }
+                }
+            }
+
+            if (detectedContainerFormat && containerChunks.isNotEmpty()) {
+                val combined = combineAudioParts(containerChunks)
+                if (combined != null && combined.first.size >= 1_600) {
+                    clearQuotaCooldown()
+                    val savedFile = withContext(Dispatchers.IO) {
+                        writePlayableAudioFile(
+                            targetBaseFile = cacheFile,
+                            rawBytes = combined.first,
+                            mimeType = combined.second
+                        )
+                    }
+                    return ShayarVoiceStreamResult.CachedReady(savedFile)
+                }
+            }
+
+            val allPcm = pcmAccumulator.toByteArray()
+            if (emittedAnyPcm && allPcm.size >= 1_600) {
+                Log.d(
+                    TAG,
+                    "Streamed Shayar voice via $PRIMARY_TTS_MODEL (${persona.id}/${persona.geminiVoiceName}): rate=$streamSampleRate, ch=$streamChannels, pcmBytes=${allPcm.size}"
+                )
+                // Persist cleanly in background for instant 0ms replay & future visits
+                val savedFile = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val rawWav = writePlayableAudioFile(
+                            targetBaseFile = cacheFile,
+                            rawBytes = allPcm,
+                            mimeType = "audio/L16;rate=$streamSampleRate;channels=$streamChannels"
+                        )
+                        val masteredFile = File(rawWav.parentFile, "${rawWav.nameWithoutExtension}_m.wav")
+                        val ok = com.example.audio.StudioVocalMaster.masterGeminiVoiceWav(
+                            inputWav = rawWav,
+                            outputWav = masteredFile
+                        )
+                        if (ok && masteredFile.exists() && masteredFile.length() > 1024L) {
+                            if (!masteredFile.renameTo(rawWav)) {
+                                rawWav.writeBytes(masteredFile.readBytes())
+                                masteredFile.delete()
+                            }
+                            rawWav
+                        } else {
+                            masteredFile.delete()
+                            rawWav.takeIf { it.exists() && it.length() > 1024L }
+                        }
+                    }.getOrNull()
+                }
+                ShayarVoiceStreamResult.StreamedComplete(savedFile)
+            } else {
+                // Stream finished without PCM chunks; fall back once to unary generation
+                Log.w(TAG, "Stream returned empty audio; retrying unary generation for ${persona.id}.")
+                when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)) {
+                    is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(unary.audioFile)
+                    is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
+                        message = unary.message,
+                        isAppCheckError = unary.isAppCheckError,
+                        isQuotaError = unary.isQuotaError
+                    )
+                    is ShayarVoiceResult.Error -> ShayarVoiceStreamResult.Error(unary.message)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Shayar TTS stream timed out on $PRIMARY_TTS_MODEL", e)
+            if (emittedAnyPcm) {
+                ShayarVoiceStreamResult.StreamedComplete(null)
+            } else {
+                ShayarVoiceStreamResult.Error("आवाज़ बनने में समय लग रहा है — दोबारा टैप करें")
+            }
+        } catch (e: Exception) {
+            if (emittedAnyPcm) {
+                Log.w(TAG, "Stream ended early after emitting audio: ${e.localizedMessage}")
+                return ShayarVoiceStreamResult.StreamedComplete(null)
+            }
+            val classified = classifyVoiceException(e)
+            when (classified) {
+                is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
+                    message = classified.message,
+                    isAppCheckError = classified.isAppCheckError,
+                    isQuotaError = classified.isQuotaError
+                )
+                is ShayarVoiceResult.Error -> {
+                    // Retry once with unary generateContent in case streaming transport had a hiccup
+                    Log.w(TAG, "Streaming failed before first chunk (${e.localizedMessage}); retrying unary.")
+                    when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)) {
+                        is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(unary.audioFile)
+                        is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
+                            message = unary.message,
+                            isAppCheckError = unary.isAppCheckError,
+                            isQuotaError = unary.isQuotaError
+                        )
+                        is ShayarVoiceResult.Error -> ShayarVoiceStreamResult.Error(unary.message)
+                    }
+                }
+                is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(classified.audioFile)
+            }
+        }
     }
 
     suspend fun getOrGenerateVoice(
@@ -312,6 +619,7 @@ object ShayarVoiceEngine {
         }
 
         val appCtx = context.applicationContext
+        scheduleLegacyCacheCleanupOnce(appCtx)
         val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
         findExistingCacheFile(cacheFile)?.let { existing ->
             return ShayarVoiceResult.Ready(existing)
@@ -341,8 +649,8 @@ object ShayarVoiceEngine {
     }
 
     /**
-     * Quietly pre-generates the single upcoming Reel's voice on disk AFTER the current Reel is
-     * already playing, so swiping to the next Reel starts in 0ms with zero loading delay.
+     * Quietly pre-generates upcoming Reels' voices on disk in the background while the current
+     * Reel is playing, so swiping to the next Reels starts in 0ms with zero loading delay.
      * Skips immediately if already cached, already in-flight, or in quota/App-Check cooldown.
      */
     suspend fun prewarmVoiceIfSafe(
@@ -361,6 +669,94 @@ object ShayarVoiceEngine {
         runCatching {
             getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)
         }
+    }
+
+    private fun classifyVoiceException(e: Exception): ShayarVoiceResult {
+        val rawMsg = e.localizedMessage.orEmpty()
+        Log.e(TAG, "Shayar TTS failed on $PRIMARY_TTS_MODEL: $rawMsg", e)
+        val isQuota = rawMsg.contains("quota", ignoreCase = true) ||
+            rawMsg.contains("429", ignoreCase = true) ||
+            rawMsg.contains("resource_exhausted", ignoreCase = true) ||
+            rawMsg.contains("billing", ignoreCase = true) ||
+            rawMsg.contains("rate limit", ignoreCase = true)
+
+        val isAppCheck = rawMsg.contains("app check", ignoreCase = true) ||
+            rawMsg.contains("attestation", ignoreCase = true) ||
+            rawMsg.contains("token is invalid", ignoreCase = true) ||
+            rawMsg.contains("403", ignoreCase = true) ||
+            rawMsg.contains("unauthenticated", ignoreCase = true)
+
+        return when {
+            isQuota -> {
+                fallbackCooldownUntilMs = System.currentTimeMillis() + QUOTA_COOLDOWN_MS
+                fallbackCooldownIsQuota = true
+                fallbackCooldownIsAppCheck = false
+                fallbackCooldownMessage = "अभी व्यस्त है • ऑफ़लाइन आवाज़ चालू (रिट्राई करें)"
+                ShayarVoiceResult.FallbackRequired(
+                    message = fallbackCooldownMessage,
+                    isQuotaError = true
+                )
+            }
+            isAppCheck -> {
+                fallbackCooldownUntilMs = System.currentTimeMillis() + APP_CHECK_COOLDOWN_MS
+                fallbackCooldownIsAppCheck = true
+                fallbackCooldownIsQuota = false
+                fallbackCooldownMessage = "ऑफ़लाइन आवाज़ सक्रिय • रिट्राई करें"
+                ShayarVoiceResult.FallbackRequired(
+                    message = fallbackCooldownMessage,
+                    isAppCheckError = true
+                )
+            }
+            else -> {
+                ShayarVoiceResult.Error("इंटरनेट या आवाज़ सेवा उपलब्ध नहीं — रिट्राई करें")
+            }
+        }
+    }
+
+    private data class RiffHeaderInfo(
+        val sampleRate: Int,
+        val channels: Int,
+        val dataOffset: Int
+    )
+
+    private fun hasRiffWaveHeader(bytes: ByteArray): Boolean {
+        return bytes.size >= 12 &&
+            bytes[0] == 'R'.code.toByte() &&
+            bytes[1] == 'I'.code.toByte() &&
+            bytes[2] == 'F'.code.toByte() &&
+            bytes[3] == 'F'.code.toByte() &&
+            bytes[8] == 'W'.code.toByte() &&
+            bytes[9] == 'A'.code.toByte() &&
+            bytes[10] == 'V'.code.toByte() &&
+            bytes[11] == 'E'.code.toByte()
+    }
+
+    private fun parseRiffWaveHeader(bytes: ByteArray): RiffHeaderInfo? {
+        if (!hasRiffWaveHeader(bytes) || bytes.size < 44) return null
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+        var offset = 12
+        var channels = 1
+        var sampleRate = 24_000
+        while (offset + 8 <= bytes.size) {
+            val chunkId = String(bytes, offset, 4, Charsets.US_ASCII)
+            val chunkSize = buf.getInt(offset + 4)
+            val payloadStart = offset + 8
+            if (chunkSize < 0 || payloadStart > bytes.size) break
+            when (chunkId) {
+                "fmt " -> {
+                    if (payloadStart + 16 <= bytes.size) {
+                        channels = (buf.getShort(payloadStart + 2).toInt() and 0xFFFF).coerceIn(1, 2)
+                        sampleRate = buf.getInt(payloadStart + 4).coerceIn(8_000, 96_000)
+                    }
+                }
+                "data" -> {
+                    return RiffHeaderInfo(sampleRate, channels, payloadStart)
+                }
+            }
+            val padded = chunkSize + (chunkSize and 1)
+            offset = payloadStart + padded
+        }
+        return RiffHeaderInfo(sampleRate, channels, 44)
     }
 
     private suspend fun generateVoiceInternal(
@@ -442,45 +838,7 @@ object ShayarVoiceEngine {
             Log.e(TAG, "Shayar TTS timed out on $PRIMARY_TTS_MODEL", e)
             ShayarVoiceResult.Error("आवाज़ बनने में समय लग रहा है — दोबारा टैप करें")
         } catch (e: Exception) {
-            val rawMsg = e.localizedMessage.orEmpty()
-            Log.e(TAG, "Shayar TTS failed on $PRIMARY_TTS_MODEL: $rawMsg", e)
-            val isQuota = rawMsg.contains("quota", ignoreCase = true) ||
-                rawMsg.contains("429", ignoreCase = true) ||
-                rawMsg.contains("resource_exhausted", ignoreCase = true) ||
-                rawMsg.contains("billing", ignoreCase = true) ||
-                rawMsg.contains("rate limit", ignoreCase = true)
-
-            val isAppCheck = rawMsg.contains("app check", ignoreCase = true) ||
-                rawMsg.contains("attestation", ignoreCase = true) ||
-                rawMsg.contains("token is invalid", ignoreCase = true) ||
-                rawMsg.contains("403", ignoreCase = true) ||
-                rawMsg.contains("unauthenticated", ignoreCase = true)
-
-            when {
-                isQuota -> {
-                    fallbackCooldownUntilMs = System.currentTimeMillis() + QUOTA_COOLDOWN_MS
-                    fallbackCooldownIsQuota = true
-                    fallbackCooldownIsAppCheck = false
-                    fallbackCooldownMessage = "अभी व्यस्त है • ऑफ़लाइन आवाज़ चालू (रिट्राई करें)"
-                    ShayarVoiceResult.FallbackRequired(
-                        message = fallbackCooldownMessage,
-                        isQuotaError = true
-                    )
-                }
-                isAppCheck -> {
-                    fallbackCooldownUntilMs = System.currentTimeMillis() + APP_CHECK_COOLDOWN_MS
-                    fallbackCooldownIsAppCheck = true
-                    fallbackCooldownIsQuota = false
-                    fallbackCooldownMessage = "ऑफ़लाइन आवाज़ सक्रिय • रिट्राई करें"
-                    ShayarVoiceResult.FallbackRequired(
-                        message = fallbackCooldownMessage,
-                        isAppCheckError = true
-                    )
-                }
-                else -> {
-                    ShayarVoiceResult.Error("इंटरनेट या आवाज़ सेवा उपलब्ध नहीं — रिट्राई करें")
-                }
-            }
+            classifyVoiceException(e)
         }
     }
 
@@ -608,28 +966,27 @@ object ShayarVoiceEngine {
     }
 
     /**
-     * Inserts a gentle poetic mid-line breathing pause (अर्ध-विराम / caesura) into longer
-     * shayari lines that lack internal punctuation, preventing TTS models from rushing
-     * through an entire misra in one hurried breath like reading a news sentence.
+     * Adds a gentle natural breath comma ONLY into genuinely long unpunctuated lines (9+ words)
+     * so short/medium shayari misras flow smoothly in one organic human breath without robotic breaks.
      */
     private fun applyPoeticCaesura(cleanLine: String): String {
         if (cleanLine.contains(',') || cleanLine.contains("...") || cleanLine.contains(';') || cleanLine.contains('—')) {
             return cleanLine
         }
         val words = cleanLine.split(" ").filter { it.isNotBlank() }
-        if (words.size < 6) return cleanLine
+        if (words.size < 9) return cleanLine
 
         val beforeBreakWords = setOf(
-            "कि", "पर", "मगर", "लेकिन", "और", "फिर", "जब", "वरना", "क्योंकि", "जैसे", "चाहे",
+            "कि", "पर", "मगर", "लेकिन", "और", "फिर", "जब", "वरना", "क्योंकि", "जैसे",
             "ki", "par", "magar", "lekin", "aur", "phir", "jab", "varna", "jaise"
         )
         val afterBreakWords = setOf(
-            "तो", "बस", "हाँ", "सुनो", "जान", "यार", "दोस्त", "सनम", "मियाँ", "दिल",
+            "तो", "बस", "हाँ", "सुनो", "जान", "यार", "दोस्त", "सनम",
             "toh", "to", "bas", "haan", "suno", "yaar", "dost", "sanam"
         )
 
-        val minIdx = 2
-        val maxIdx = words.size - 3
+        val minIdx = 3
+        val maxIdx = words.size - 4
         var splitIndex = -1
 
         for (i in minIdx..maxIdx) {
@@ -643,14 +1000,11 @@ object ShayarVoiceEngine {
                 break
             }
         }
-        if (splitIndex == -1 && words.size >= 7) {
-            splitIndex = words.size / 2
-        }
-        if (splitIndex !in 2..(words.size - 2)) return cleanLine
+        if (splitIndex !in 3..(words.size - 3)) return cleanLine
 
         val firstHalf = words.subList(0, splitIndex).joinToString(" ")
         val secondHalf = words.subList(splitIndex, words.size).joinToString(" ")
-        return "$firstHalf... $secondHalf"
+        return "$firstHalf, $secondHalf"
     }
 
     internal fun buildPoeticRecitationPrompt(
@@ -666,29 +1020,32 @@ object ShayarVoiceEngine {
 
         val emotion = detectCoupletEmotion(couplet, categoryId, persona)
 
-        // Core Mushaira anti-rushing rule shared across every mood:
-        // Perform slowly from memory (~70% reading speed) with true poetic thehrav (ठहराव),
-        // lingering on key Urdu/Hindi words and pausing deeply — NEVER reading hurriedly off a script.
-        val mushairaCadenceRule =
-            "Recite slowly from memory like a live Hindi-Urdu Mushaira artist (never fast or rushed like reading written text aloud); linger gently on emotional words, breathe softly at every '...' pause, and let each line sink in."
-
-        val styleDirective = when (emotion) {
+        val sceneAndArc = when (emotion) {
             CoupletEmotion.DEEP_HEARTBREAK ->
-                "Perform this Hindi-Urdu shayari very slowly and soulfully as ${persona.voiceDirection}. $mushairaCadenceRule Let your voice feel tender, broken, and softly trembling on the final line:"
+                "Late-night heartbreak confession. Speak naturally and softly with real pain in your voice, natural micro-breaths, and let your voice soften and catch with genuine emotion on the final line."
             CoupletEmotion.PASSIONATE_YEARNING ->
-                "Perform this Hindi-Urdu shayari slowly and passionately as ${persona.voiceDirection}. $mushairaCadenceRule Build heartfelt aching emotion across the lines and linger deeply on the closing line:"
+                "Intimate aching longing for someone deeply missed. Start softly and warmly, then let genuine heartfelt longing swell naturally into the closing line."
             CoupletEmotion.PLAYFUL_ROMANCE ->
-                "Perform this Hindi-Urdu shayari softly and unhurriedly as ${persona.voiceDirection}. $mushairaCadenceRule Speak with a warm affectionate smile, gentle musical lilt, and unhurried poetic charm:"
+                "Warm, sweet affectionate moment. Speak with a genuine gentle smile in your voice, playful Hindi-Urdu lilt, and tender closeness."
             CoupletEmotion.INTIMATE_ROMANTIC ->
-                "Perform this Hindi-Urdu shayari very slowly and tenderly as ${persona.voiceDirection}. $mushairaCadenceRule Keep it close-mic, velvety, dreamy, and unhurried like a late-night confession:"
+                "Close-mic late-night romantic whisper. Soft, velvety, breathing naturally as if speaking straight to your beloved's heart."
             CoupletEmotion.WITTY_LIGHTHEARTED ->
-                "Perform this Hindi-Urdu shayari in a relaxed, unhurried storytelling cadence as ${persona.voiceDirection}. $mushairaCadenceRule Smile naturally through the words and pause with comic Mushaira timing before the punchline:"
+                "Relaxed friendly mehfil storytelling. Natural conversational Indian warmth, amused smile, and crisp comic timing on the final line."
             CoupletEmotion.BOLD_ATTITUDE ->
-                "Perform this Hindi-Urdu shayari slowly and commandingly as ${persona.voiceDirection}. $mushairaCadenceRule Use calm, fearless swagger — never rush; pause heavily before delivering the final line with crisp authority:"
+                "Grounded, fearless stage shayar. Calm, unhurried self-assurance with crisp vocal presence and a sharp, unforgettable closing drop."
             CoupletEmotion.ROYAL_MEHFIL ->
-                "Perform this Hindi-Urdu sher slowly with classic Lucknow Mushaira tehzeeb as ${persona.voiceDirection}. $mushairaCadenceRule Hold regal suspense after the opening line and land the closing punchline with resonant weight:"
+                "Intimate Lucknow Mushaira evening. Conversational warmth and authentic Urdu-Hindi tehzeeb; set up the opening thought smoothly and land the closing sher with soulful depth."
             CoupletEmotion.SOULFUL_SUFI ->
-                "Perform this Hindi-Urdu shayari very slowly and calmly as ${persona.voiceDirection}. $mushairaCadenceRule Deliver it with deep Sufi stillness, warm philosophical wisdom, and peaceful unhurried pauses:"
+                "Peaceful midnight reflection. Warm, soothing, deeply grounded human wisdom with calm unhurried breaths."
+        }
+
+        val directorNotes = buildString {
+            append("# AUDIO PROFILE\n")
+            append("Native North Indian Hindi-Urdu speaker: ${persona.voiceDirection}.\n")
+            append("# DIRECTOR'S NOTES\n")
+            append("$sceneAndArc ")
+            append("Sound 100% human and lived-in — speak directly to one person from memory, NEVER flat, robotic, or like reading written text. Use authentic Hindi-Urdu pronunciation, natural pitch contour, and real emotional feeling.\n")
+            append("# TRANSCRIPT\n")
         }
 
         val taggedTranscript = buildString {
@@ -701,61 +1058,62 @@ object ShayarVoiceEngine {
                     rawLine.endsWith("!") -> "!"
                     emotion == CoupletEmotion.BOLD_ATTITUDE && isLast -> "!"
                     isLast -> "।"
-                    else -> "..."
+                    else -> ","
                 }
 
                 if (idx > 0) append("\n")
 
-                val prefixTag = when (emotion) {
+                val expressiveTag = when (emotion) {
                     CoupletEmotion.DEEP_HEARTBREAK -> when {
-                        isLast && lines.size >= 2 -> "[long pause] [sigh] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst && lines.size == 1 -> "[softly, heartbroken] "
+                        isFirst -> "[softly, heartbroken] "
+                        isLast -> "[sigh] [sadly, voice trembling] "
+                        else -> "[softly, aching] "
                     }
                     CoupletEmotion.PASSIONATE_YEARNING -> when {
-                        isLast && lines.size >= 2 -> "[long pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[softly, longing] "
+                        isLast -> "[sigh] [deeply emotional] "
+                        else -> "[warmly, earnest] "
                     }
                     CoupletEmotion.PLAYFUL_ROMANCE -> when {
-                        isLast && lines.size >= 2 -> "[medium pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[warmly, smiling] "
+                        isLast -> "[softly, affectionate smile] "
+                        else -> "[warmly] "
                     }
                     CoupletEmotion.INTIMATE_ROMANTIC -> when {
-                        isLast && lines.size >= 2 -> "[long pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[warmly, intimately] "
+                        isLast -> "[whispering, tenderly] "
+                        else -> "[softly] "
                     }
                     CoupletEmotion.WITTY_LIGHTHEARTED -> when {
-                        isLast && lines.size >= 2 -> "[medium pause] [chuckle] "
-                        isFirst -> ""
-                        else -> "[short pause] "
+                        isFirst -> "[warmly, conversational] "
+                        isLast -> "[chuckle] [playfully] "
+                        else -> ""
                     }
                     CoupletEmotion.BOLD_ATTITUDE -> when {
-                        isLast && lines.size >= 2 -> "[long pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[calmly, confident] "
+                        isLast -> "[short pause] [firm, commanding] "
+                        else -> "[confidently] "
                     }
                     CoupletEmotion.ROYAL_MEHFIL -> when {
-                        isLast && lines.size >= 2 -> "[long pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[warmly, soulful] "
+                        isLast -> "[short pause] [slowly, with deep emotion] "
+                        else -> "[thoughtfully] "
                     }
                     CoupletEmotion.SOULFUL_SUFI -> when {
-                        isLast && lines.size >= 2 -> "[long pause] "
-                        isFirst -> ""
-                        else -> "[medium pause] "
+                        isFirst -> "[soothing, calm] "
+                        isLast -> "[sigh] [warmly, reflective] "
+                        else -> "[peacefully] "
                     }
                 }
 
-                append(prefixTag)
+                append(expressiveTag)
                 append(clean)
                 append(endingPunct)
             }
         }
 
-        return "$styleDirective\n\n$taggedTranscript"
+        return "$directorNotes$taggedTranscript"
     }
 
     private fun resolveCacheFile(

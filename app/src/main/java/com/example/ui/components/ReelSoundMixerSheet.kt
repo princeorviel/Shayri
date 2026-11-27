@@ -113,13 +113,23 @@ fun ReelVoiceStatusPill(
         ) {
             when (voiceState) {
                 is ShayarVoicePlaybackState.Loading -> {
-                    CircularProgressIndicator(
-                        strokeWidth = 1.8.dp,
-                        color = Color(0xFFFFD580),
-                        modifier = Modifier.size(13.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        for (bar in 0 until 3) {
+                            val h = 4f + abs(sin(phase + bar * 1.1f)) * 7f
+                            Box(
+                                modifier = Modifier
+                                    .width(2.2.dp)
+                                    .height(h.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFD580).copy(alpha = 0.85f))
+                            )
+                        }
+                    }
                     Text(
-                        text = "🎙️ शायर आवाज़ तैयार हो रही है…",
+                        text = "🎙️ शायर जुड़ रहे हैं…",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp
