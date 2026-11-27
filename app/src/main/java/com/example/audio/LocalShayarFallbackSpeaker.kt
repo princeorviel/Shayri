@@ -10,6 +10,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import android.util.Log
+import com.example.ai.CoupletEmotion
+import com.example.ai.ShayarVoiceEngine
 import com.example.ai.ShayarVoicePersona
 import java.io.File
 import java.security.MessageDigest
@@ -25,7 +27,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 private const val TAG = "LocalShayarSpeaker"
 private const val GOOGLE_TTS_PACKAGE = "com.google.android.tts"
-private const val MASTERED_CACHE_DIR = "local_shayar_master_v7"
+private const val MASTERED_CACHE_DIR = "local_shayar_master_v8"
 private const val NETWORK_VOICE_COOLDOWN_MS = 90_000L
 
 /**
@@ -67,6 +69,8 @@ class LocalShayarFallbackSpeaker(context: Context) {
     private data class PendingSpeech(
         val couplet: String,
         val persona: ShayarVoicePersona,
+        val categoryId: String,
+        val tags: List<String>,
         val onSpeakingChanged: (Boolean) -> Unit,
         val onCompletedAll: (() -> Unit)?
     )
@@ -76,6 +80,8 @@ class LocalShayarFallbackSpeaker(context: Context) {
         val lastUtteranceId: String,
         val couplet: String,
         val persona: ShayarVoicePersona,
+        val categoryId: String,
+        val tags: List<String>,
         val onSpeakingChanged: (Boolean) -> Unit,
         val onCompletedAll: (() -> Unit)?,
         @Volatile var retriedOffline: Boolean = false
@@ -97,7 +103,14 @@ class LocalShayarFallbackSpeaker(context: Context) {
                 if (!readyDeferred.isCompleted) readyDeferred.complete(true)
                 pendingRequest?.let { req ->
                     pendingRequest = null
-                    speak(req.couplet, req.persona, req.onSpeakingChanged, req.onCompletedAll)
+                    speak(
+                        couplet = req.couplet,
+                        persona = req.persona,
+                        categoryId = req.categoryId,
+                        tags = req.tags,
+                        onSpeakingChanged = req.onSpeakingChanged,
+                        onCompletedAll = req.onCompletedAll
+                    )
                 }
             } else if (preferredEnginePackage != null && !triedDefaultFallbackEngine) {
                 triedDefaultFallbackEngine = true
@@ -222,13 +235,16 @@ class LocalShayarFallbackSpeaker(context: Context) {
      */
     fun getCachedMasteredVoiceOrNull(
         couplet: String,
-        persona: ShayarVoicePersona
+        persona: ShayarVoicePersona,
+        categoryId: String = "",
+        tags: List<String> = emptyList()
     ): File? {
         val cleanLines = sanitizeCoupletLines(couplet)
         if (isReleased || cleanLines.isEmpty()) return null
+        val emotion = ShayarVoiceEngine.detectCoupletEmotion(couplet, categoryId, tags)
         val canonicalKey = cleanLines.joinToString("\n")
         val cacheDir = File(appContext.cacheDir, MASTERED_CACHE_DIR)
-        val key = sha256Short("${persona.id}|$canonicalKey")
+        val key = sha256Short("${persona.id}|${emotion.name}|$canonicalKey")
         val cachedMaster = File(cacheDir, "master_$key.wav")
         return cachedMaster.takeIf { it.exists() && it.length() > 2048L }
     }
@@ -236,14 +252,17 @@ class LocalShayarFallbackSpeaker(context: Context) {
     suspend fun synthesizeMasteredVoice(
         couplet: String,
         persona: ShayarVoicePersona,
-        isPrewarm: Boolean = false
+        isPrewarm: Boolean = false,
+        categoryId: String = "",
+        tags: List<String> = emptyList()
     ): File? {
         val cleanLines = sanitizeCoupletLines(couplet)
         if (isReleased || cleanLines.isEmpty()) return null
 
+        val emotion = ShayarVoiceEngine.detectCoupletEmotion(couplet, categoryId, tags)
         val canonicalKey = cleanLines.joinToString("\n")
         val cacheDir = File(appContext.cacheDir, MASTERED_CACHE_DIR).apply { mkdirs() }
-        val key = sha256Short("${persona.id}|$canonicalKey")
+        val key = sha256Short("${persona.id}|${emotion.name}|$canonicalKey")
         val cachedMaster = File(cacheDir, "master_$key.wav")
         if (cachedMaster.exists() && cachedMaster.length() > 2048L) {
             return cachedMaster
@@ -286,6 +305,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
                     voice = voice,
                     cleanLines = cleanLines,
                     persona = persona,
+                    emotion = emotion,
                     outputMasterFile = cachedMaster,
                     expectedGen = myGen
                 )
@@ -307,6 +327,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
                     voice = null,
                     cleanLines = cleanLines,
                     persona = persona,
+                    emotion = emotion,
                     outputMasterFile = cachedMaster,
                     expectedGen = myGen
                 )
@@ -324,6 +345,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
         voice: Voice?,
         cleanLines: List<String>,
         persona: ShayarVoicePersona,
+        emotion: CoupletEmotion,
         outputMasterFile: File,
         expectedGen: Long
     ): File? = withContext(Dispatchers.IO) {
@@ -339,7 +361,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
             configureEngine(engine)
         }
 
-        val (rate, pitch) = naturalProsodyFor(persona)
+        val (rate, pitch) = naturalProsodyFor(persona, emotion)
         engine.setSpeechRate(rate)
         engine.setPitch(pitch)
 
@@ -395,16 +417,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
 
             if (lineFiles.isEmpty() || synthGeneration.get() != expectedGen) return@withContext null
 
-            val moodProfile = when (persona) {
-                ShayarVoicePersona.DARD_SHAYARA,
-                ShayarVoicePersona.TADAP_SHAYARA,
-                ShayarVoicePersona.DARD_SHAYAR -> VocalMoodProfile.HEARTBREAK_SOFT
-                ShayarVoicePersona.SUREELI_SHAYARA,
-                ShayarVoicePersona.ROMANTIC_SHAYARA -> VocalMoodProfile.MELODIOUS_ROMANTIC
-                ShayarVoicePersona.MEHFIL_SHAYAR,
-                ShayarVoicePersona.TADAP_AASHIQ -> VocalMoodProfile.MEHFIL_BARITONE
-                ShayarVoicePersona.JOSH_SHAYAR -> VocalMoodProfile.STAGE_BOLD
-            }
+            val moodProfile = vocalProfileFor(emotion, persona)
 
             val mastered = StudioVocalMaster.masterPoetVoiceToStereoWav(
                 lineFiles = lineFiles,
@@ -430,17 +443,20 @@ class LocalShayarFallbackSpeaker(context: Context) {
         couplet: String,
         persona: ShayarVoicePersona,
         onSpeakingChanged: (Boolean) -> Unit,
-        onCompletedAll: (() -> Unit)? = null
+        onCompletedAll: (() -> Unit)? = null,
+        categoryId: String = "",
+        tags: List<String> = emptyList()
     ) {
         val cleanLines = sanitizeCoupletLines(couplet)
         if (isReleased || cleanLines.isEmpty()) return
         if (!isReady) {
-            pendingRequest = PendingSpeech(couplet, persona, onSpeakingChanged, onCompletedAll)
+            pendingRequest = PendingSpeech(couplet, persona, categoryId, tags, onSpeakingChanged, onCompletedAll)
             return
         }
         val engine = tts ?: return
         stop()
 
+        val emotion = ShayarVoiceEngine.detectCoupletEmotion(couplet, categoryId, tags)
         val ranked = buildRankedVoicesForPersona(engine, persona)
         // Prefer reliable offline voice in live backup so asynchronous network errors never cause silence!
         val chosenVoice = ranked.firstOrNull { !it.isNetworkConnectionRequired } ?: ranked.firstOrNull()
@@ -456,7 +472,7 @@ class LocalShayarFallbackSpeaker(context: Context) {
             configureEngine(engine)
         }
 
-        val (rate, pitch) = naturalProsodyFor(persona)
+        val (rate, pitch) = naturalProsodyFor(persona, emotion)
         engine.setSpeechRate(rate)
         engine.setPitch(pitch)
 
@@ -474,6 +490,8 @@ class LocalShayarFallbackSpeaker(context: Context) {
             lastUtteranceId = lastUtteranceId,
             couplet = couplet,
             persona = persona,
+            categoryId = categoryId,
+            tags = tags,
             onSpeakingChanged = onSpeakingChanged,
             onCompletedAll = onCompletedAll
         )
@@ -484,13 +502,14 @@ class LocalShayarFallbackSpeaker(context: Context) {
             putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, 1.0f)
         }
 
+        val (midPauseMs, finalPauseMs) = interLinePausesFor(emotion)
         var firstResult = TextToSpeech.SUCCESS
         spokenLines.forEachIndexed { idx, text ->
             val queueMode = if (idx == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
             val res = engine.speak(text, queueMode, params, "${token}_line_$idx")
             if (idx == 0) firstResult = res
             if (idx < spokenLines.lastIndex) {
-                val pauseMs = if (idx == spokenLines.lastIndex - 1) 1_080L else 820L
+                val pauseMs = if (idx == spokenLines.lastIndex - 1) finalPauseMs else midPauseMs
                 engine.playSilentUtterance(pauseMs, TextToSpeech.QUEUE_ADD, "${token}_pause_$idx")
             }
         }
@@ -507,7 +526,8 @@ class LocalShayarFallbackSpeaker(context: Context) {
         if (cleanLines.isEmpty()) return
 
         configureEngine(engine)
-        val (rate, pitch) = naturalProsodyFor(session.persona)
+        val emotion = ShayarVoiceEngine.detectCoupletEmotion(session.couplet, session.categoryId, session.tags)
+        val (rate, pitch) = naturalProsodyFor(session.persona, emotion)
         engine.setSpeechRate(rate)
         engine.setPitch(pitch)
 
@@ -603,19 +623,89 @@ class LocalShayarFallbackSpeaker(context: Context) {
             words.subList(splitIdx, words.size).joinToString(" ")
     }
 
-    private fun naturalProsodyFor(persona: ShayarVoicePersona): Pair<Float, Float> {
-        // Natural artifact-free speech rates (0.90f-0.98f) and organic pitch avoid WSOLA
-        // robotic slow-motion warble while keeping emotional pacing via clean inter-line pauses.
-        return when (persona) {
-            ShayarVoicePersona.DARD_SHAYARA -> 0.90f to 0.97f
-            ShayarVoicePersona.SUREELI_SHAYARA -> 0.96f to 1.04f
-            ShayarVoicePersona.TADAP_SHAYARA -> 0.93f to 1.01f
-            ShayarVoicePersona.ROMANTIC_SHAYARA -> 0.91f to 1.00f
-            ShayarVoicePersona.DARD_SHAYAR -> 0.90f to 0.94f
-            ShayarVoicePersona.TADAP_AASHIQ -> 0.94f to 0.98f
-            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.91f to 0.92f
-            ShayarVoicePersona.JOSH_SHAYAR -> 0.98f to 0.96f
+    private fun vocalProfileFor(
+        emotion: CoupletEmotion,
+        persona: ShayarVoicePersona
+    ): VocalMoodProfile {
+        return when (emotion) {
+            CoupletEmotion.BEWAFAI_BETRAYAL,
+            CoupletEmotion.DARD_TEARFUL,
+            CoupletEmotion.TANHAI_LONELY,
+            CoupletEmotion.TADAP_YEARNING,
+            CoupletEmotion.MAUT_JANAZA_SOLEMN -> VocalMoodProfile.HEARTBREAK_SOFT
+            CoupletEmotion.SHARABI_MAIKHANA,
+            CoupletEmotion.SOULFUL_SUFI_WISDOM -> VocalMoodProfile.MEHFIL_BARITONE
+            CoupletEmotion.ATTITUDE_SWAGGER,
+            CoupletEmotion.HAUSLA_DESHPREM_FIRE -> VocalMoodProfile.STAGE_BOLD
+            CoupletEmotion.INTIMATE_ROMANTIC,
+            CoupletEmotion.BOLD_FLIRTY,
+            CoupletEmotion.DOSTI_KHUSHI_FESTIVE,
+            CoupletEmotion.CUTE_GENZ_PLAYFUL,
+            CoupletEmotion.COMEDY_WITTY -> if (persona.isFemale) {
+                VocalMoodProfile.MELODIOUS_ROMANTIC
+            } else {
+                VocalMoodProfile.MEHFIL_BARITONE
+            }
         }
+    }
+
+    private fun interLinePausesFor(emotion: CoupletEmotion): Pair<Long, Long> {
+        return when (emotion) {
+            CoupletEmotion.MAUT_JANAZA_SOLEMN,
+            CoupletEmotion.DARD_TEARFUL,
+            CoupletEmotion.TANHAI_LONELY -> 960L to 1_260L
+            CoupletEmotion.BEWAFAI_BETRAYAL,
+            CoupletEmotion.SHARABI_MAIKHANA -> 860L to 1_160L
+            CoupletEmotion.TADAP_YEARNING,
+            CoupletEmotion.SOULFUL_SUFI_WISDOM,
+            CoupletEmotion.INTIMATE_ROMANTIC -> 820L to 1_060L
+            CoupletEmotion.ATTITUDE_SWAGGER,
+            CoupletEmotion.HAUSLA_DESHPREM_FIRE -> 640L to 880L
+            CoupletEmotion.BOLD_FLIRTY,
+            CoupletEmotion.DOSTI_KHUSHI_FESTIVE,
+            CoupletEmotion.CUTE_GENZ_PLAYFUL,
+            CoupletEmotion.COMEDY_WITTY -> 600L to 800L
+        }
+    }
+
+    private fun naturalProsodyFor(
+        persona: ShayarVoicePersona,
+        emotion: CoupletEmotion
+    ): Pair<Float, Float> {
+        // Distinct persona base pitch (Female: 0.98..1.14, Male: 0.80..0.97) so even on phones
+        // with only 1–2 installed Hindi voices, every Shayar/Shayara sounds clearly different.
+        val personaBasePitch = when (persona) {
+            ShayarVoicePersona.DARD_SHAYARA -> 0.99f
+            ShayarVoicePersona.SUREELI_SHAYARA -> 1.14f
+            ShayarVoicePersona.TADAP_SHAYARA -> 1.06f
+            ShayarVoicePersona.ROMANTIC_SHAYARA -> 1.02f
+            ShayarVoicePersona.DARD_SHAYAR -> 0.80f
+            ShayarVoicePersona.TADAP_AASHIQ -> 0.96f
+            ShayarVoicePersona.MEHFIL_SHAYAR -> 0.85f
+            ShayarVoicePersona.JOSH_SHAYAR -> 0.90f
+        }
+
+        // Category/tag emotion drives speaking cadence and subtle emotional pitch inflection
+        val (emotionRate, emotionPitchOffset) = when (emotion) {
+            CoupletEmotion.BEWAFAI_BETRAYAL -> 0.90f to -0.02f
+            CoupletEmotion.DARD_TEARFUL -> 0.87f to -0.03f
+            CoupletEmotion.TANHAI_LONELY -> 0.88f to -0.02f
+            CoupletEmotion.TADAP_YEARNING -> 0.92f to 0.01f
+            CoupletEmotion.SHARABI_MAIKHANA -> 0.86f to -0.04f
+            CoupletEmotion.MAUT_JANAZA_SOLEMN -> 0.85f to -0.05f
+            CoupletEmotion.INTIMATE_ROMANTIC -> 0.91f to 0.00f
+            CoupletEmotion.BOLD_FLIRTY -> 0.96f to 0.03f
+            CoupletEmotion.ATTITUDE_SWAGGER -> 0.98f to -0.03f
+            CoupletEmotion.HAUSLA_DESHPREM_FIRE -> 1.01f to 0.02f
+            CoupletEmotion.DOSTI_KHUSHI_FESTIVE -> 1.00f to 0.04f
+            CoupletEmotion.CUTE_GENZ_PLAYFUL -> 1.02f to 0.05f
+            CoupletEmotion.COMEDY_WITTY -> 1.04f to 0.04f
+            CoupletEmotion.SOULFUL_SUFI_WISDOM -> 0.90f to -0.02f
+        }
+
+        val finalRate = emotionRate.coerceIn(0.84f, 1.06f)
+        val finalPitch = (personaBasePitch + emotionPitchOffset).coerceIn(0.76f, 1.18f)
+        return finalRate to finalPitch
     }
 
     private fun buildRankedVoicesForPersona(engine: TextToSpeech, persona: ShayarVoicePersona): List<Voice> {

@@ -30,11 +30,28 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 private const val TAG = "ShayarVoiceEngine"
-private const val VOICE_CACHE_DIR = "shayar_voices_v13"
-private const val LEGACY_VOICE_CACHE_DIR = "shayar_voices_v12"
+private const val VOICE_CACHE_DIR = "shayar_voices_v14"
+private val LEGACY_VOICE_CACHE_DIRS = listOf("shayar_voices_v12", "shayar_voices_v13")
 private const val PRIMARY_TTS_MODEL = "gemini-3.1-flash-tts-preview"
 private const val QUOTA_COOLDOWN_MS = 15_000L
 private const val APP_CHECK_COOLDOWN_MS = 20_000L
+
+enum class CoupletEmotion(val badgeHi: String) {
+    BEWAFAI_BETRAYAL("बेवफ़ाई अंदाज़"),
+    DARD_TEARFUL("दर्द भरा अंदाज़"),
+    TANHAI_LONELY("तन्हाई व यादें"),
+    TADAP_YEARNING("तड़प व जुदाई"),
+    SHARABI_MAIKHANA("शराबी मैख़ाना"),
+    MAUT_JANAZA_SOLEMN("संजीदा व गहरा"),
+    INTIMATE_ROMANTIC("रोमांटिक अंदाज़"),
+    BOLD_FLIRTY("नटखट व बोल्ड"),
+    ATTITUDE_SWAGGER("तेवर व एटीट्यूड"),
+    HAUSLA_DESHPREM_FIRE("जुनून व हौसला"),
+    DOSTI_KHUSHI_FESTIVE("दोस्ती व ख़ुशी"),
+    CUTE_GENZ_PLAYFUL("क्यूट Gen-Z वाइब"),
+    COMEDY_WITTY("हँसी-मज़ाक"),
+    SOULFUL_SUFI_WISDOM("सूफ़ी सुकून")
+}
 
 enum class ShayarVoicePersona(
     val id: String,
@@ -47,7 +64,7 @@ enum class ShayarVoicePersona(
     val voiceDirection: String,
     val emotionalStyleCue: String
 ) {
-    // 4 Strongly Contrasting Female Shayara Voices — natural native Hindi-Urdu human emotion
+    // 4 Maximally Contrasting Female Shayara Voices across pitch, age & energy
     DARD_SHAYARA(
         id = "dard_shayara",
         labelHi = "दर्द भरी शायरा",
@@ -56,30 +73,30 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "💔",
         geminiVoiceName = "Vindemiatrix",
-        voiceDirection = "a 24-year-old native North Indian woman confessing real heartbreak late at night, soft misty voice with natural breath and a slight emotional catch in her throat",
-        emotionalStyleCue = "tender, aching heartbreak as if holding back tears while speaking to someone she still misses"
+        voiceDirection = "a fragile, deeply emotional young North Indian woman with a soft misty voice and tearful catch in her throat",
+        emotionalStyleCue = "raw aching heartbreak as if holding back tears while speaking to someone she still misses"
     ),
     SUREELI_SHAYARA(
         id = "sureeli_shayara",
         labelHi = "सुरीली शायरा",
-        subtitleHi = "मीठी, खिलखिलाती व सुरीली आवाज़",
+        subtitleHi = "मीठी, खिलखिलाती व चंचल आवाज़",
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🎶",
-        geminiVoiceName = "Leda",
-        voiceDirection = "a warm, expressive young native Hindi-Urdu poetess speaking naturally with an affectionate smile, lively musical inflection, and heartfelt charm",
-        emotionalStyleCue = "sweet affectionate warmth, gentle smile audible in the voice, effortless poetic flow"
+        geminiVoiceName = "Zephyr",
+        voiceDirection = "a bright, youthful, cheerful North Indian girl with clear high-spirited energy and an audible warm smile",
+        emotionalStyleCue = "lively affectionate charm, playful sparkle, bright expressive Hindi delivery"
     ),
     TADAP_SHAYARA(
         id = "tadap_shayara",
         labelHi = "तेवर व जज़्बात शायरा",
-        subtitleHi = "दमदार, तड़प और स्वाभिमान भरी आवाज़",
+        subtitleHi = "दमदार, बेवफ़ाई व स्वाभिमान भरी आवाज़",
         genderBadgeHi = "लड़की शायर",
         isFemale = true,
         emoji = "🥺",
         geminiVoiceName = "Kore",
-        voiceDirection = "a deeply expressive native North Indian poetess on an intimate stage, speaking from the gut with raw longing, controlled intensity, and soulful vocal weight",
-        emotionalStyleCue = "intense lived-in emotion, heartfelt tension building naturally into a powerful closing line"
+        voiceDirection = "a bold, strong, intensely expressive North Indian poetess with firm vocal presence, wounded pride, and dramatic fire",
+        emotionalStyleCue = "fierce emotional intensity, sharp betrayal bite, commanding closing punch"
     ),
     ROMANTIC_SHAYARA(
         id = "romantic_shayara",
@@ -89,43 +106,43 @@ enum class ShayarVoicePersona(
         isFemale = true,
         emoji = "🌹",
         geminiVoiceName = "Aoede",
-        voiceDirection = "an intimate, velvety young native Hindi-Urdu woman speaking softly close to the ear, warm breathy tenderness, genuine shy affection",
-        emotionalStyleCue = "close-mic dreamy romance, soft affectionate glow, heartfelt warmth"
+        voiceDirection = "a warm, velvety, relaxed North Indian poetess speaking softly close to the ear with dreamy romantic tenderness",
+        emotionalStyleCue = "intimate velvety romance, breathy closeness, melting heartfelt warmth"
     ),
 
-    // 4 Strongly Contrasting Male Shayar Voices — natural native Hindi-Urdu Mushaira soul
+    // 4 Maximally Contrasting Male Shayar Voices across bass, baritone, tenor & fire
     DARD_SHAYAR(
         id = "dard_shayar",
         labelHi = "दर्द-ए-दिल शायर",
-        subtitleHi = "गहरी, भारी और दर्द भरी आवाज़",
+        subtitleHi = "सबसे गहरी, भारी और दर्द भरी आवाज़",
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🥀",
-        geminiVoiceName = "Enceladus",
-        voiceDirection = "a 30-year-old native North Indian shayar with a warm husky voice, speaking quietly after midnight with genuine unspoken grief, natural sighs, and lived-in pain",
-        emotionalStyleCue = "raw quiet heartbreak, husky intimate ache, deeply human emotional vulnerability"
+        geminiVoiceName = "Charon",
+        voiceDirection = "a deep, dark, low-baritone North Indian shayar speaking quietly at midnight with raw heavy heartbreak and lingering sighs",
+        emotionalStyleCue = "deepest resonant ache, raw wounded gravity, deeply human vulnerability"
     ),
     TADAP_AASHIQ(
         id = "tadap_aashiq",
         labelHi = "तड़पता आशिक़",
-        subtitleHi = "इश्क़ की तड़प और जुनून भरी आवाज़",
+        subtitleHi = "जवान, इश्क़ और तड़प भरी आवाज़",
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "❤️‍🔥",
         geminiVoiceName = "Puck",
-        voiceDirection = "a passionate young native Hindi-Urdu lover speaking straight from memory with earnest aching longing, natural conversational rhythm, and rising emotion",
-        emotionalStyleCue = "earnest heartfelt yearning, intimate honesty, emotional swell on the closing line"
+        voiceDirection = "a youthful, earnest young North Indian lover with an expressive lively voice, raw emotional honesty, and youthful energy",
+        emotionalStyleCue = "earnest youthful longing, natural conversational warmth, heartfelt emotional swell"
     ),
     MEHFIL_SHAYAR(
         id = "mehfil_shayar",
         labelHi = "महफ़िल उस्ताद",
-        subtitleHi = "रॉयल मुशायरा मंच की भारी आवाज़",
+        subtitleHi = "मैख़ाना व मुशायरा की खनकती आवाज़",
         genderBadgeHi = "शायर",
         isFemale = false,
         emoji = "🎙️",
         geminiVoiceName = "Algenib",
-        voiceDirection = "a charismatic native Lucknow Mushaira shayar in his late 30s with a rich resonant baritone, speaking with warm conversational tehzeeb, soulful nuance, and captivating poise",
-        emotionalStyleCue = "soulful Mushaira storytelling, natural pause before landing the sher with warm depth"
+        voiceDirection = "a seasoned, smoky-voiced Lucknow Mushaira shayar in his late 30s with rich husky warmth and effortless Urdu-Hindi tehzeeb",
+        emotionalStyleCue = "smoky late-night Mushaira & maikhana depth, reflective philosophical poise"
     ),
     JOSH_SHAYAR(
         id = "josh_shayar",
@@ -135,8 +152,8 @@ enum class ShayarVoicePersona(
         isFemale = false,
         emoji = "🔥",
         geminiVoiceName = "Fenrir",
-        voiceDirection = "a bold, grounded native Indian stage poet with a strong chest voice, speaking with calm fearless confidence, slight wry edge, and crisp authoritative landing",
-        emotionalStyleCue = "calm fearless attitude, commanding presence, sharp unforgettable closing punch"
+        voiceDirection = "a fierce, passionate, gravelly-voiced Indian stage shayar with commanding chest power and fearless attitude",
+        emotionalStyleCue = "fearless attitude swagger, electrifying stage fire, hard-hitting closing drop"
     );
 
     companion object {
@@ -153,78 +170,80 @@ enum class ShayarVoicePersona(
             return recommendedForReel(
                 categoryId = categoryId,
                 couplet = "",
+                tags = emptyList(),
                 pageIndex = 0,
                 stableKey = categoryId
             )
         }
 
+        /**
+         * Selects an emotion-authentic Shayar/Shayara voice for the Reel's category, tags, and text,
+         * while STRICTLY alternating Female <-> Male and contrasting voice timbres on consecutive
+         * pages (`pageIndex`) so NO two adjacent Reels ever sound like the same Shayar.
+         */
         fun recommendedForReel(
             categoryId: String,
             couplet: String,
             pageIndex: Int,
-            stableKey: String
+            stableKey: String,
+            tags: List<String> = emptyList()
         ): ShayarVoicePersona {
-            val text = couplet.lowercase()
-            val cat = ShayariCategory.fromId(categoryId)
+            val emotion = ShayarVoiceEngine.detectCoupletEmotion(
+                couplet = couplet,
+                categoryId = categoryId,
+                tags = tags
+            )
 
-            val hasTadapWords = listOf(
-                "तड़प", "तडप", "इंतज़ार", "इंतजार", "जुदाई", "बिन तेरे", "लौट आ", "याद", "तरस",
-                "tadap", "intezaar", "intezar", "judai", "yaad", "taras", "bin tere"
-            ).any { it in text }
+            // Emotion-authentic Female and Male voice pairs.
+            // Strict parity rule: EVEN pageIndex -> Female pool, ODD pageIndex -> Male pool
+            // (so adjacent Reels ALWAYS flip gender & vocal timbre even across different categories!).
+            val (femalePool, malePool) = when (emotion) {
+                CoupletEmotion.BEWAFAI_BETRAYAL ->
+                    listOf(TADAP_SHAYARA, DARD_SHAYARA) to listOf(DARD_SHAYAR, JOSH_SHAYAR, MEHFIL_SHAYAR)
 
-            val hasDardWords = listOf(
-                "दर्द", "आँसू", "आंसू", "रो", "बेवफ़ा", "बेवफा", "टूटा", "टूट", "तन्हा", "ज़ख्म", "जख्म", "गम", "ग़म",
-                "dard", "aansu", "bewafa", "toot", "tanha", "zakhm", "gham", "rona"
-            ).any { it in text }
+                CoupletEmotion.DARD_TEARFUL ->
+                    listOf(DARD_SHAYARA, TADAP_SHAYARA) to listOf(DARD_SHAYAR, MEHFIL_SHAYAR)
 
-            val hasRomanticWords = listOf(
-                "इश्क़", "इश्क", "मोहब्बत", "प्यार", "बाहों", "होंठ", "चाँद", "धड़कन", "सनम", "जाँ", "जान", "इज़हार",
-                "ishq", "mohabbat", "pyaar", "pyar", "bahon", "chaand", "dhadkan", "sanam", "romantic"
-            ).any { it in text }
+                CoupletEmotion.TANHAI_LONELY ->
+                    listOf(DARD_SHAYARA, ROMANTIC_SHAYARA) to listOf(MEHFIL_SHAYAR, DARD_SHAYAR)
 
-            val hasJoshWords = listOf(
-                "औक़ात", "औकात", "शेर", "ज़िद", "जिद", "हौसला", "जीत", "ख़ून", "वतन", "दुश्मन",
-                "aukat", "attitude", "hausla", "jeet", "zid", "sher"
-            ).any { it in text }
+                CoupletEmotion.TADAP_YEARNING ->
+                    listOf(TADAP_SHAYARA, DARD_SHAYARA) to listOf(TADAP_AASHIQ, DARD_SHAYAR)
 
-            // Carefully interleaved Female/Male contrasting pools rotated strictly by pageIndex
-            // so consecutive Reels NEVER repeat the same voice, gender, or emotional cadence.
-            val isComedyOrPlayful = cat.isJokeCategory || cat == ShayariCategory.NIBBA_NIBBI ||
-                cat == ShayariCategory.GEN_Z || cat == ShayariCategory.DOSTI
+                CoupletEmotion.SHARABI_MAIKHANA ->
+                    listOf(TADAP_SHAYARA, ROMANTIC_SHAYARA) to listOf(MEHFIL_SHAYAR, DARD_SHAYAR)
 
-            val pool: List<ShayarVoicePersona> = when {
-                isComedyOrPlayful ->
-                    listOf(SUREELI_SHAYARA, TADAP_AASHIQ, TADAP_SHAYARA, JOSH_SHAYAR)
+                CoupletEmotion.MAUT_JANAZA_SOLEMN ->
+                    listOf(DARD_SHAYARA, TADAP_SHAYARA) to listOf(DARD_SHAYAR, MEHFIL_SHAYAR)
 
-                cat == ShayariCategory.ATTITUDE || cat == ShayariCategory.HAUSLA || cat == ShayariCategory.DESHPREM || hasJoshWords ->
-                    listOf(JOSH_SHAYAR, TADAP_SHAYARA, MEHFIL_SHAYAR, SUREELI_SHAYARA)
+                CoupletEmotion.INTIMATE_ROMANTIC ->
+                    listOf(ROMANTIC_SHAYARA, SUREELI_SHAYARA) to listOf(TADAP_AASHIQ, MEHFIL_SHAYAR)
 
-                cat == ShayariCategory.DARD || cat == ShayariCategory.BEWAFAI || cat == ShayariCategory.AANSU ||
-                    cat == ShayariCategory.TANHAI || cat == ShayariCategory.MAUT_JANAZA || (hasDardWords && !hasRomanticWords) ->
-                    listOf(DARD_SHAYARA, DARD_SHAYAR, TADAP_SHAYARA, MEHFIL_SHAYAR, ROMANTIC_SHAYARA, TADAP_AASHIQ)
+                CoupletEmotion.BOLD_FLIRTY ->
+                    listOf(ROMANTIC_SHAYARA, TADAP_SHAYARA) to listOf(MEHFIL_SHAYAR, TADAP_AASHIQ)
 
-                hasTadapWords || cat == ShayariCategory.SECRET_LOVE || cat == ShayariCategory.AAINA ->
-                    listOf(TADAP_AASHIQ, TADAP_SHAYARA, DARD_SHAYAR, ROMANTIC_SHAYARA, MEHFIL_SHAYAR, DARD_SHAYARA)
+                CoupletEmotion.ATTITUDE_SWAGGER ->
+                    listOf(TADAP_SHAYARA, SUREELI_SHAYARA) to listOf(JOSH_SHAYAR, MEHFIL_SHAYAR)
 
-                cat == ShayariCategory.MOHABBAT || cat == ShayariCategory.ROMANTIC || cat == ShayariCategory.TAREEF || hasRomanticWords ->
-                    listOf(ROMANTIC_SHAYARA, TADAP_AASHIQ, SUREELI_SHAYARA, MEHFIL_SHAYAR, TADAP_SHAYARA, DARD_SHAYAR)
+                CoupletEmotion.HAUSLA_DESHPREM_FIRE ->
+                    listOf(TADAP_SHAYARA, SUREELI_SHAYARA) to listOf(JOSH_SHAYAR, TADAP_AASHIQ)
 
-                else ->
-                    listOf(
-                        MEHFIL_SHAYAR,
-                        SUREELI_SHAYARA,
-                        TADAP_AASHIQ,
-                        ROMANTIC_SHAYARA,
-                        JOSH_SHAYAR,
-                        DARD_SHAYARA,
-                        DARD_SHAYAR,
-                        TADAP_SHAYARA
-                    )
+                CoupletEmotion.DOSTI_KHUSHI_FESTIVE ->
+                    listOf(SUREELI_SHAYARA, ROMANTIC_SHAYARA) to listOf(TADAP_AASHIQ, MEHFIL_SHAYAR)
+
+                CoupletEmotion.CUTE_GENZ_PLAYFUL,
+                CoupletEmotion.COMEDY_WITTY ->
+                    listOf(SUREELI_SHAYARA, TADAP_SHAYARA) to listOf(TADAP_AASHIQ, JOSH_SHAYAR)
+
+                CoupletEmotion.SOULFUL_SUFI_WISDOM ->
+                    listOf(ROMANTIC_SHAYARA, DARD_SHAYARA) to listOf(MEHFIL_SHAYAR, DARD_SHAYAR)
             }
 
-            // Strictly advance by pageIndex (no random hash offset) so adjacent pages ALWAYS contrast!
-            val index = abs(pageIndex) % pool.size
-            return pool[index]
+            val absPage = abs(pageIndex)
+            val pickMale = (absPage % 2) == 1
+            val chosenPool = if (pickMale) malePool else femalePool
+            val slot = (absPage / 2) % chosenPool.size
+            return chosenPool[slot]
         }
     }
 }
@@ -292,9 +311,11 @@ object ShayarVoiceEngine {
         legacyCleanupScheduled = true
         val appCtx = context.applicationContext
         engineScope.launch {
-            runCatching {
-                val legacyDir = File(appCtx.filesDir, LEGACY_VOICE_CACHE_DIR)
-                if (legacyDir.exists()) legacyDir.deleteRecursively()
+            for (legacyName in LEGACY_VOICE_CACHE_DIRS) {
+                runCatching {
+                    val legacyDir = File(appCtx.filesDir, legacyName)
+                    if (legacyDir.exists()) legacyDir.deleteRecursively()
+                }
             }
         }
     }
@@ -322,12 +343,13 @@ object ShayarVoiceEngine {
         context: Context,
         couplet: String,
         categoryId: String,
-        persona: ShayarVoicePersona
+        persona: ShayarVoicePersona,
+        tags: List<String> = emptyList()
     ): File? {
         val cleanCouplet = couplet.trim()
         if (cleanCouplet.isBlank()) return null
         scheduleLegacyCacheCleanupOnce(context)
-        val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, persona)
+        val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, tags, persona)
         return findExistingCacheFile(baseFile)
     }
 
@@ -339,11 +361,12 @@ object ShayarVoiceEngine {
         context: Context,
         couplet: String,
         categoryId: String,
-        persona: ShayarVoicePersona
+        persona: ShayarVoicePersona,
+        tags: List<String> = emptyList()
     ): Boolean {
         val cleanCouplet = couplet.trim()
         if (cleanCouplet.isBlank()) return false
-        val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, persona)
+        val baseFile = resolveCacheFile(context, cleanCouplet, categoryId, tags, persona)
         if (findExistingCacheFile(baseFile) != null) return true
         return inFlightRequests.containsKey(baseFile.nameWithoutExtension)
     }
@@ -361,6 +384,7 @@ object ShayarVoiceEngine {
         couplet: String,
         categoryId: String,
         persona: ShayarVoicePersona,
+        tags: List<String> = emptyList(),
         onPcmChunk: suspend (pcmBytes: ByteArray, sampleRate: Int, channels: Int) -> Boolean
     ): ShayarVoiceStreamResult {
         val cleanCouplet = couplet.trim()
@@ -370,7 +394,7 @@ object ShayarVoiceEngine {
 
         val appCtx = context.applicationContext
         scheduleLegacyCacheCleanupOnce(appCtx)
-        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
+        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, tags, persona)
         findExistingCacheFile(cacheFile)?.let { existing ->
             return ShayarVoiceStreamResult.CachedReady(existing)
         }
@@ -401,7 +425,8 @@ object ShayarVoiceEngine {
         val prompt = buildPoeticRecitationPrompt(
             couplet = cleanCouplet,
             persona = persona,
-            categoryId = categoryId
+            categoryId = categoryId,
+            tags = tags
         )
 
         var emittedAnyPcm = false
@@ -558,7 +583,7 @@ object ShayarVoiceEngine {
             } else {
                 // Stream finished without PCM chunks; fall back once to unary generation
                 Log.w(TAG, "Stream returned empty audio; retrying unary generation for ${persona.id}.")
-                when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)) {
+                when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona, tags)) {
                     is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(unary.audioFile)
                     is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
                         message = unary.message,
@@ -592,7 +617,7 @@ object ShayarVoiceEngine {
                 is ShayarVoiceResult.Error -> {
                     // Retry once with unary generateContent in case streaming transport had a hiccup
                     Log.w(TAG, "Streaming failed before first chunk (${e.localizedMessage}); retrying unary.")
-                    when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)) {
+                    when (val unary = getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona, tags)) {
                         is ShayarVoiceResult.Ready -> ShayarVoiceStreamResult.CachedReady(unary.audioFile)
                         is ShayarVoiceResult.FallbackRequired -> ShayarVoiceStreamResult.FallbackRequired(
                             message = unary.message,
@@ -611,7 +636,8 @@ object ShayarVoiceEngine {
         context: Context,
         couplet: String,
         categoryId: String,
-        persona: ShayarVoicePersona
+        persona: ShayarVoicePersona,
+        tags: List<String> = emptyList()
     ): ShayarVoiceResult {
         val cleanCouplet = couplet.trim()
         if (cleanCouplet.isBlank()) {
@@ -620,7 +646,7 @@ object ShayarVoiceEngine {
 
         val appCtx = context.applicationContext
         scheduleLegacyCacheCleanupOnce(appCtx)
-        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
+        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, tags, persona)
         findExistingCacheFile(cacheFile)?.let { existing ->
             return ShayarVoiceResult.Ready(existing)
         }
@@ -639,7 +665,7 @@ object ShayarVoiceEngine {
         val deferred = inFlightRequests.computeIfAbsent(requestKey) {
             engineScope.async {
                 try {
-                    generateVoiceInternal(cleanCouplet, categoryId, persona, cacheFile)
+                    generateVoiceInternal(cleanCouplet, categoryId, tags, persona, cacheFile)
                 } finally {
                     inFlightRequests.remove(requestKey)
                 }
@@ -657,17 +683,18 @@ object ShayarVoiceEngine {
         context: Context,
         couplet: String,
         categoryId: String,
-        persona: ShayarVoicePersona
+        persona: ShayarVoicePersona,
+        tags: List<String> = emptyList()
     ) {
         val cleanCouplet = couplet.trim()
         if (cleanCouplet.isBlank() || isInFallbackCooldown()) return
         val appCtx = context.applicationContext
-        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, persona)
+        val cacheFile = resolveCacheFile(appCtx, cleanCouplet, categoryId, tags, persona)
         if (findExistingCacheFile(cacheFile) != null) return
         val requestKey = cacheFile.nameWithoutExtension
         if (inFlightRequests.containsKey(requestKey)) return
         runCatching {
-            getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona)
+            getOrGenerateVoice(appCtx, cleanCouplet, categoryId, persona, tags)
         }
     }
 
@@ -762,6 +789,7 @@ object ShayarVoiceEngine {
     private suspend fun generateVoiceInternal(
         cleanCouplet: String,
         categoryId: String,
+        tags: List<String>,
         persona: ShayarVoicePersona,
         cacheFile: File
     ): ShayarVoiceResult {
@@ -770,7 +798,8 @@ object ShayarVoiceEngine {
         val prompt = buildPoeticRecitationPrompt(
             couplet = cleanCouplet,
             persona = persona,
-            categoryId = categoryId
+            categoryId = categoryId,
+            tags = tags
         )
         return try {
             val model = getModel(persona)
@@ -874,85 +903,175 @@ object ShayarVoiceEngine {
         return candidates.firstOrNull { it.exists() && it.length() > 128L }
     }
 
-    private enum class CoupletEmotion {
-        DEEP_HEARTBREAK,
-        PASSIONATE_YEARNING,
-        PLAYFUL_ROMANCE,
-        INTIMATE_ROMANTIC,
-        WITTY_LIGHTHEARTED,
-        BOLD_ATTITUDE,
-        ROYAL_MEHFIL,
-        SOULFUL_SUFI
-    }
-
-    private fun detectCoupletEmotion(
+    /**
+     * Determines the authentic emotional mood strictly from the shayari's tags, category, and words.
+     * The voice persona NEVER overrides the shayari's real category/tag emotion.
+     */
+    fun detectCoupletEmotion(
         couplet: String,
         categoryId: String,
-        persona: ShayarVoicePersona
+        tags: List<String> = emptyList()
     ): CoupletEmotion {
-        val lower = couplet.lowercase()
+        val tagText = tags.joinToString(" ").lowercase()
+        val coupletLower = couplet.lowercase()
+        val combined = "$tagText $coupletLower"
+        val hasExplicitCategory = categoryId.isNotBlank()
         val cat = ShayariCategory.fromId(categoryId)
 
-        if (cat.isJokeCategory || cat == ShayariCategory.NIBBA_NIBBI || cat == ShayariCategory.GEN_Z) {
-            return CoupletEmotion.WITTY_LIGHTHEARTED
+        fun matches(words: List<String>, target: String = combined): Boolean =
+            words.any { it in target }
+
+        val bewafaiWords = listOf(
+            "बेवफ़ा", "बेवफा", "धोखा", "छल", "झूठे वादे", "वादा तोड़", "बदल गए", "ग़ैर", "गैर", "फरेब", "फ़रेब",
+            "मतलबी", "दगा", "दग़ा", "bewafa", "bewafai", "dhoka", "betrayal", "cheat", "fareb", "matlabi"
+        )
+        val sharabiWords = listOf(
+            "शराब", "शराबी", "जाम", "पैमाना", "साक़ी", "साकी", "मयख़ाना", "मयखाना", "मैख़ाना", "मैखाना", "नशा", "मदहोश",
+            "sharabi", "sharab", "jaam", "saqi", "maikhana", "nasha"
+        )
+        val mautWords = listOf(
+            "मौत", "जनाज़ा", "जनाजा", "कफ़न", "कफन", "कब्र", "क़ब्र", "श्मशान", "आख़िरी सफ़र",
+            "maut", "janaza", "kafan", "qabr", "death"
+        )
+        val dardWords = listOf(
+            "दर्द", "आँसू", "आंसू", "अश्क", "रोया", "रोना", "रोते", "ज़ख्म", "जख्म", "टूटा", "टूट गया", "ग़म", "गम",
+            "दर्द-ए-दिल", "दिल टूट", "dard", "aansu", "zakhm", "gham", "sad", "pain", "heartbreak", "crying", "ashk"
+        )
+        val tanhaiWords = listOf(
+            "तन्हाई", "तन्हा", "तनहा", "अकेला", "अकेले", "सन्नाटा", "यादें", "ख़ामोशी", "खामोशी", "आईना", "आइना",
+            "tanhai", "tanha", "lonely", "alone", "yaadein", "khamoshi", "aaina"
+        )
+        val tadapWords = listOf(
+            "तड़प", "तडप", "इंतज़ार", "इंतजार", "जुदाई", "बिन तेरे", "लौट आ", "तरस", "बिछड़", "याद आ",
+            "tadap", "intezaar", "intezar", "judai", "taras", "bin tere", "missing"
+        )
+        val attitudeWords = listOf(
+            "एटीट्यूड", "तेवर", "औक़ात", "औकात", "रुतबा", "ताज", "दुश्मन", "शेर", "अंदाज़", "अंदाज", "बादशाह", "रॉयल",
+            "attitude", "aukat", "tevar", "royal", "swag", "dushman", "king", "queen"
+        )
+        val hauslaDeshWords = listOf(
+            "हौसला", "उम्मीद", "जीत", "ज़िद", "जिद", "संघर्ष", "देशभक्ति", "वतन", "तिरंगा", "शहीद", "भारत", "हिंदुस्तान",
+            "hausla", "motivation", "jeet", "zid", "deshprem", "vatan", "patriotic", "bharat"
+        )
+        val boldFlirtyWords = listOf(
+            "हॉट", "बोल्ड", "फ्लर्ट", "शरारत", "नटखट", "होंठ", "करीब", "आगोश", "बेक़ाबू",
+            "hot", "bold", "flirty", "secret", "naughty", "adultery"
+        )
+        val comedyWords = listOf(
+            "चुटकुला", "कॉमेडी", "मज़ाक", "मजाक", "ठहाके", "हँसी", "हंसी", "संता", "मुल्ला", "मोटू", "जीजा",
+            "comedy", "funny", "joke", "jokes", "meme"
+        )
+        val cuteGenzWords = listOf(
+            "निब्बा", "निब्बी", "बाबू", "सोना", "क्यूट", "सीन-ज़ोन", "क्रश", "वाइब",
+            "nibba", "nibbi", "babu", "sona", "gen-z", "genz", "vibe", "crush", "cute"
+        )
+        val dostiKhushiWords = listOf(
+            "दोस्ती", "यारी", "यार", "दोस्त", "ख़ुशी", "खुशी", "परिवार", "माँ", "पापा", "नया साल", "क्रिसमस",
+            "dosti", "yaari", "friend", "friends", "khushi", "happy", "family", "parivar", "new year", "christmas"
+        )
+        val romanticWords = listOf(
+            "मोहब्बत", "इश्क़", "इश्क", "रोमांटिक", "प्यार", "तारीफ़", "हुस्न", "चाँद", "बाहों", "धड़कन", "सनम", "दिलबर",
+            "mohabbat", "ishq", "romantic", "pyaar", "pyar", "love", "tareef", "sanam", "dilbar"
+        )
+        val sufiLifeWords = listOf(
+            "ख़ुदा", "खुदा", "रब", "दुआ", "इबादत", "सजदा", "ज़िंदगी", "जिंदगी", "वक़्त", "वक्त", "मुसाफ़िर", "सफ़र", "बारिश", "प्रकृति",
+            "khuda", "rab", "dua", "sufi", "zindagi", "waqt", "musafir", "safar", "prakriti", "rain"
+        )
+
+        // 1. Explicit Tags ALWAYS take highest priority so user-tagged or mood-tagged Reels react authentically
+        if (tagText.isNotBlank()) {
+            when {
+                matches(bewafaiWords, tagText) -> return CoupletEmotion.BEWAFAI_BETRAYAL
+                matches(sharabiWords, tagText) -> return CoupletEmotion.SHARABI_MAIKHANA
+                matches(mautWords, tagText) -> return CoupletEmotion.MAUT_JANAZA_SOLEMN
+                matches(comedyWords, tagText) -> return CoupletEmotion.COMEDY_WITTY
+                matches(cuteGenzWords, tagText) -> return CoupletEmotion.CUTE_GENZ_PLAYFUL
+                matches(attitudeWords, tagText) -> return CoupletEmotion.ATTITUDE_SWAGGER
+                matches(hauslaDeshWords, tagText) -> return CoupletEmotion.HAUSLA_DESHPREM_FIRE
+                matches(boldFlirtyWords, tagText) -> return CoupletEmotion.BOLD_FLIRTY
+                matches(dardWords, tagText) -> return CoupletEmotion.DARD_TEARFUL
+                matches(tadapWords, tagText) -> return CoupletEmotion.TADAP_YEARNING
+                matches(tanhaiWords, tagText) -> return CoupletEmotion.TANHAI_LONELY
+                matches(dostiKhushiWords, tagText) -> return CoupletEmotion.DOSTI_KHUSHI_FESTIVE
+                matches(sufiLifeWords, tagText) -> return CoupletEmotion.SOULFUL_SUFI_WISDOM
+                matches(romanticWords, tagText) -> return CoupletEmotion.INTIMATE_ROMANTIC
+            }
         }
 
-        val hasHeartbreak = listOf(
-            "दर्द", "आँसू", "आंसू", "बेवफ़ा", "बेवफा", "टूटा", "टूट", "ज़ख्म", "जख्म", "तन्हा", "बिछड़", "रो", "ग़म", "गम",
-            "dard", "aansu", "bewafa", "toota", "zakhm", "tanha", "gham", "rona"
-        ).any { it in lower }
-
-        val hasYearning = listOf(
-            "तड़प", "तडप", "इंतज़ार", "इंतजार", "जुदाई", "याद", "तरस", "बिन तेरे", "लौट आ", "ख़ामोश", "खामोश",
-            "tadap", "intezaar", "intezar", "judai", "yaad", "taras", "bin tere"
-        ).any { it in lower }
-
-        val hasAttitude = listOf(
-            "औक़ात", "औकात", "शेर", "ज़िद", "जिद", "हौसला", "जीत", "दुश्मन", "वतन", "अंदाज़", "अंदाज",
-            "aukat", "attitude", "hausla", "jeet", "zid", "dushman"
-        ).any { it in lower }
-
-        val hasRomantic = listOf(
-            "इश्क़", "इश्क", "मोहब्बत", "प्यार", "चाँद", "होंठ", "बाहों", "धड़कन", "सनम", "जाँ", "जान", "इज़हार", "ख़ूबसूरत",
-            "ishq", "mohabbat", "pyaar", "pyar", "chaand", "dhadkan", "sanam"
-        ).any { it in lower }
-
-        val hasSufiOrLife = cat == ShayariCategory.KHUDA_RAB || cat == ShayariCategory.ZINDAGI ||
-            cat == ShayariCategory.WAQT || cat == ShayariCategory.MUSAFIR || cat == ShayariCategory.AAINA
-
-        return when {
-            persona == ShayarVoicePersona.JOSH_SHAYAR || cat == ShayariCategory.ATTITUDE ||
-                cat == ShayariCategory.HAUSLA || cat == ShayariCategory.DESHPREM || hasAttitude ->
-                CoupletEmotion.BOLD_ATTITUDE
-
-            persona == ShayarVoicePersona.MEHFIL_SHAYAR ->
-                if (hasSufiOrLife) CoupletEmotion.SOULFUL_SUFI else CoupletEmotion.ROYAL_MEHFIL
-
-            persona == ShayarVoicePersona.SUREELI_SHAYARA ->
-                if (cat == ShayariCategory.DOSTI || cat == ShayariCategory.NEW_YEAR || cat == ShayariCategory.CHRISTMAS) {
-                    CoupletEmotion.WITTY_LIGHTHEARTED
+        // 2. Specific Shayari Category drives the core Shayar reaction directly
+        if (hasExplicitCategory) {
+            when (cat) {
+                ShayariCategory.BEWAFAI -> return CoupletEmotion.BEWAFAI_BETRAYAL
+                ShayariCategory.ADULTERY -> return if (matches(bewafaiWords, coupletLower)) {
+                    CoupletEmotion.BEWAFAI_BETRAYAL
                 } else {
-                    CoupletEmotion.PLAYFUL_ROMANCE
+                    CoupletEmotion.BOLD_FLIRTY
                 }
+                ShayariCategory.SHARABI -> return CoupletEmotion.SHARABI_MAIKHANA
+                ShayariCategory.MAUT_JANAZA -> return CoupletEmotion.MAUT_JANAZA_SOLEMN
+                ShayariCategory.DARD,
+                ShayariCategory.AANSU -> return if (matches(bewafaiWords, coupletLower)) {
+                    CoupletEmotion.BEWAFAI_BETRAYAL
+                } else {
+                    CoupletEmotion.DARD_TEARFUL
+                }
+                ShayariCategory.TANHAI,
+                ShayariCategory.YAADEIN,
+                ShayariCategory.AAINA -> return if (matches(tadapWords, coupletLower)) {
+                    CoupletEmotion.TADAP_YEARNING
+                } else {
+                    CoupletEmotion.TANHAI_LONELY
+                }
+                ShayariCategory.ATTITUDE -> return CoupletEmotion.ATTITUDE_SWAGGER
+                ShayariCategory.HAUSLA,
+                ShayariCategory.DESHPREM -> return CoupletEmotion.HAUSLA_DESHPREM_FIRE
+                ShayariCategory.SECRET_LOVE -> return CoupletEmotion.BOLD_FLIRTY
+                ShayariCategory.JIJA_SALI,
+                ShayariCategory.MULLA_NASRUDDIN,
+                ShayariCategory.SANTA_BANTA,
+                ShayariCategory.MOTU_PATLU -> return CoupletEmotion.COMEDY_WITTY
+                ShayariCategory.NIBBA_NIBBI,
+                ShayariCategory.GEN_Z -> return CoupletEmotion.CUTE_GENZ_PLAYFUL
+                ShayariCategory.DOSTI,
+                ShayariCategory.KHUSHI,
+                ShayariCategory.NEW_YEAR,
+                ShayariCategory.CHRISTMAS,
+                ShayariCategory.PARIVAR -> return CoupletEmotion.DOSTI_KHUSHI_FESTIVE
+                ShayariCategory.KHUDA_RAB,
+                ShayariCategory.ZINDAGI,
+                ShayariCategory.WAQT,
+                ShayariCategory.MUSAFIR,
+                ShayariCategory.PRAKRITI -> return CoupletEmotion.SOULFUL_SUFI_WISDOM
+                ShayariCategory.MOHABBAT,
+                ShayariCategory.ROMANTIC,
+                ShayariCategory.TAREEF -> {
+                    // Even inside Mohabbat, respect strong betrayal/pain/yearning words in the couplet itself!
+                    return when {
+                        matches(bewafaiWords, coupletLower) -> CoupletEmotion.BEWAFAI_BETRAYAL
+                        matches(dardWords, coupletLower) && !matches(romanticWords, coupletLower) -> CoupletEmotion.DARD_TEARFUL
+                        matches(tadapWords, coupletLower) -> CoupletEmotion.TADAP_YEARNING
+                        else -> CoupletEmotion.INTIMATE_ROMANTIC
+                    }
+                }
+            }
+        }
 
-            persona == ShayarVoicePersona.TADAP_AASHIQ || persona == ShayarVoicePersona.TADAP_SHAYARA ->
-                CoupletEmotion.PASSIONATE_YEARNING
-
-            persona == ShayarVoicePersona.DARD_SHAYARA || persona == ShayarVoicePersona.DARD_SHAYAR ||
-                cat == ShayariCategory.DARD || cat == ShayariCategory.BEWAFAI ||
-                cat == ShayariCategory.AANSU || cat == ShayariCategory.TANHAI ||
-                cat == ShayariCategory.MAUT_JANAZA || (hasHeartbreak && !hasRomantic) ->
-                CoupletEmotion.DEEP_HEARTBREAK
-
-            hasYearning || cat == ShayariCategory.SECRET_LOVE ->
-                CoupletEmotion.PASSIONATE_YEARNING
-
-            persona == ShayarVoicePersona.ROMANTIC_SHAYARA || cat == ShayariCategory.MOHABBAT ||
-                cat == ShayariCategory.ROMANTIC || cat == ShayariCategory.TAREEF || hasRomantic ->
-                CoupletEmotion.INTIMATE_ROMANTIC
-
-            hasSufiOrLife -> CoupletEmotion.SOULFUL_SUFI
-            else -> CoupletEmotion.ROYAL_MEHFIL
+        // 3. Fallback to couplet text keywords (for custom Reels with empty category)
+        return when {
+            matches(bewafaiWords, coupletLower) -> CoupletEmotion.BEWAFAI_BETRAYAL
+            matches(sharabiWords, coupletLower) -> CoupletEmotion.SHARABI_MAIKHANA
+            matches(mautWords, coupletLower) -> CoupletEmotion.MAUT_JANAZA_SOLEMN
+            matches(comedyWords, coupletLower) -> CoupletEmotion.COMEDY_WITTY
+            matches(cuteGenzWords, coupletLower) -> CoupletEmotion.CUTE_GENZ_PLAYFUL
+            matches(attitudeWords, coupletLower) -> CoupletEmotion.ATTITUDE_SWAGGER
+            matches(hauslaDeshWords, coupletLower) -> CoupletEmotion.HAUSLA_DESHPREM_FIRE
+            matches(boldFlirtyWords, coupletLower) -> CoupletEmotion.BOLD_FLIRTY
+            matches(dardWords, coupletLower) -> CoupletEmotion.DARD_TEARFUL
+            matches(tadapWords, coupletLower) -> CoupletEmotion.TADAP_YEARNING
+            matches(tanhaiWords, coupletLower) -> CoupletEmotion.TANHAI_LONELY
+            matches(dostiKhushiWords, coupletLower) -> CoupletEmotion.DOSTI_KHUSHI_FESTIVE
+            matches(sufiLifeWords, coupletLower) -> CoupletEmotion.SOULFUL_SUFI_WISDOM
+            else -> CoupletEmotion.INTIMATE_ROMANTIC
         }
     }
 
@@ -1010,7 +1129,8 @@ object ShayarVoiceEngine {
     internal fun buildPoeticRecitationPrompt(
         couplet: String,
         persona: ShayarVoicePersona,
-        categoryId: String = ""
+        categoryId: String = "",
+        tags: List<String> = emptyList()
     ): String {
         val lines = couplet
             .replace("\r\n", "\n")
@@ -1018,34 +1138,38 @@ object ShayarVoiceEngine {
             .map { sanitizeLineForTranscript(it) }
             .filter { line -> line.any { ch -> ch.isLetterOrDigit() } }
 
-        val emotion = detectCoupletEmotion(couplet, categoryId, persona)
+        val emotion = detectCoupletEmotion(couplet, categoryId, tags)
 
-        val sceneAndArc = when (emotion) {
-            CoupletEmotion.DEEP_HEARTBREAK ->
-                "Late-night heartbreak confession. Speak naturally and softly with real pain in your voice, natural micro-breaths, and let your voice soften and catch with genuine emotion on the final line."
-            CoupletEmotion.PASSIONATE_YEARNING ->
-                "Intimate aching longing for someone deeply missed. Start softly and warmly, then let genuine heartfelt longing swell naturally into the closing line."
-            CoupletEmotion.PLAYFUL_ROMANCE ->
-                "Warm, sweet affectionate moment. Speak with a genuine gentle smile in your voice, playful Hindi-Urdu lilt, and tender closeness."
+        // Clean plain-text acting cue (no Markdown '#' headers) tailored strictly to the category/tag emotion
+        val actingDirection = when (emotion) {
+            CoupletEmotion.BEWAFAI_BETRAYAL ->
+                "Perform this Hindi-Urdu bewafai shayari as ${persona.voiceDirection}, reacting with raw bitter betrayal, wounded pride, stinging hurt, and an accusing broken edge as if confronting an unfaithful lover:"
+            CoupletEmotion.DARD_TEARFUL ->
+                "Perform this Hindi-Urdu dard shayari as ${persona.voiceDirection}, letting genuine tearful pain drip from every word with natural trembling breath and quiet heartbreak:"
+            CoupletEmotion.TANHAI_LONELY ->
+                "Perform this Hindi-Urdu tanhai shayari as ${persona.voiceDirection}, speaking softly in quiet midnight loneliness with hollow nostalgic ache and lingering silence:"
+            CoupletEmotion.TADAP_YEARNING ->
+                "Perform this Hindi-Urdu longing shayari as ${persona.voiceDirection}, with restless desperate yearning, breathless emotional urgency, and aching desire:"
+            CoupletEmotion.SHARABI_MAIKHANA ->
+                "Perform this Hindi-Urdu sharabi shayari as ${persona.voiceDirection}, like a late-night maikhana poet — slightly tipsy, husky, wryly smiling through hidden heartbreak:"
+            CoupletEmotion.MAUT_JANAZA_SOLEMN ->
+                "Perform this Hindi-Urdu shayari as ${persona.voiceDirection}, in a hushed, deeply solemn, hauntingly still voice full of quiet grief and gravity:"
             CoupletEmotion.INTIMATE_ROMANTIC ->
-                "Close-mic late-night romantic whisper. Soft, velvety, breathing naturally as if speaking straight to your beloved's heart."
-            CoupletEmotion.WITTY_LIGHTHEARTED ->
-                "Relaxed friendly mehfil storytelling. Natural conversational Indian warmth, amused smile, and crisp comic timing on the final line."
-            CoupletEmotion.BOLD_ATTITUDE ->
-                "Grounded, fearless stage shayar. Calm, unhurried self-assurance with crisp vocal presence and a sharp, unforgettable closing drop."
-            CoupletEmotion.ROYAL_MEHFIL ->
-                "Intimate Lucknow Mushaira evening. Conversational warmth and authentic Urdu-Hindi tehzeeb; set up the opening thought smoothly and land the closing sher with soulful depth."
-            CoupletEmotion.SOULFUL_SUFI ->
-                "Peaceful midnight reflection. Warm, soothing, deeply grounded human wisdom with calm unhurried breaths."
-        }
-
-        val directorNotes = buildString {
-            append("# AUDIO PROFILE\n")
-            append("Native North Indian Hindi-Urdu speaker: ${persona.voiceDirection}.\n")
-            append("# DIRECTOR'S NOTES\n")
-            append("$sceneAndArc ")
-            append("Sound 100% human and lived-in — speak directly to one person from memory, NEVER flat, robotic, or like reading written text. Use authentic Hindi-Urdu pronunciation, natural pitch contour, and real emotional feeling.\n")
-            append("# TRANSCRIPT\n")
+                "Perform this Hindi-Urdu romantic shayari as ${persona.voiceDirection}, close-mic and deeply in love, warm, velvety, and tenderly affectionate:"
+            CoupletEmotion.BOLD_FLIRTY ->
+                "Perform this Hindi-Urdu flirty shayari as ${persona.voiceDirection}, with a teasing mischievous smile, sultry playful charm, and close-mic whisper:"
+            CoupletEmotion.ATTITUDE_SWAGGER ->
+                "Perform this Hindi-Urdu attitude shayari as ${persona.voiceDirection}, with ice-cold fearless swagger, calm unbothered smirk, and a fierce commanding closing punch:"
+            CoupletEmotion.HAUSLA_DESHPREM_FIRE ->
+                "Perform this Hindi-Urdu inspiring shayari as ${persona.voiceDirection}, with electrifying passion, proud chest voice, and goosebump-inducing conviction:"
+            CoupletEmotion.DOSTI_KHUSHI_FESTIVE ->
+                "Perform this Hindi-Urdu joyful shayari as ${persona.voiceDirection}, with a big genuine smile, bright friendly warmth, and affectionate laughter:"
+            CoupletEmotion.CUTE_GENZ_PLAYFUL ->
+                "Perform this Hindi-Urdu Gen-Z cute shayari as ${persona.voiceDirection}, with playful bubbly youth energy, teasing warmth, and relatable conversational charm:"
+            CoupletEmotion.COMEDY_WITTY ->
+                "Perform this Hindi-Urdu funny shayari as ${persona.voiceDirection}, with lively comedic storytelling timing and a playful laugh on the punchline:"
+            CoupletEmotion.SOULFUL_SUFI_WISDOM ->
+                "Perform this Hindi-Urdu soulful shayari as ${persona.voiceDirection}, with serene Sufi warmth, grounded human wisdom, and peaceful unhurried breaths:"
         }
 
         val taggedTranscript = buildString {
@@ -1056,7 +1180,7 @@ object ShayarVoiceEngine {
                 val endingPunct = when {
                     rawLine.endsWith("?") -> "?"
                     rawLine.endsWith("!") -> "!"
-                    emotion == CoupletEmotion.BOLD_ATTITUDE && isLast -> "!"
+                    (emotion == CoupletEmotion.ATTITUDE_SWAGGER || emotion == CoupletEmotion.HAUSLA_DESHPREM_FIRE) && isLast -> "!"
                     isLast -> "।"
                     else -> ","
                 }
@@ -1064,46 +1188,75 @@ object ShayarVoiceEngine {
                 if (idx > 0) append("\n")
 
                 val expressiveTag = when (emotion) {
-                    CoupletEmotion.DEEP_HEARTBREAK -> when {
-                        isFirst && lines.size == 1 -> "[softly, heartbroken] "
-                        isFirst -> "[softly, heartbroken] "
-                        isLast -> "[sigh] [sadly, voice trembling] "
-                        else -> "[softly, aching] "
+                    CoupletEmotion.BEWAFAI_BETRAYAL -> when {
+                        isFirst -> "[bitterly hurt, wounded] "
+                        isLast -> "[heavy sigh] [deeply betrayed, voice breaking with hurt] "
+                        else -> "[scoffs softly, pained] "
                     }
-                    CoupletEmotion.PASSIONATE_YEARNING -> when {
-                        isFirst -> "[softly, longing] "
-                        isLast -> "[sigh] [deeply emotional] "
-                        else -> "[warmly, earnest] "
+                    CoupletEmotion.DARD_TEARFUL -> when {
+                        isFirst -> "[softly, aching with pain] "
+                        isLast -> "[sigh] [crying softly, voice trembling] "
+                        else -> "[tearful, voice cracking] "
                     }
-                    CoupletEmotion.PLAYFUL_ROMANCE -> when {
-                        isFirst -> "[warmly, smiling] "
-                        isLast -> "[softly, affectionate smile] "
-                        else -> "[warmly] "
+                    CoupletEmotion.TANHAI_LONELY -> when {
+                        isFirst -> "[quietly, lonely and nostalgic] "
+                        isLast -> "[soft sigh] [whispering, hollow ache] "
+                        else -> "[softly, empty] "
+                    }
+                    CoupletEmotion.TADAP_YEARNING -> when {
+                        isFirst -> "[longingly, breathless] "
+                        isLast -> "[sigh] [pleading, deeply emotional] "
+                        else -> "[achingly, earnest] "
+                    }
+                    CoupletEmotion.SHARABI_MAIKHANA -> when {
+                        isFirst -> "[husky, slightly tipsy, wry smile] "
+                        isLast -> "[soft laugh] [sigh] [raspy, painfully honest] "
+                        else -> "[slurring gently, reflective] "
+                    }
+                    CoupletEmotion.MAUT_JANAZA_SOLEMN -> when {
+                        isFirst -> "[hushed, deeply solemn] "
+                        isLast -> "[long pause] [hauntingly quiet, heavy sorrow] "
+                        else -> "[slowly, somber] "
                     }
                     CoupletEmotion.INTIMATE_ROMANTIC -> when {
-                        isFirst -> "[warmly, intimately] "
-                        isLast -> "[whispering, tenderly] "
-                        else -> "[softly] "
+                        isFirst -> "[warmly, deeply in love] "
+                        isLast -> "[soft smile] [whispering, adoringly] "
+                        else -> "[tenderly, softly] "
                     }
-                    CoupletEmotion.WITTY_LIGHTHEARTED -> when {
-                        isFirst -> "[warmly, conversational] "
-                        isLast -> "[chuckle] [playfully] "
-                        else -> ""
+                    CoupletEmotion.BOLD_FLIRTY -> when {
+                        isFirst -> "[teasingly, sultry smile] "
+                        isLast -> "[whispering, mischievously] "
+                        else -> "[playfully, close-mic] "
                     }
-                    CoupletEmotion.BOLD_ATTITUDE -> when {
-                        isFirst -> "[calmly, confident] "
-                        isLast -> "[short pause] [firm, commanding] "
-                        else -> "[confidently] "
+                    CoupletEmotion.ATTITUDE_SWAGGER -> when {
+                        isFirst -> "[calmly, arrogant smirk] "
+                        isLast -> "[short pause] [firm, fierce commanding authority] "
+                        else -> "[confidently, sharp] "
                     }
-                    CoupletEmotion.ROYAL_MEHFIL -> when {
-                        isFirst -> "[warmly, soulful] "
-                        isLast -> "[short pause] [slowly, with deep emotion] "
-                        else -> "[thoughtfully] "
+                    CoupletEmotion.HAUSLA_DESHPREM_FIRE -> when {
+                        isFirst -> "[proudly, passionate] "
+                        isLast -> "[short pause] [energetically, powerful conviction] "
+                        else -> "[rising passion] "
                     }
-                    CoupletEmotion.SOULFUL_SUFI -> when {
-                        isFirst -> "[soothing, calm] "
-                        isLast -> "[sigh] [warmly, reflective] "
-                        else -> "[peacefully] "
+                    CoupletEmotion.DOSTI_KHUSHI_FESTIVE -> when {
+                        isFirst -> "[cheerfully, warm smile] "
+                        isLast -> "[warm chuckle] [joyfully, heartfelt] "
+                        else -> "[brightly, friendly] "
+                    }
+                    CoupletEmotion.CUTE_GENZ_PLAYFUL -> when {
+                        isFirst -> "[playfully, bubbly energy] "
+                        isLast -> "[giggles] [cheekily, amused] "
+                        else -> "[teasingly] "
+                    }
+                    CoupletEmotion.COMEDY_WITTY -> when {
+                        isFirst -> "[amused, lively storytelling] "
+                        isLast -> "[chuckle] [laughing playfully] "
+                        else -> "[wryly] "
+                    }
+                    CoupletEmotion.SOULFUL_SUFI_WISDOM -> when {
+                        isFirst -> "[serenely, soulful warmth] "
+                        isLast -> "[gentle sigh] [deeply reflective, wise] "
+                        else -> "[soothingly] "
                     }
                 }
 
@@ -1113,18 +1266,20 @@ object ShayarVoiceEngine {
             }
         }
 
-        return "$directorNotes$taggedTranscript"
+        return "$actingDirection\n\n$taggedTranscript"
     }
 
     private fun resolveCacheFile(
         context: Context,
         couplet: String,
         categoryId: String,
+        tags: List<String>,
         persona: ShayarVoicePersona
     ): File {
         // Store in filesDir so generated Shayar voices persist across cache sweeps and save quota
         val dir = File(context.applicationContext.filesDir, VOICE_CACHE_DIR).apply { mkdirs() }
-        val key = sha256Short("${persona.id}|${persona.geminiVoiceName}|$categoryId|$couplet")
+        val emotion = detectCoupletEmotion(couplet, categoryId, tags)
+        val key = sha256Short("${persona.id}|${persona.geminiVoiceName}|${emotion.name}|$couplet")
         return File(dir, "voice_$key.wav")
     }
 

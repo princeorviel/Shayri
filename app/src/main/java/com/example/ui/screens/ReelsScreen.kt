@@ -604,7 +604,8 @@ fun ReelsScreen(
                 categoryId = entry.categoryId,
                 couplet = entry.couplet,
                 pageIndex = pageIdx,
-                stableKey = entry.stableKey
+                stableKey = entry.stableKey,
+                tags = entry.tags
             )
     }
 
@@ -702,6 +703,8 @@ fun ReelsScreen(
                             localFallbackSpeaker.speak(
                                 couplet = entry.couplet,
                                 persona = effectivePersona,
+                                categoryId = entry.categoryId,
+                                tags = entry.tags,
                                 onSpeakingChanged = { speaking ->
                                     bgmPlayer.setDucked(speaking)
                                 }
@@ -742,18 +745,23 @@ fun ReelsScreen(
                         context = context,
                         couplet = nextEntry.couplet,
                         categoryId = nextEntry.categoryId,
-                        persona = nextPersona
+                        persona = nextPersona,
+                        tags = nextEntry.tags
                     )
                 } else if (allowLocalTtsFallback) {
                     val alreadyLocal = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
                         couplet = nextEntry.couplet,
-                        persona = nextPersona
+                        persona = nextPersona,
+                        categoryId = nextEntry.categoryId,
+                        tags = nextEntry.tags
                     )
                     if (alreadyLocal == null) {
                         localFallbackSpeaker.synthesizeMasteredVoice(
                             couplet = nextEntry.couplet,
                             persona = nextPersona,
-                            isPrewarm = true
+                            isPrewarm = true,
+                            categoryId = nextEntry.categoryId,
+                            tags = nextEntry.tags
                         )
                     }
                 }
@@ -781,7 +789,15 @@ fun ReelsScreen(
         val activeReelKey = entry.stableKey
         val activePageSnapshot = pagerState.currentPage
         val activePersonaSnapshot = effectivePersona
-        val speakingState = ShayarVoicePlaybackState.Speaking(activePersonaSnapshot)
+        val activeEmotion = ShayarVoiceEngine.detectCoupletEmotion(
+            couplet = entry.couplet,
+            categoryId = entry.categoryId,
+            tags = entry.tags
+        )
+        val speakingState = ShayarVoicePlaybackState.Speaking(
+            persona = activePersonaSnapshot,
+            moodBadgeHi = activeEmotion.badgeHi
+        )
 
         suspend fun playWavFileInMediaPlayer(
             audioFile: File,
@@ -850,7 +866,8 @@ fun ReelsScreen(
             context = context,
             couplet = entry.couplet,
             categoryId = entry.categoryId,
-            persona = activePersonaSnapshot
+            persona = activePersonaSnapshot,
+            tags = entry.tags
         )
 
         if (cachedGeminiAudio != null) {
@@ -873,7 +890,8 @@ fun ReelsScreen(
             context = context,
             couplet = entry.couplet,
             categoryId = entry.categoryId,
-            persona = activePersonaSnapshot
+            persona = activePersonaSnapshot,
+            tags = entry.tags
         )
         val settleMs = if (!hasSwipedOnceRef[0] || isReadyOrPrewarming) 0L else 45L
         hasSwipedOnceRef[0] = true
@@ -896,6 +914,7 @@ fun ReelsScreen(
             couplet = entry.couplet,
             categoryId = entry.categoryId,
             persona = activePersonaSnapshot,
+            tags = entry.tags,
             onPcmChunk = { pcmBytes, sampleRate, channels ->
                 if (latestActiveKey != activeReelKey ||
                     !isAudioEnabled ||
@@ -1001,16 +1020,21 @@ fun ReelsScreen(
         // Graceful offline/quota fallback using mastered Android Hindi voice
         val fallbackState = ShayarVoicePlaybackState.QuotaFallback(
             persona = activePersonaSnapshot,
-            detail = fallbackDetail
+            detail = fallbackDetail,
+            moodBadgeHi = activeEmotion.badgeHi
         )
         val cachedLocalWav = localFallbackSpeaker.getCachedMasteredVoiceOrNull(
             couplet = entry.couplet,
-            persona = activePersonaSnapshot
+            persona = activePersonaSnapshot,
+            categoryId = entry.categoryId,
+            tags = entry.tags
         )
         val readyLocalWav = cachedLocalWav ?: localFallbackSpeaker.synthesizeMasteredVoice(
             couplet = entry.couplet,
             persona = activePersonaSnapshot,
-            isPrewarm = false
+            isPrewarm = false,
+            categoryId = entry.categoryId,
+            tags = entry.tags
         )
 
         if (readyLocalWav != null &&
@@ -1035,6 +1059,8 @@ fun ReelsScreen(
             localFallbackSpeaker.speak(
                 couplet = entry.couplet,
                 persona = activePersonaSnapshot,
+                categoryId = entry.categoryId,
+                tags = entry.tags,
                 onSpeakingChanged = { speaking ->
                     bgmPlayer.setDucked(speaking)
                 },

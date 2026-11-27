@@ -60,8 +60,15 @@ import kotlin.math.sin
 sealed interface ShayarVoicePlaybackState {
     data object Idle : ShayarVoicePlaybackState
     data object Loading : ShayarVoicePlaybackState
-    data class Speaking(val persona: ShayarVoicePersona) : ShayarVoicePlaybackState
-    data class QuotaFallback(val persona: ShayarVoicePersona, val detail: String) : ShayarVoicePlaybackState
+    data class Speaking(
+        val persona: ShayarVoicePersona,
+        val moodBadgeHi: String = ""
+    ) : ShayarVoicePlaybackState
+    data class QuotaFallback(
+        val persona: ShayarVoicePersona,
+        val detail: String,
+        val moodBadgeHi: String = ""
+    ) : ShayarVoicePlaybackState
     data class Error(val message: String) : ShayarVoicePlaybackState
 }
 
@@ -155,8 +162,9 @@ fun ReelVoiceStatusPill(
                             )
                         }
                     }
+                    val rightSuffix = voiceState.moodBadgeHi.ifBlank { "${bgmTrack.emoji} ${bgmTrack.labelHi}" }
                     Text(
-                        text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} • ${bgmTrack.emoji} ${bgmTrack.labelHi}",
+                        text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} • $rightSuffix",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 11.sp
@@ -182,9 +190,10 @@ fun ReelVoiceStatusPill(
                             )
                         }
                     }
+                    val fallbackSuffix = voiceState.moodBadgeHi.ifBlank { "${bgmTrack.emoji} ${bgmTrack.labelHi}" }
                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
-                            text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} • ${bgmTrack.emoji} ${bgmTrack.labelHi}",
+                            text = "${voiceState.persona.emoji} ${voiceState.persona.labelHi} • $fallbackSuffix",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 fontSize = 11.sp
