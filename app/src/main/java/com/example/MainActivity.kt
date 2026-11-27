@@ -315,6 +315,7 @@ private fun ShayariAppRoot(
     var onlineCommunityReels by remember { mutableStateOf<List<CommunityReel>>(emptyList()) }
     var onlineLikedReelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var reelsCreateTrigger by remember { mutableIntStateOf(0) }
+    var reelsRefreshTick by remember { mutableIntStateOf(0) }
     var showReadingMusicSheet by remember { mutableStateOf(false) }
     var activeReaderCategoryId by remember { mutableStateOf<String?>(null) }
     var selectedSleepTimer by remember { mutableStateOf(ReadingSleepTimerOption.CONTINUOUS) }
@@ -729,6 +730,7 @@ private fun ShayariAppRoot(
         isHomeSearchExpanded = false
         viewModel.refreshFeed()
         homeRefreshTick++
+        reelsRefreshTick++
         showFeedback(context.getString(R.string.app_refreshed_snackbar))
     }
 
@@ -749,6 +751,15 @@ private fun ShayariAppRoot(
             triggerAppRefresh()
         } else {
             navigateToTab(ROUTE_MEHFIL)
+        }
+    }
+
+    fun handleReelsTabClick() {
+        reelsRefreshTick++
+        if (currentRoute == ROUTE_REELS) {
+            showFeedback(context.getString(R.string.reels_refreshed_snackbar))
+        } else {
+            navigateToTab(ROUTE_REELS)
         }
     }
 
@@ -1259,7 +1270,7 @@ private fun ShayariAppRoot(
                         onCreateClick = ::handleCreateTabClick,
                         onAccountClick = ::handleAccountTabClick,
                         isReelsSelected = isReelsRoute,
-                        onReelsClick = { navigateToTab(ROUTE_REELS) }
+                        onReelsClick = ::handleReelsTabClick
                     )
                 }
             }
@@ -1297,10 +1308,10 @@ private fun ShayariAppRoot(
                             NavigationRailItem(
                                 selected = selected,
                                 onClick = {
-                                    if (tab == BottomTab.MEHFIL) {
-                                        handleHomeTabClick()
-                                    } else {
-                                        navigateToTab(tab.route)
+                                    when (tab) {
+                                        BottomTab.MEHFIL -> handleHomeTabClick()
+                                        BottomTab.REELS -> handleReelsTabClick()
+                                        else -> navigateToTab(tab.route)
                                     }
                                 },
                                 colors = railItemColors,
@@ -1486,6 +1497,7 @@ private fun ShayariAppRoot(
                                 },
                                 onShowFeedback = ::showFeedback,
                                 createSheetTrigger = reelsCreateTrigger,
+                                refreshTrigger = reelsRefreshTick,
                                 onDeleteUserReel = { target ->
                                     val updated = userCreatedReels.filterNot { it.id == target.id }
                                     userCreatedReels = updated

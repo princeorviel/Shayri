@@ -172,7 +172,12 @@ fun ShayariCardItem(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(panelBrush)
-                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                            .padding(horizontal = 20.dp, vertical = 20.dp)
+                            .shayariTextFadeIn(
+                                revealKey = shayari.id,
+                                durationMillis = 420,
+                                slideUpDp = 10.dp
+                            ),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(

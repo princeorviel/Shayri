@@ -101,6 +101,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -146,13 +147,16 @@ import com.example.ui.components.OptimizedDrawableImage
 import com.example.ui.components.ReelSoundMixerSheet
 import com.example.ui.components.ReelVoiceStatusPill
 import com.example.ui.components.ShayarVoicePlaybackState
+import com.example.ui.components.rememberPagerRevealProgress
 import com.example.ui.components.resolveDiversePhotoForCard
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.util.ReelsStorage
 import java.io.File
 import java.util.Locale
 import kotlin.math.PI
+import kotlin.math.absoluteValue
 import kotlin.math.sin
+import kotlin.random.Random
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -266,6 +270,63 @@ private fun UserCreatedReel.toSyntheticShayariEntity(): ShayariEntity {
     )
 }
 
+internal fun buildRandomizedShayariReelPool(
+    allShayari: List<ShayariEntity>,
+    popularShayari: List<ShayariEntity>,
+    maxCount: Int = 240,
+    random: Random = Random.Default
+): List<ShayariEntity> {
+    if (maxCount <= 0) return emptyList()
+    val result = ArrayList<ShayariEntity>(maxCount)
+    val seenIds = HashSet<Int>(maxCount * 2)
+
+    val popularEligible = popularShayari
+        .filterNot { ShayariCategory.fromId(it.categoryId).isJokeCategory }
+        .shuffled(random)
+    val popularQuota = minOf(popularEligible.size, (maxCount / 4).coerceAtLeast(16))
+    for (i in 0 until popularQuota) {
+        val item = popularEligible[i]
+        if (seenIds.add(item.id)) {
+            result.add(item)
+        }
+    }
+
+    if (allShayari.isNotEmpty() && result.size < maxCount) {
+        if (allShayari.size <= maxCount * 2) {
+            val shuffledAll = allShayari.shuffled(random)
+            for (item in shuffledAll) {
+                if (result.size >= maxCount) break
+                if (!ShayariCategory.fromId(item.categoryId).isJokeCategory && seenIds.add(item.id)) {
+                    result.add(item)
+                }
+            }
+        } else {
+            val maxProbes = maxCount * 6
+            var probes = 0
+            while (result.size < maxCount && probes < maxProbes) {
+                probes++
+                val item = allShayari[random.nextInt(allShayari.size)]
+                if (!ShayariCategory.fromId(item.categoryId).isJokeCategory && seenIds.add(item.id)) {
+                    result.add(item)
+                }
+            }
+            if (result.size < maxCount) {
+                val startOffset = random.nextInt(allShayari.size)
+                for (offset in allShayari.indices) {
+                    if (result.size >= maxCount) break
+                    val item = allShayari[(startOffset + offset) % allShayari.size]
+                    if (!ShayariCategory.fromId(item.categoryId).isJokeCategory && seenIds.add(item.id)) {
+                        result.add(item)
+                    }
+                }
+            }
+        }
+    }
+
+    result.shuffle(random)
+    return result
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReelsScreen(
@@ -281,6 +342,7 @@ fun ReelsScreen(
     onShowFeedback: (String) -> Unit,
     modifier: Modifier = Modifier,
     createSheetTrigger: Int = 0,
+    refreshTrigger: Int = 0,
     onDeleteUserReel: ((UserCreatedReel) -> Unit)? = null,
     onUpdateUserReelSinger: ((reel: UserCreatedReel, singerName: String?, songTitle: String?) -> Unit)? = null,
     currentUserId: String? = null,
@@ -300,6 +362,11 @@ fun ReelsScreen(
     var showSoundMixerSheet by remember { mutableStateOf(false) }
     var detectingSingerReelIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingSingerReel by remember { mutableStateOf<UserCreatedReel?>(null) }
+    var shuffleNonce by remember { mutableIntStateOf(0) }
+    var shuffleSeed by remember { mutableLongStateOf(System.nanoTime()) }
+    var lastTopReelKey by remember { mutableStateOf<String?>(null) }
+    var pinLatestUserReel by remember { mutableStateOf(false) }
+    var lastHandledExternalRefresh by remember { mutableIntStateOf(refreshTrigger) }
 
     // Per-Reel Sound Mixer overrides keyed by entry.stableKey (changing one shayari NEVER changes others!)
     var perReelPersonaOverrides by remember(context) {
@@ -369,7 +436,18 @@ fun ReelsScreen(
         }
     }
 
-    val reelsList: List<ReelEntry> = remember(allShayari, popularShayari, userReels, selectedTab, activeTagFilter, currentUserId) {
+    val reelsList: List<ReelEntry> = remember(
+        allShayari,
+        popularShayari,
+        userReels,
+        selectedTab,
+        activeTagFilter,
+        currentUserId,
+        shuffleSeed,
+        shuffleNonce,
+        pinLatestUserReel
+    ) {
+        val rng = Random(shuffleSeed)
         val base: List<ReelEntry> = when (selectedTab) {
             ReelsFeedTab.MY_REELS -> userReels
                 .filter { it.ownerUserId == null || it.ownerUserId == currentUserId }
@@ -378,31 +456,36 @@ fun ReelsScreen(
                 val custom = userReels
                     .sortedByDescending { it.likeCount }
                     .map { ReelEntry.CustomReel(it) }
-                val pool = popularShayari.ifEmpty { allShayari.take(120) }
+                val pool = popularShayari.ifEmpty { allShayari.take(160) }
                     .filterNot { ShayariCategory.fromId(it.categoryId).isJokeCategory }
                     .map { ReelEntry.ShayariReel(it) }
-                custom + pool
+                val combined = (custom + pool).toMutableList()
+                if (shuffleNonce > 0 && combined.size > 1) {
+                    combined.shuffle(rng)
+                }
+                combined
             }
             ReelsFeedTab.FOR_YOU -> {
-                val custom = userReels.map { ReelEntry.CustomReel(it) }
-                val curated = buildList {
-                    addAll(popularShayari.take(40))
-                    val seenIds = popularShayari.take(40).mapTo(HashSet()) { it.id }
-                    var step = 0
-                    for (item in allShayari) {
-                        if (size >= 240) break
-                        if (item.id !in seenIds && !ShayariCategory.fromId(item.categoryId).isJokeCategory) {
-                            if (step % 7 == 0) add(item)
-                            step++
-                        }
-                    }
-                }.map { ReelEntry.ShayariReel(it) }
-                custom + curated
+                val customEntries = userReels.map { ReelEntry.CustomReel(it) }
+                val curatedShayari = buildRandomizedShayariReelPool(
+                    allShayari = allShayari,
+                    popularShayari = popularShayari,
+                    maxCount = 240,
+                    random = rng
+                ).map { ReelEntry.ShayariReel(it) }
+
+                if (pinLatestUserReel && customEntries.isNotEmpty()) {
+                    val pinnedFirst = customEntries.first()
+                    val rest = (customEntries.drop(1) + curatedShayari).shuffled(rng)
+                    listOf(pinnedFirst) + rest
+                } else {
+                    (customEntries + curatedShayari).shuffled(rng)
+                }
             }
         }
 
         val tagQuery = activeTagFilter?.trim()
-        if (tagQuery.isNullOrEmpty()) {
+        val filtered = if (tagQuery.isNullOrEmpty()) {
             base
         } else {
             val spec = ShayariTagMatcher.buildSearchSpec(tagQuery)
@@ -419,11 +502,54 @@ fun ReelsScreen(
                     ) > 0
             }.ifEmpty { base }
         }
+
+        // Guarantee a genuinely fresh top reel on random refresh whenever multiple reels exist
+        if (!pinLatestUserReel &&
+            selectedTab != ReelsFeedTab.MY_REELS &&
+            lastTopReelKey != null &&
+            filtered.size > 1 &&
+            filtered.first().stableKey == lastTopReelKey
+        ) {
+            val mutable = filtered.toMutableList()
+            val swapIndex = 1 + rng.nextInt(mutable.size - 1)
+            val first = mutable[0]
+            mutable[0] = mutable[swapIndex]
+            mutable[swapIndex] = first
+            mutable
+        } else {
+            filtered
+        }
     }
 
     val pagerState = rememberPagerState(pageCount = { reelsList.size.coerceAtLeast(1) })
 
-    LaunchedEffect(selectedTab, activeTagFilter, userReels.size) {
+    fun refreshRandomReels(switchToHomeTab: Boolean, notifyUser: Boolean) {
+        lastTopReelKey = reelsList.getOrNull(pagerState.currentPage)?.stableKey
+        pinLatestUserReel = false
+        activeTagFilter = null
+        isCurrentReelPaused = false
+        if (switchToHomeTab) {
+            selectedTab = ReelsFeedTab.FOR_YOU
+        }
+        val nextNonce = shuffleNonce + 1
+        shuffleNonce = nextNonce
+        shuffleSeed = System.nanoTime() xor (nextNonce.toLong() * -7046029254386353131L)
+        if (notifyUser) {
+            onShowFeedback("नई रील्स रिफ्रेश हो गईं ✨")
+        }
+        scope.launch {
+            pagerState.scrollToPage(0)
+        }
+    }
+
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > lastHandledExternalRefresh) {
+            lastHandledExternalRefresh = refreshTrigger
+            refreshRandomReels(switchToHomeTab = true, notifyUser = false)
+        }
+    }
+
+    LaunchedEffect(selectedTab, activeTagFilter, userReels.size, shuffleNonce) {
         isCurrentReelPaused = false
         if (pagerState.currentPage != 0 && reelsList.isNotEmpty()) {
             pagerState.scrollToPage(0)
@@ -848,7 +974,11 @@ fun ReelsScreen(
                     .testTag("reels_vertical_pager")
             ) { page ->
                 val entry = reelsList.getOrNull(page) ?: return@VerticalPager
-                val isCurrentPage = pagerState.currentPage == page && !showCreateSheet
+                val isSelectedPage = pagerState.currentPage == page
+                val isCurrentPage = isSelectedPage && !showCreateSheet
+                val pageOffset = ((pagerState.currentPage - page) + pagerState.currentPageOffsetFraction)
+                    .absoluteValue
+                    .coerceIn(0f, 1f)
                 val isOnlineCustomReel = entry is ReelEntry.CustomReel && entry.reel.isOnlineSynced
                 val isLiked = if (isOnlineCustomReel && onToggleOnlineReelLike != null && isSignedInOnline) {
                     (entry as ReelEntry.CustomReel).reel.id in onlineLikedReelIds
@@ -882,6 +1012,9 @@ fun ReelsScreen(
                 ReelPageCard(
                     entry = entry,
                     isActive = isCurrentPage,
+                    isVisuallyFocused = isSelectedPage,
+                    pageOffset = pageOffset,
+                    revealEpoch = shuffleNonce,
                     isPaused = if (isCurrentPage) isCurrentReelPaused else false,
                     onTogglePause = {
                         if (isCurrentPage) {
@@ -1012,8 +1145,18 @@ fun ReelsScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .clickable {
-                                    selectedTab = tab
-                                    activeTagFilter = null
+                                    if (selectedTab == tab && tab != ReelsFeedTab.MY_REELS) {
+                                        refreshRandomReels(
+                                            switchToHomeTab = tab == ReelsFeedTab.FOR_YOU,
+                                            notifyUser = true
+                                        )
+                                    } else {
+                                        selectedTab = tab
+                                        activeTagFilter = null
+                                        if (tab == ReelsFeedTab.FOR_YOU) {
+                                            refreshRandomReels(switchToHomeTab = true, notifyUser = false)
+                                        }
+                                    }
                                 }
                                 .padding(horizontal = 5.dp, vertical = 4.dp)
                                 .testTag("reels_tab_${tab.name}")
@@ -1170,6 +1313,7 @@ fun ReelsScreen(
                 onPublishReel = { newReel ->
                     onCreateUserReel(newReel)
                     showCreateSheet = false
+                    pinLatestUserReel = true
                     selectedTab = ReelsFeedTab.FOR_YOU
                     activeTagFilter = null
                     isAudioEnabled = true
@@ -1209,6 +1353,9 @@ fun ReelsScreen(
 private fun ReelPageCard(
     entry: ReelEntry,
     isActive: Boolean,
+    isVisuallyFocused: Boolean,
+    pageOffset: Float,
+    revealEpoch: Int,
     isPaused: Boolean,
     onTogglePause: () -> Unit,
     isLiked: Boolean,
@@ -1365,6 +1512,21 @@ private fun ReelPageCard(
     val latestTogglePause by rememberUpdatedState(onTogglePause)
     val latestLikeOnly by rememberUpdatedState(onLikeOnly)
 
+    val reelVisualReveal = rememberPagerRevealProgress(
+        isCurrentPage = isVisuallyFocused,
+        contentKey = Triple(entry.stableKey, revealEpoch, "reel_visual"),
+        durationMillis = 380,
+        delayMillis = 0
+    )
+    val textReveal = rememberPagerRevealProgress(
+        isCurrentPage = isVisuallyFocused,
+        contentKey = Triple(entry.stableKey, revealEpoch, "reel_text"),
+        durationMillis = 480,
+        delayMillis = 65
+    )
+    val reelSwipeVisibility = (1f - 0.30f * pageOffset).coerceIn(0f, 1f)
+    val textSwipeVisibility = (1f - 0.60f * pageOffset).coerceIn(0f, 1f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -1382,7 +1544,17 @@ private fun ReelPageCard(
                 )
             }
     ) {
-        // 1. Background Media Layer: Real Looping Video, Local Photo, Online Thumbnail, OR Preset Backdrop
+        // 1. Background Media Layer with smooth Reel fade-in on load/swipe/refresh
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    alpha = (0.22f + 0.78f * reelVisualReveal) * reelSwipeVisibility
+                    val settleScale = 0.975f + (0.025f * reelVisualReveal)
+                    scaleX = settleScale
+                    scaleY = settleScale
+                }
+        ) {
         if (videoUri != null) {
             LoopingTextureVideoBackground(
                 uriString = videoUri,
@@ -1454,6 +1626,7 @@ private fun ReelPageCard(
                     )
                 )
         )
+        }
 
         if (!isCustomMediaReel && isActive && !isPaused) {
             Canvas(modifier = Modifier.fillMaxSize()) {
@@ -1494,7 +1667,11 @@ private fun ReelPageCard(
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = Color.Black.copy(alpha = 0.40f),
-                        border = BorderStroke(0.8.dp, Color(0xFFFFD580).copy(alpha = 0.52f))
+                        border = BorderStroke(0.8.dp, Color(0xFFFFD580).copy(alpha = 0.52f)),
+                        modifier = Modifier.graphicsLayer {
+                            alpha = textReveal * textSwipeVisibility
+                            translationY = (1f - textReveal) * 12.dp.toPx()
+                        }
                     ) {
                         Text(
                             text = "${category.emoji} ${category.titleHi}",
@@ -1522,7 +1699,11 @@ private fun ReelPageCard(
                         )
                     ),
                     color = Color.White,
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = textReveal * textSwipeVisibility
+                        translationY = (1f - textReveal) * 20.dp.toPx()
+                    }
                 )
             }
         }
@@ -1667,7 +1848,12 @@ private fun ReelPageCard(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 78.dp, bottom = 18.dp),
+                .padding(start = 16.dp, end = 78.dp, bottom = 18.dp)
+                .graphicsLayer {
+                    val captionReveal = ((textReveal - 0.12f) / 0.88f).coerceIn(0f, 1f)
+                    alpha = (0.20f + 0.80f * captionReveal) * textSwipeVisibility
+                    translationY = (1f - captionReveal) * 12.dp.toPx()
+                },
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             val cleanPoetName = remember(entry.poet) {

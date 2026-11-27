@@ -108,6 +108,7 @@ import com.example.data.model.WritingPrompt
 import com.example.ui.components.AccountAvatar
 import com.example.ui.components.CategoryChipStrip
 import com.example.ui.components.ShayariAiAssistPanel
+import com.example.ui.components.shayariTextFadeIn
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.ui.viewmodel.CommunityFeedState
 import com.example.ui.viewmodel.CommunityPostEvent
@@ -1200,7 +1201,12 @@ private fun CommunityPostCard(
             Text(
                 text = post.couplet,
                 style = readingStyle.cardCoupletTextStyle(MaterialTheme.typography.bodyLarge),
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.shayariTextFadeIn(
+                    revealKey = post.id,
+                    durationMillis = 400,
+                    slideUpDp = 8.dp
+                )
             )
 
             Spacer(modifier = Modifier.height(14.dp))

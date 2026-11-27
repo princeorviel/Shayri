@@ -260,6 +260,12 @@ fun YourQuoteCardCanvas(
         ShayariTagMatcher.displayHashTags(cleanShayari.moodTag, cleanShayari.categoryId, maxTags = 3)
     }
 
+    val textRevealModifier = Modifier.shayariTextFadeIn(
+        revealKey = Triple(cleanShayari.id, styleMode, cleanShayari.couplet.hashCode()),
+        durationMillis = 420,
+        slideUpDp = 10.dp
+    )
+
     when (look) {
         YourQuoteFeedLook.EDITORIAL_PAPER -> {
             EditorialPaperCardCanvas(
@@ -267,6 +273,7 @@ fun YourQuoteCardCanvas(
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
                 accentColor = MAGAZINE_ACCENTS[hashSeed % MAGAZINE_ACCENTS.size],
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -277,6 +284,7 @@ fun YourQuoteCardCanvas(
                 artworkResId = artworkResId,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -287,6 +295,7 @@ fun YourQuoteCardCanvas(
                 gradient = ROYAL_DARK_GRADIENTS[hashSeed % ROYAL_DARK_GRADIENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -297,6 +306,7 @@ fun YourQuoteCardCanvas(
                 palette = PASTEL_PALETTES[hashSeed % PASTEL_PALETTES.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -307,6 +317,7 @@ fun YourQuoteCardCanvas(
                 accent = MAGAZINE_ACCENTS[hashSeed % MAGAZINE_ACCENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -316,6 +327,7 @@ fun YourQuoteCardCanvas(
                 shayari = cleanShayari,
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -326,6 +338,7 @@ fun YourQuoteCardCanvas(
                 gradient = AURORA_GRADIENTS[hashSeed % AURORA_GRADIENTS.size],
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -337,6 +350,7 @@ fun YourQuoteCardCanvas(
                 hashTags = hashTags,
                 isOnlinePost = isOnlinePost,
                 readingStyle = readingStyle,
+                textRevealModifier = textRevealModifier,
                 modifier = modifier
             )
         }
@@ -350,6 +364,7 @@ private fun EditorialPaperCardCanvas(
     hashTags: List<String>,
     isOnlinePost: Boolean,
     accentColor: Color,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -388,7 +403,8 @@ private fun EditorialPaperCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 40.dp, end = 22.dp, top = 20.dp, bottom = 22.dp),
+                .padding(start = 40.dp, end = 22.dp, top = 20.dp, bottom = 22.dp)
+                .then(textRevealModifier),
             verticalArrangement = Arrangement.Center
         ) {
             Row(
@@ -461,6 +477,7 @@ private fun PolaroidGalleryCardCanvas(
     @DrawableRes artworkResId: Int,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -513,7 +530,9 @@ private fun PolaroidGalleryCardCanvas(
                 ),
                 color = Color(0xFFFFFBF4),
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
+                modifier = Modifier
+                    .padding(horizontal = 20.dp, vertical = 22.dp)
+                    .then(textRevealModifier)
             )
         }
 
@@ -564,6 +583,7 @@ private fun VelvetGoldCardCanvas(
     gradient: List<Color>,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -600,7 +620,8 @@ private fun VelvetGoldCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 26.dp, vertical = 26.dp),
+                .padding(horizontal = 26.dp, vertical = 26.dp)
+                .then(textRevealModifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -674,6 +695,7 @@ private fun PastelWatercolorCardCanvas(
     palette: PastelPalette,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -712,7 +734,8 @@ private fun PastelWatercolorCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 24.dp),
+                .padding(horizontal = 24.dp, vertical = 24.dp)
+                .then(textRevealModifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -760,6 +783,7 @@ private fun ModernMagazineCardCanvas(
     accent: Color,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -801,7 +825,8 @@ private fun ModernMagazineCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 24.dp, end = 22.dp, top = 22.dp, bottom = 22.dp),
+                .padding(start = 24.dp, end = 22.dp, top = 22.dp, bottom = 22.dp)
+                .then(textRevealModifier),
             verticalArrangement = Arrangement.Center
         ) {
             if (isOnlinePost) {
@@ -847,6 +872,7 @@ private fun VintageDiaryCardCanvas(
     shayari: ShayariEntity,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -887,7 +913,8 @@ private fun VintageDiaryCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 26.dp, vertical = 26.dp),
+                .padding(horizontal = 26.dp, vertical = 26.dp)
+                .then(textRevealModifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -936,6 +963,7 @@ private fun AuroraGlassCardCanvas(
     gradient: List<Color>,
     hashTags: List<String>,
     isOnlinePost: Boolean,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     val readingStyle = LocalShayariReadingStyle.current
@@ -959,7 +987,8 @@ private fun AuroraGlassCardCanvas(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 22.dp),
+                    .padding(horizontal = 20.dp, vertical = 22.dp)
+                    .then(textRevealModifier),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -1009,6 +1038,7 @@ private fun CinematicPhotoCardCanvas(
     hashTags: List<String>,
     isOnlinePost: Boolean,
     readingStyle: com.example.ui.theme.ShayariReadingStyle,
+    textRevealModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -1050,7 +1080,8 @@ private fun CinematicPhotoCardCanvas(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 22.dp, vertical = 26.dp),
+                .padding(horizontal = 22.dp, vertical = 26.dp)
+                .then(textRevealModifier),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {

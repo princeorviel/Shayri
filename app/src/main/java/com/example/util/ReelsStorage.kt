@@ -304,6 +304,30 @@ object ReelsStorage {
     private const val KEY_PER_REEL_VOICE_MAP = "per_reel_voice_map_v1"
     private const val KEY_PER_REEL_BGM_MAP = "per_reel_bgm_map_v1"
     private const val KEY_ALLOW_LOCAL_TTS_FALLBACK = "allow_local_tts_fallback_v1"
+    private const val KEY_RECENTLY_SEEN_REELS = "recently_seen_reels_v1"
+
+    fun loadRecentlySeenReelKeys(context: Context): List<String> {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_RECENTLY_SEEN_REELS, null)?.takeIf { it.isNotBlank() }
+            ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val key = arr.optString(i).trim()
+                    if (key.isNotBlank()) add(key)
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveRecentlySeenReelKeys(context: Context, keys: List<String>) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val trimmed = keys.takeLast(160)
+        val arr = JSONArray()
+        trimmed.forEach { arr.put(it) }
+        prefs.edit().putString(KEY_RECENTLY_SEEN_REELS, arr.toString()).apply()
+    }
 
     fun loadAllowLocalTtsFallback(context: Context): Boolean {
         val prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -71,6 +71,7 @@ import com.example.data.model.PersonalShayari
 import com.example.data.model.ShayariCategory
 import com.example.data.model.ShayariEntity
 import com.example.data.model.toShayariEntity
+import com.example.ui.components.shayariTextFadeIn
 import com.example.ui.theme.LocalShayariReadingStyle
 import com.example.ui.viewmodel.PersonalCollectionState
 import com.example.ui.viewmodel.PersonalShayariViewModel
@@ -785,7 +786,12 @@ private fun PersonalShayariCard(
             Text(
                 text = item.couplet,
                 style = readingStyle.cardCoupletTextStyle(MaterialTheme.typography.bodyLarge),
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.shayariTextFadeIn(
+                    revealKey = item.id,
+                    durationMillis = 400,
+                    slideUpDp = 8.dp
+                )
             )
 
             if (authorSignature.isNotBlank()) {

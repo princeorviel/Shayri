@@ -81,6 +81,7 @@
     <string name="added_favorite_snackbar">पसंद की लिस्ट में जुड़ गई</string>
     <string name="removed_favorite_snackbar">पसंद की लिस्ट से हटाई गई</string>
     <string name="app_refreshed_snackbar">शायरी फ़ीड रिफ्रेश हो गया ✨</string>
+    <string name="reels_refreshed_snackbar">नई रील्स रिफ्रेश हो गईं ✨</string>
     <string name="share_chooser_title">शायरी शेयर करें</string>
     <string name="share_sheet_title">शायरी शेयर करें</string>
     <string name="share_app_sheet_title">ऐप शेयर करें</string>

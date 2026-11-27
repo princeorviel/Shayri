@@ -90,6 +90,7 @@ import com.example.data.model.ShayariEntity
 import com.example.data.model.ShayariFontStyle
 import com.example.ui.components.OptimizedDrawableImage
 import com.example.ui.components.ReaderAmbientMusicPill
+import com.example.ui.components.rememberPagerRevealProgress
 import com.example.ui.theme.LocalShayariReadingStyle
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
@@ -187,6 +188,14 @@ fun ShayariReaderScreen(
             val pageOffset = ((pagerState.currentPage - pageIndex) + pagerState.currentPageOffsetFraction)
                 .absoluteValue
                 .coerceIn(0f, 1f)
+            val isActivePage = pagerState.currentPage == pageIndex
+            val textRevealProgress = rememberPagerRevealProgress(
+                isCurrentPage = isActivePage,
+                contentKey = pageShayari.id,
+                durationMillis = 480,
+                delayMillis = 45
+            )
+            val swipeVisibility = (1f - (0.60f * pageOffset)).coerceIn(0f, 1f)
 
             Box(
                 modifier = Modifier
@@ -283,7 +292,7 @@ fun ShayariReaderScreen(
                             val scaleFactor = 1f - (0.05f * pageOffset)
                             scaleX = scaleFactor
                             scaleY = scaleFactor
-                            alpha = 1f - (0.28f * pageOffset)
+                            alpha = (0.18f + 0.82f * textRevealProgress) * swipeVisibility
                         }
                 ) {
                     Surface(
@@ -347,14 +356,23 @@ fun ShayariReaderScreen(
                                     letterSpacing = selectedFontStyle.letterSpacingSp.sp
                                 ),
                                 color = selectedCardStyle.textColor,
-                                textAlign = TextAlign.Center
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = textRevealProgress * swipeVisibility
+                                    translationY = (1f - textRevealProgress) * 18.dp.toPx()
+                                }
                             )
 
                             Spacer(modifier = Modifier.height(28.dp))
 
+                            val poetReveal = ((textRevealProgress - 0.16f) / 0.84f).coerceIn(0f, 1f)
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
+                                horizontalArrangement = Arrangement.Center,
+                                modifier = Modifier.graphicsLayer {
+                                    alpha = poetReveal * swipeVisibility
+                                    translationY = (1f - poetReveal) * 10.dp.toPx()
+                                }
                             ) {
                                 Box(
                                     modifier = Modifier
